@@ -21,7 +21,7 @@ Run `gb-desktop --help` for the exhaustive flag list. The stable desktop-specifi
 
 | Area | Options |
 | --- | --- |
-| Hardware policy | `--model <DMG|MGB|LGB|CGB|AGB|SGB|SGB2>`, `--revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>`, `--sgb-standard <ntsc|pal>`, `--startup <skip-boot|custom-boot|real-boot>`, `--mode <strict|permissive|experimental>`, `--boot-rom-dir <dir>`, `--boot-rom-verify <off|warn|strict>` |
+| Hardware policy | `--model <DMG|MGB|LGB|CGB|AGB|SGB|SGB2>`, `--revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-0|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>`, `--sgb-standard <ntsc|pal>`, `--startup <skip-boot|custom-boot|real-boot>`, `--mode <strict|permissive|experimental>`, `--boot-rom-dir <dir>`, `--boot-rom-verify <off|warn|strict>` |
 | Automation | `--test-runner`, `--benchmark <case.toml>`, `--exit-after-frames <n>` |
 | Local links | `--link-rom <path>` for a local 2-player `DMG-04` session only |
 | Cartridge saves | `--save-dir <dir>`, `--save-key <key>`, `--save-policy <manual|on-close|on-write|debounced>`, `--no-saves` |
@@ -41,7 +41,7 @@ Local `DMG-07` 4-Player Adapter sessions and CGB IR/accessory sessions are overl
 
 The desktop model contract mirrors [`CLI.md`](CLI.md): public model names are `DMG`, `MGB`, `LGB`, `CGB`, `AGB`, `SGB`, and `SGB2`; old product names and lowercase legacy aliases are rejected. `AGB` is displayed as `MODEL GB ADVANCE` and maps to the active AGB GB/C compatibility profile; there are intentionally no separate `GBA SP` or `GB PLAYER` UI models because the current core-visible GBA-enhanced behavior is the same. `SGB` and `SGB2` are frontend machine profiles that wrap the shared DMG-compatible GB core in an SGB host profile, not CGB mode and not a forked GB core.
 
-`--revision` and `CONFIG -> SYSTEM -> REV` select the active revision for the chosen model profile. `DMG` cycles through `DMG-CPU 0` and `DMG-CPU C`; `CGB` cycles through `CPU CGB C`, `CPU CGB D`, and `CPU CGB E`; `MGB`, `LGB`, and `AGB` have one active revision each; `SGB` and `SGB2` use their SGB-profile-backed `DMG-CPU C` GB core and do not expose `DMG-CPU 0`, because the SGB startup state is selected by `SgbHostProfile` rather than by DMG0 handheld boot rules.
+`--revision` and `CONFIG -> SYSTEM -> REV` select the active revision for the chosen model profile. `DMG` cycles through `DMG-CPU 0` and `DMG-CPU C`; `CGB` cycles through `CGB-CPU 0`, `CPU CGB C`, `CPU CGB D`, and `CPU CGB E`; `MGB`, `LGB`, and `AGB` have one active revision each; `SGB` and `SGB2` use their SGB-profile-backed `DMG-CPU C` GB core and do not expose `DMG-CPU 0`, because the SGB startup state is selected by `SgbHostProfile` rather than by DMG0 handheld boot rules.
 
 `--sgb-standard <ntsc|pal>` and `CONFIG -> SYSTEM -> VIDEO NTSC/PAL` apply only to original `SGB`. `SGB2` is fixed to its corrected NTSC SGB2 host profile and shows the item disabled rather than pretending a PAL variant exists.
 

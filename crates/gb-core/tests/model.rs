@@ -58,11 +58,13 @@ fn public_model_api_exposes_revision_defaults_and_active_sets() {
     assert_eq!(
         ConsoleModel::GameBoyColor.active_revisions(),
         &[
+            HardwareRevision::CpuCgb0,
             HardwareRevision::CpuCgbC,
             HardwareRevision::CpuCgbD,
             HardwareRevision::CpuCgbE
         ]
     );
+    assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgb0));
     assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgbE));
     assert!(!ConsoleModel::GameBoy.supports_revision(HardwareRevision::CpuCgbE));
     assert_eq!(

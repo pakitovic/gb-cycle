@@ -44,6 +44,14 @@ fn resolves_required_assets_for_console_and_host_profiles() {
     assert_eq!(
         asset_for_profile(
             ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgb0,
+            HostPlatform::Handheld
+        ),
+        BootRomAssetKind::Cgb0
+    );
+    assert_eq!(
+        asset_for_profile(
+            ConsoleModel::GameBoyColor,
             HardwareRevision::CpuCgbE,
             HostPlatform::Handheld
         ),

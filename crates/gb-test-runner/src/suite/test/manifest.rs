@@ -527,6 +527,21 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
     );
     assert_eq!(cgb_manifest.cases[0].report_model, ReportModel::Cgb);
 
+    let cgb0_model = cgb_model.replace(
+        "model = \"cgb\"",
+        "model = \"cgb\"\nrevision = \"cpu-cgb-0\"",
+    );
+    let cgb0_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &cgb0_model,
+    )
+    .expect("CGB0 should parse");
+    assert_eq!(
+        cgb0_manifest.cases[0].hardware_revision,
+        gb_core::HardwareRevision::CpuCgb0
+    );
+
     let agb_model = basic_manifest(
         "gb-emulator-shootout",
         "acid",
@@ -1510,7 +1525,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 ("mooneye-emulator-only", 28, "mooneye"),
                 ("mooneye-madness", 0, "mooneye"),
                 ("mooneye-manual", 2, "mooneye"),
-                ("mooneye-misc", 7, "mooneye"),
+                ("mooneye-misc", 8, "mooneye"),
             ][..],
         ),
         ("ax6", &[("ax6-dmg", 3, "ax6")][..]),

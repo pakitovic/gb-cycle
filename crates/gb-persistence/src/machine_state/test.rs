@@ -66,7 +66,7 @@ fn machine_save_state_metadata_codec_covers_tags_fingerprints_and_overrides() {
         HardwareRevision::DmgCpuB,
         HardwareRevision::DmgCpuC,
         HardwareRevision::CpuMgb,
-        HardwareRevision::CpuCgb,
+        HardwareRevision::CpuCgb0,
         HardwareRevision::CpuCgbA,
         HardwareRevision::CpuCgbB,
         HardwareRevision::CpuCgbC,

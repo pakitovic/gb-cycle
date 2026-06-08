@@ -85,7 +85,10 @@ impl ConsoleModel {
             }
             Self::GameBoyColor => matches!(
                 revision,
-                HardwareRevision::CpuCgbC | HardwareRevision::CpuCgbD | HardwareRevision::CpuCgbE
+                HardwareRevision::CpuCgb0
+                    | HardwareRevision::CpuCgbC
+                    | HardwareRevision::CpuCgbD
+                    | HardwareRevision::CpuCgbE
             ),
             Self::GameBoyAdvance => matches!(revision, HardwareRevision::CpuAgbA),
         }
@@ -157,7 +160,8 @@ const ACTIVE_DMG_REVISIONS: [HardwareRevision; 2] =
     [HardwareRevision::DmgCpu0, HardwareRevision::DmgCpuC];
 const ACTIVE_SGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::DmgCpuC];
 const ACTIVE_MGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::CpuMgb];
-const ACTIVE_CGB_REVISIONS: [HardwareRevision; 3] = [
+const ACTIVE_CGB_REVISIONS: [HardwareRevision; 4] = [
+    HardwareRevision::CpuCgb0,
     HardwareRevision::CpuCgbC,
     HardwareRevision::CpuCgbD,
     HardwareRevision::CpuCgbE,
@@ -174,7 +178,7 @@ pub enum HardwareRevision {
     #[default]
     DmgCpuC,
     CpuMgb,
-    CpuCgb,
+    CpuCgb0,
     CpuCgbA,
     CpuCgbB,
     CpuCgbC,
@@ -199,7 +203,7 @@ impl HardwareRevision {
     pub const fn uses_cgb_boot_rom(self) -> bool {
         matches!(
             self,
-            Self::CpuCgb
+            Self::CpuCgb0
                 | Self::CpuCgbA
                 | Self::CpuCgbB
                 | Self::CpuCgbC

@@ -284,6 +284,23 @@ fn parser_rejects_dmg0_for_sgb_participant_profile() {
 }
 
 #[test]
+fn parser_accepts_cgb0_participant_revision() {
+    let manifest = basic_manifest_with_report("linked").replacen(
+        "model = \"dmg\"",
+        "model = \"cgb\"\n  revision = \"cpu-cgb-0\"",
+        1,
+    );
+    let suite =
+        parse_link_suite_manifest_for_test(Path::new("cgb0.link.suite.toml"), "linked", &manifest)
+            .expect("CGB0 participant should parse");
+
+    assert_eq!(
+        suite.cases[0].participants[0].hardware_revision,
+        gb_core::HardwareRevision::CpuCgb0
+    );
+}
+
+#[test]
 fn parser_accepts_agb_participant_profile() {
     let manifest =
         basic_manifest_with_report("linked").replacen("model = \"dmg\"", "model = \"agb\"", 1);

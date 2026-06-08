@@ -657,8 +657,8 @@ enum PersistedHardwareRevision {
     DmgCpuC,
     #[serde(rename = "cpu-mgb")]
     CpuMgb,
-    #[serde(rename = "cpu-cgb")]
-    CpuCgb,
+    #[serde(rename = "cpu-cgb-0")]
+    CpuCgb0,
     #[serde(rename = "cpu-cgb-a")]
     CpuCgbA,
     #[serde(rename = "cpu-cgb-b")]
@@ -681,7 +681,7 @@ impl PersistedHardwareRevision {
             HardwareRevision::DmgCpuB => Self::DmgCpuB,
             HardwareRevision::DmgCpuC => Self::DmgCpuC,
             HardwareRevision::CpuMgb => Self::CpuMgb,
-            HardwareRevision::CpuCgb => Self::CpuCgb,
+            HardwareRevision::CpuCgb0 => Self::CpuCgb0,
             HardwareRevision::CpuCgbA => Self::CpuCgbA,
             HardwareRevision::CpuCgbB => Self::CpuCgbB,
             HardwareRevision::CpuCgbC => Self::CpuCgbC,
@@ -698,7 +698,7 @@ impl PersistedHardwareRevision {
             Self::DmgCpuB => HardwareRevision::DmgCpuB,
             Self::DmgCpuC => HardwareRevision::DmgCpuC,
             Self::CpuMgb => HardwareRevision::CpuMgb,
-            Self::CpuCgb => HardwareRevision::CpuCgb,
+            Self::CpuCgb0 => HardwareRevision::CpuCgb0,
             Self::CpuCgbA => HardwareRevision::CpuCgbA,
             Self::CpuCgbB => HardwareRevision::CpuCgbB,
             Self::CpuCgbC => HardwareRevision::CpuCgbC,

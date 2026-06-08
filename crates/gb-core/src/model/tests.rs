@@ -66,6 +66,7 @@ fn console_models_publish_default_and_active_revisions() {
     assert_eq!(
         ConsoleModel::GameBoyColor.active_revisions(),
         &[
+            HardwareRevision::CpuCgb0,
             HardwareRevision::CpuCgbC,
             HardwareRevision::CpuCgbD,
             HardwareRevision::CpuCgbE
@@ -84,6 +85,7 @@ fn console_models_publish_default_and_active_revisions() {
         ConsoleModel::GameBoy
             .supports_revision_on_host(HostPlatform::Sgb, HardwareRevision::DmgCpuC)
     );
+    assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgb0));
     assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgbE));
     assert!(ConsoleModel::GameBoyAdvance.supports_revision(HardwareRevision::CpuAgbA));
     assert!(!ConsoleModel::GameBoy.supports_revision(HardwareRevision::CpuCgbE));
@@ -249,7 +251,7 @@ fn hardware_revisions_derive_real_boot_images() {
     );
     assert_eq!(HardwareRevision::CpuMgb.boot_rom_filename(), "mgb_boot.bin");
     assert_eq!(
-        HardwareRevision::CpuCgb.boot_rom_filename(),
+        HardwareRevision::CpuCgb0.boot_rom_filename(),
         "cgb0_boot.bin"
     );
     assert_eq!(

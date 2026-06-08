@@ -16,7 +16,7 @@ The shared scheduler T-cycle remains the CPU-visible unit. CGB double speed chan
 
 ## Model axes and operating modes
 
-- `ConsoleModel::GameBoyColor` is the CGB-family handheld entry point with a physical CGB infrared port. The active revision set is `CpuCgbC`, `CpuCgbD`, and `CpuCgbE`, with `CpuCgbE` as the default and revision-derived firmware names owned by [`BOOT-ROM.md`](BOOT-ROM.md).
+- `ConsoleModel::GameBoyColor` is the CGB-family handheld entry point with a physical CGB infrared port. The active revision set is `CpuCgb0`, `CpuCgbC`, `CpuCgbD`, and `CpuCgbE`, with `CpuCgbE` as the default and revision-derived firmware names owned by [`BOOT-ROM.md`](BOOT-ROM.md).
 - `ConsoleModel::GameBoyAdvance` is the active AGB GB/C compatibility entry point. It is CGB-family for GB/C CPU/bus/PPU/APU behavior, uses `HardwareRevision::CpuAgbA`, selects `cgb_agb_boot.bin` for `RealBoot`, exposes the GBA-enhanced post-boot register fingerprint, and does not have a physical CGB infrared port.
 - `OperatingMode::Cgb` enables native CGB extensions: banked VRAM/WRAM, native palette RAM, CGB tile attributes, GDMA/HDMA, speed switching, CGB serial speed, model-gated infrared register state, and CGB-only readbacks where owned by the relevant subsystem.
 - `OperatingMode::GbCompatible` means CGB-family silicon running a DMG software-visible contract. It is not DMG silicon: DMG-family-only quirks remain disabled, while documented boot-visible CGB readbacks and CGB compatibility RGB555 presentation remain CGB-family state.
@@ -95,7 +95,7 @@ CGB-only MMIO must be routed through typed owners, not through generic `FFxx` st
 
 ## Deferred boundaries
 
-- CGB0/CGB-A/CGB-B activation, additional CGB revision gates, and hardware-revision-specific analog tuning remain deferred until validated.
+- CGB-A/CGB-B activation, additional CGB revision gates, and hardware-revision-specific analog tuning remain deferred until validated. CGB0 is active only for explicit boot validation and its current revision-specific behavior is limited to the `cgb0_boot.bin` asset, the Mooneye `boot_div-cgb0` direct timer bucket, and the CGB0 wave-RAM startup policy documented in [`BOOT-ROM.md`](BOOT-ROM.md).
 - Full PGB/PSM behavior, PSM NMI, boot-ROM remap side effects after ordinary handoff, external-LCD/PGB presentation behavior, and undocumented live `KEY0`/`OPRI` visual interactions remain out of scope for the current CGB model.
 - Additional AGB0, AGS/SP, and Game Boy Player UI profiles remain deferred. The current active AGB support is intentionally the single `GameBoyAdvance` / `CpuAgbA` GB/C compatibility profile because it is sufficient for GBA-enhanced GBC software detection.
 - Additional IR accessories, HuC1/HuC3-to-CGB IR protocols, and linked serial transports require explicit topology/device ownership before being treated as supported.

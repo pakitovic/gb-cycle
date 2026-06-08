@@ -18,8 +18,7 @@ model = "agb"
 id = "mooneye-misc-boot-div-cgb0"
 rom = "misc/boot_div-cgb0.gb"
 model = "cgb"
-disabled = true
-comment = "Requires CGB-CPU 0; gb-cycle currently supports active CGB C, D, and E revisions only."
+revision = "cpu-cgb-0"
 
 [[case]]
 id = "mooneye-misc-boot-div-cgbabcde"

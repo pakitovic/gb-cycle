@@ -42,7 +42,7 @@ impl BootRomAssetKind {
                 Self::Dmg
             }
             HardwareRevision::CpuMgb => Self::Mgb,
-            HardwareRevision::CpuCgb => Self::Cgb0,
+            HardwareRevision::CpuCgb0 => Self::Cgb0,
             HardwareRevision::CpuCgbA
             | HardwareRevision::CpuCgbB
             | HardwareRevision::CpuCgbC
@@ -1245,7 +1245,7 @@ const fn dmg_family_skip_boot_audio_snapshot() -> BootAudioSnapshot {
 
 fn build_skip_boot_apu_state(
     console_model: ConsoleModel,
-    _revision: HardwareRevision,
+    revision: HardwareRevision,
     system_counter: u16,
     io: BootIoSnapshot,
 ) -> ApuStartupState {
@@ -1275,7 +1275,12 @@ fn build_skip_boot_apu_state(
         nr51: audio.nr51,
         channel_active_mask: audio.nr52 & 0x0F,
         div_apu: div_apu_phase_from_system_counter(system_counter),
-        wave_ram_startup_policy: if console_model.is_cgb_family() {
+        wave_ram_startup_policy: if matches!(
+            (console_model, revision),
+            (ConsoleModel::GameBoyColor, HardwareRevision::CpuCgb0)
+        ) {
+            WaveRamStartupPolicy::DeterministicZeroed
+        } else if console_model.is_cgb_family() {
             WaveRamStartupPolicy::CgbRealBootAlternating
         } else {
             WaveRamStartupPolicy::DeterministicZeroed
@@ -1329,6 +1334,8 @@ const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG0_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0x2C;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const CGB_SKIP_BOOT_DIV: u8 = 0x26;
+// Mooneye's `boot_div-cgb0.gb` validates the early CGB0 boot ROM handoff phase exposed by `cgb0_boot.bin`.
+const CGB0_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2880;
 // Mooneye's `boot_div-cgbABCDE.gb` is a DMG-compatible CGB header and owns the fallback direct-start phase.
 const CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
 // Ashiepaws `bully.gb` is a native-CGB, non-Nintendo old-licensee header. This value matches gb-cycle's observed standard `cgb_boot.bin` handoff phase for that bucket; the complete CGB header table is tracked as follow-up documentation debt.
@@ -1359,6 +1366,9 @@ fn direct_start_system_counter(
         }
         ConsoleModel::GameBoy | ConsoleModel::GameBoyPocket | ConsoleModel::GameBoyLight => {
             DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
+        }
+        ConsoleModel::GameBoyColor if matches!(revision, HardwareRevision::CpuCgb0) => {
+            CGB0_DIRECT_BOOT_SYSTEM_COUNTER
         }
         ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
             cgb_direct_start_system_counter(header)

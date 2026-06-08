@@ -733,7 +733,7 @@ fn parse_hardware_revision(revision: &str) -> Result<HardwareRevision, String> {
         "dmg-cpu-b" => Ok(HardwareRevision::DmgCpuB),
         "dmg-cpu-c" => Ok(HardwareRevision::DmgCpuC),
         "cpu-mgb" => Ok(HardwareRevision::CpuMgb),
-        "cpu-cgb" => Ok(HardwareRevision::CpuCgb),
+        "cpu-cgb-0" => Ok(HardwareRevision::CpuCgb0),
         "cpu-cgb-a" => Ok(HardwareRevision::CpuCgbA),
         "cpu-cgb-b" => Ok(HardwareRevision::CpuCgbB),
         "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
