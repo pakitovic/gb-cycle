@@ -1,0 +1,443 @@
+family = "wilbertpol"
+suite_name = "wilbertpol-acceptance"
+report = "wilbertpol"
+model = "dmg"
+timeout_frames = 180
+oracle = { type = "fibonacci-result", legacy = true }
+
+[[case]]
+id = "wilbertpol-acceptance-add-sp-e-timing"
+rom = "acceptance/add_sp_e_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-bits-mem-oam"
+rom = "acceptance/bits/mem_oam.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-bits-reg-f"
+rom = "acceptance/bits/reg_f.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-bits-unused-hwio-gs"
+rom = "acceptance/bits/unused_hwio-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-boot-hwio-g"
+rom = "acceptance/boot_hwio-G.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-boot-regs-dmg"
+rom = "acceptance/boot_regs-dmg.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-call-cc-timing"
+rom = "acceptance/call_cc_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-call-cc-timing2"
+rom = "acceptance/call_cc_timing2.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-call-timing"
+rom = "acceptance/call_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-call-timing2"
+rom = "acceptance/call_timing2.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-di-timing-gs"
+rom = "acceptance/di_timing-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-div-timing"
+rom = "acceptance/div_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-ei-timing"
+rom = "acceptance/ei_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-hblank-ly-scx-timing-c"
+rom = "acceptance/gpu/hblank_ly_scx_timing-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-hblank-ly-scx-timing-gs"
+rom = "acceptance/gpu/hblank_ly_scx_timing-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-hblank-ly-scx-timing-nops"
+rom = "acceptance/gpu/hblank_ly_scx_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-hblank-ly-scx-timing-variant-nops"
+rom = "acceptance/gpu/hblank_ly_scx_timing_variant_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-0-timing"
+rom = "acceptance/gpu/intr_0_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-1-2-timing-gs"
+rom = "acceptance/gpu/intr_1_2_timing-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-1-timing"
+rom = "acceptance/gpu/intr_1_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-0-timing"
+rom = "acceptance/gpu/intr_2_0_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-scx1-timing-nops"
+rom = "acceptance/gpu/intr_2_mode0_scx1_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-scx2-timing-nops"
+rom = "acceptance/gpu/intr_2_mode0_scx2_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-scx3-timing-nops"
+rom = "acceptance/gpu/intr_2_mode0_scx3_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-scx4-timing-nops"
+rom = "acceptance/gpu/intr_2_mode0_scx4_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-scx5-timing-nops"
+rom = "acceptance/gpu/intr_2_mode0_scx5_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-scx6-timing-nops"
+rom = "acceptance/gpu/intr_2_mode0_scx6_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-scx7-timing-nops"
+rom = "acceptance/gpu/intr_2_mode0_scx7_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-scx8-timing-nops"
+rom = "acceptance/gpu/intr_2_mode0_scx8_timing_nops.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-timing"
+rom = "acceptance/gpu/intr_2_mode0_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-timing-sprites"
+rom = "acceptance/gpu/intr_2_mode0_timing_sprites.gb"
+timeout_frames = 660
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-timing-sprites-nops"
+rom = "acceptance/gpu/intr_2_mode0_timing_sprites_nops.gb"
+timeout_frames = 660
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-timing-sprites-scx1-nops"
+rom = "acceptance/gpu/intr_2_mode0_timing_sprites_scx1_nops.gb"
+timeout_frames = 660
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-timing-sprites-scx2-nops"
+rom = "acceptance/gpu/intr_2_mode0_timing_sprites_scx2_nops.gb"
+timeout_frames = 660
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-timing-sprites-scx3-nops"
+rom = "acceptance/gpu/intr_2_mode0_timing_sprites_scx3_nops.gb"
+timeout_frames = 660
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode0-timing-sprites-scx4-nops"
+rom = "acceptance/gpu/intr_2_mode0_timing_sprites_scx4_nops.gb"
+timeout_frames = 660
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-mode3-timing"
+rom = "acceptance/gpu/intr_2_mode3_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-oam-ok-timing"
+rom = "acceptance/gpu/intr_2_oam_ok_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-intr-2-timing"
+rom = "acceptance/gpu/intr_2_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-lcdon-mode-timing"
+rom = "acceptance/gpu/lcdon_mode_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly00-01-mode0-2"
+rom = "acceptance/gpu/ly00_01_mode0_2.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly00-mode0-2-gs"
+rom = "acceptance/gpu/ly00_mode0_2-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly00-mode1-0-gs"
+rom = "acceptance/gpu/ly00_mode1_0-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly00-mode1-2-c"
+rom = "acceptance/gpu/ly00_mode1_2-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly00-mode2-3"
+rom = "acceptance/gpu/ly00_mode2_3.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly00-mode3-0"
+rom = "acceptance/gpu/ly00_mode3_0.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly143-144-145"
+rom = "acceptance/gpu/ly143_144_145.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly143-144-152-153"
+rom = "acceptance/gpu/ly143_144_152_153.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly143-144-mode0-1"
+rom = "acceptance/gpu/ly143_144_mode0_1.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly143-144-mode3-0"
+rom = "acceptance/gpu/ly143_144_mode3_0.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-c"
+rom = "acceptance/gpu/ly_lyc-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-gs"
+rom = "acceptance/gpu/ly_lyc-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-0-c"
+rom = "acceptance/gpu/ly_lyc_0-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-0-gs"
+rom = "acceptance/gpu/ly_lyc_0-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-0-write-c"
+rom = "acceptance/gpu/ly_lyc_0_write-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-0-write-gs"
+rom = "acceptance/gpu/ly_lyc_0_write-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-144-c"
+rom = "acceptance/gpu/ly_lyc_144-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-144-gs"
+rom = "acceptance/gpu/ly_lyc_144-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-153-c"
+rom = "acceptance/gpu/ly_lyc_153-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-153-gs"
+rom = "acceptance/gpu/ly_lyc_153-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-153-write-c"
+rom = "acceptance/gpu/ly_lyc_153_write-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-153-write-gs"
+rom = "acceptance/gpu/ly_lyc_153_write-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-write-c"
+rom = "acceptance/gpu/ly_lyc_write-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-lyc-write-gs"
+rom = "acceptance/gpu/ly_lyc_write-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-new-frame-c"
+rom = "acceptance/gpu/ly_new_frame-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-ly-new-frame-gs"
+rom = "acceptance/gpu/ly_new_frame-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-stat-irq-blocking"
+rom = "acceptance/gpu/stat_irq_blocking.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-stat-write-if-c"
+rom = "acceptance/gpu/stat_write_if-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-stat-write-if-gs"
+rom = "acceptance/gpu/stat_write_if-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-vblank-if-timing"
+rom = "acceptance/gpu/vblank_if_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-gpu-vblank-stat-intr-gs"
+rom = "acceptance/gpu/vblank_stat_intr-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-halt-ime0-ei"
+rom = "acceptance/halt_ime0_ei.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-halt-ime0-nointr-timing"
+rom = "acceptance/halt_ime0_nointr_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-halt-ime1-timing"
+rom = "acceptance/halt_ime1_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-halt-ime1-timing2-gs"
+rom = "acceptance/halt_ime1_timing2-GS.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-if-ie-registers"
+rom = "acceptance/if_ie_registers.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-intr-timing"
+rom = "acceptance/intr_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-jp-cc-timing"
+rom = "acceptance/jp_cc_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-jp-timing"
+rom = "acceptance/jp_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-ld-hl-sp-e-timing"
+rom = "acceptance/ld_hl_sp_e_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-oam-dma-restart"
+rom = "acceptance/oam_dma_restart.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-oam-dma-start"
+rom = "acceptance/oam_dma_start.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-oam-dma-timing"
+rom = "acceptance/oam_dma_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-pop-timing"
+rom = "acceptance/pop_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-push-timing"
+rom = "acceptance/push_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-rapid-di-ei"
+rom = "acceptance/rapid_di_ei.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-ret-cc-timing"
+rom = "acceptance/ret_cc_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-ret-timing"
+rom = "acceptance/ret_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-reti-intr-timing"
+rom = "acceptance/reti_intr_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-reti-timing"
+rom = "acceptance/reti_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-rst-timing"
+rom = "acceptance/rst_timing.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-div-write"
+rom = "acceptance/timer/div_write.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-rapid-toggle"
+rom = "acceptance/timer/rapid_toggle.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tim00"
+rom = "acceptance/timer/tim00.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tim00-div-trigger"
+rom = "acceptance/timer/tim00_div_trigger.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tim01"
+rom = "acceptance/timer/tim01.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tim01-div-trigger"
+rom = "acceptance/timer/tim01_div_trigger.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tim10"
+rom = "acceptance/timer/tim10.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tim10-div-trigger"
+rom = "acceptance/timer/tim10_div_trigger.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tim11"
+rom = "acceptance/timer/tim11.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tim11-div-trigger"
+rom = "acceptance/timer/tim11_div_trigger.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tima-reload"
+rom = "acceptance/timer/tima_reload.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tima-write-reloading"
+rom = "acceptance/timer/tima_write_reloading.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-timer-if"
+rom = "acceptance/timer/timer_if.gb"
+
+[[case]]
+id = "wilbertpol-acceptance-timer-tma-write-reloading"
+rom = "acceptance/timer/tma_write_reloading.gb"

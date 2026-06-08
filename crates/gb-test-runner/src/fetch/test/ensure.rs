@@ -21,7 +21,7 @@ fn ensure_keeps_materialized_family_when_hashes_match() {
         ),
     );
     let bytes = b"materialized rom";
-    let hash = sha256_hex(bytes);
+    let hash = sha256_hex(bytes).to_uppercase();
     write_source_manifest(
         &workspace_root,
         "sample-report/sources.report.toml",

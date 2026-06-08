@@ -33,7 +33,7 @@ pub(super) fn validate_sparse_paths(
     report: &Report,
     family: &SourceFamily,
 ) -> Result<(), String> {
-    if family.sparse_paths.is_empty() {
+    if family.sparse_paths.is_empty() && source.requires_sparse_paths() {
         return Err(format!(
             "source family {:?} for source {:?} in report {:?} must define sparse_paths",
             family.id, source.id, report.id
@@ -90,7 +90,7 @@ pub(super) fn validate_sha256(
     family: &SourceFamily,
     file: &SourceFile,
 ) -> Result<(), String> {
-    if sha256.len() != 64 || !sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if !is_valid_sha256(sha256) {
         return Err(format!(
             "invalid sha256 {:?} for source {} file {} in report {:?} family {:?}",
             sha256,
@@ -101,6 +101,10 @@ pub(super) fn validate_sha256(
         ));
     }
     Ok(())
+}
+
+pub(super) fn is_valid_sha256(sha256: &str) -> bool {
+    sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 pub(super) fn validate_relative_path(

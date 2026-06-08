@@ -39,8 +39,11 @@ fn derives_report_families_alphabetically_when_family_order_is_omitted() {
     let source_manifest = SourceManifestFile {
         sources: vec![Source {
             id: "source".to_string(),
-            git_url: "file:///unused".to_string(),
-            git_rev: "rev".to_string(),
+            git_url: Some("file:///unused".to_string()),
+            git_rev: Some("rev".to_string()),
+            archive_url: None,
+            archive_sha256: None,
+            archive_format: None,
             families: vec![
                 SourceFamily {
                     id: "family-b".to_string(),

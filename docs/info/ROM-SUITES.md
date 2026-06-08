@@ -14,7 +14,7 @@ When ROM-suite output influences a go/no-go decision, compare status/artifacts a
 
 `crates/gb-test-runner/data/reports.toml` is the registry for `cargo rom-fetch`, `cargo rom-suite`, and `cargo rom-suite-link`. It defines report IDs, store roots, source manifests, shared status/artifact defaults, optional family order, and `local = true` reports that do not fetch upstream sources.
 
-Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`. Each source manifest pins upstream repositories, sparse checkout roots, target paths, and SHA-256 hashes. The local `linked` report has no source manifest because its ROMs and fixtures are committed under `crates/gb-test-runner/data/linked/`.
+Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`. Each source manifest pins upstream Git repositories or ZIP release archives, fetch roots where applicable, target paths, and SHA-256 hashes for every materialized ROM or fixture. The local `linked` report has no source manifest because its ROMs and fixtures are committed under `crates/gb-test-runner/data/linked/`.
 
 | Report | Runner | Purpose |
 | --- | --- | --- |
@@ -22,7 +22,14 @@ Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`.
 | `docboy` | `cargo rom-suite`, `cargo rom-suite-link` | DocBoy single-machine suites plus DocBoy DMG linked session suite. |
 | `gbmicrotest` | `cargo rom-suite` | Flat gbmicrotest report. |
 | `mooneye`, `ax6`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `samesuite` | `cargo rom-suite` | Standalone exploratory report channels used by `test-roms-extra`. |
+| `wilbertpol` | `cargo rom-suite` | Archive-backed standalone Mooneye-derived Wilbertpol channel; it is intentionally not mirrored by `test-roms-extra` until it has a verified green local baseline. |
 | `linked` | `cargo rom-suite-link` | Repo-local synthetic linked-session fixtures. |
+
+Wilbertpol ROMs are related to Mooneye but are compiled and pinned as independent assets; do not deduplicate Wilbertpol rows against Mooneye by relative path or name.
+
+Wilbertpol's upstream `utils/` directory contains helper utilities rather than pass/fail tests. Do not add `utils/dump_boot_hwio.gb` to the Wilbertpol source manifest or suites, because it jumps to the memory-dump helper and terminates without the Fibonacci pass signature.
+
+Wilbertpol `madness/mgb_oam_dma_halt_sprites.gb` is an MGB-specific visual OAM-DMA/HALT edge case. Keep it on `model = "mgb"` and validate it with the upstream grayscale framebuffer fixture instead of the Fibonacci legacy terminal oracle.
 
 ## Fetching and store layout
 
@@ -32,7 +39,7 @@ cargo rom-fetch gb-emulator-shootout blargg acid
 cargo rom-fetch docboy
 ```
 
-`cargo rom-fetch <report> [family ...]` materializes all report families when no family is provided, or only the explicit families otherwise. It rejects `local = true` reports, uses temporary pinned `git` checkouts, verifies hashes, and preserves report runtime directories such as `.status` and `.artifacts`.
+`cargo rom-fetch <report> [family ...]` materializes all report families when no family is provided, or only the explicit families otherwise. It rejects `local = true` reports, uses temporary pinned `git` checkouts or verified ZIP archives, verifies hashes, and preserves report runtime directories such as `.status` and `.artifacts`. Remote ZIP sources use `curl` for the download step before archive-hash validation.
 
 `cargo rom-suite` and `cargo rom-suite-link` auto-fetch missing or stale assets for fetchable reports before running selected cases, so explicit `cargo rom-fetch` is only needed when you want a separate materialization step.
 
@@ -68,12 +75,15 @@ Use structured inline oracle tables in `*.suite.toml` and `*.link.suite.toml`:
 ```toml
 oracle = { type = "serial-contains", expected = "Passed" }
 oracle = { type = "fibonacci-result" }
+oracle = { type = "fibonacci-result", legacy = true }
 oracle = { type = "memory-byte-equals", address = 65520, value = 1, fail_value = 2 }
 oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "ppu/example.png" }
 oracle = { type = "snapshot", target_participant = "left", fixture = "fixtures/dmg04/left.snapshot" }
 oracle = { type = "serial-hex-exact", target_participant = "receiver", expected = "B2" }
 oracle = { type = "trace" }
 ```
+
+`fibonacci-result` defaults to the current Mooneye-style `0x40` breakpoint or halt-loop terminal signal. Set `legacy = true` only for old Mooneye-derived ROMs such as Wilbertpol that finish on undefined opcode `0xED` with the same Fibonacci register signature; when legacy mode observes `0xED` without the pass signature, the case fails immediately instead of running until timeout.
 
 Framebuffer defaults are `mode = "final"`, `source = "dmg"`, `projection = "palette-rank"`, and `compare = "exact"`. Use `mode = "until-match"` with `check_interval_tcycles` or `check_at_tcycles` for polling/point-in-time checks, `source = "cgb"` for RGB555 output, `projection = "grayscale"` plus `compare = "grayscale-tolerance"` only for explicitly tolerated fixtures, and `mode = "info"` for CI-successful captures that do not compare.
 
@@ -95,7 +105,7 @@ cargo rom-suite-link docboy --suite docboy-dmg-link
 
 Cases run in parallel by default through Rayon. Use `--threads <n>` to cap local parallelism; CI matrix jobs normally omit it.
 
-Supported `model` values are `dmg`, `cgb`, `agb`, `sgb`, and `sgb2`. Supported `startup` values are `skip-boot`, `custom-boot`, and `real-boot`; omitted startup defaults to `skip-boot`.
+Supported `model` values are `dmg`, `mgb`, `cgb`, `agb`, `sgb`, and `sgb2`. Supported `startup` values are `skip-boot`, `custom-boot`, and `real-boot`; omitted startup defaults to `skip-boot`.
 
 ## Rendering reports
 
@@ -124,14 +134,14 @@ Use RealBoot runs as local comparison evidence. Rerun the matching default start
 
 For ROM-driven fixes or regressions, copy the relevant `/test/<report>/` status/artifact tree before the change, rerun the suite, copy the final tree, and compare changed rows explicitly.
 
-Same-ROM model variants are ordered DMG before GBC before AGB before SGB before SGB2 when report suffixes are enabled. Empty report categories are not materialized.
+Same-ROM model variants are ordered DMG before MGB before GBC before AGB before SGB before SGB2 when report suffixes are enabled. Empty report categories are not materialized.
 
 ## CI integration
 
 - Local pre-commit checks and `make coverage` do not fetch or run external ROM suites.
 - GitHub `ci` mirrors Rust checks and coverage.
 - GitHub `test-roms` runs the promoted `gb-emulator-shootout` matrix with `cargo rom-suite gb-emulator-shootout --suite <suite>`.
-- GitHub `test-roms-extra` runs standalone report lanes with `cargo rom-suite <report>`.
+- GitHub `test-roms-extra` runs explicitly promoted standalone report lanes with `cargo rom-suite <report>`; `wilbertpol` stays out of this workflow until a green local baseline is verified and promotion is intentional.
 - RealBoot, commercial, red, linked, and local-only lanes stay outside GitHub ROM workflows unless promoted intentionally.
 
 ## Private and commercial ROMs

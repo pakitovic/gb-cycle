@@ -59,16 +59,70 @@ pub(super) struct SourceManifestFile {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(super) struct Source {
     pub(super) id: String,
-    pub(super) git_url: String,
-    pub(super) git_rev: String,
+    pub(super) git_url: Option<String>,
+    pub(super) git_rev: Option<String>,
+    pub(super) archive_url: Option<String>,
+    pub(super) archive_sha256: Option<String>,
+    pub(super) archive_format: Option<SourceArchiveFormat>,
     #[serde(default, rename = "family")]
     pub(super) families: Vec<SourceFamily>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum SourceArchiveFormat {
+    Zip,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SourceLocation<'a> {
+    Git {
+        git_url: &'a str,
+        git_rev: &'a str,
+    },
+    Archive {
+        archive_url: &'a str,
+        archive_sha256: &'a str,
+        archive_format: SourceArchiveFormat,
+    },
+}
+
+impl Source {
+    pub(super) fn location(&self) -> Result<SourceLocation<'_>, String> {
+        match (
+            self.git_url.as_deref(),
+            self.git_rev.as_deref(),
+            self.archive_url.as_deref(),
+            self.archive_sha256.as_deref(),
+            self.archive_format,
+        ) {
+            (Some(git_url), Some(git_rev), None, None, None) => {
+                Ok(SourceLocation::Git { git_url, git_rev })
+            }
+            (None, None, Some(archive_url), Some(archive_sha256), Some(archive_format)) => {
+                Ok(SourceLocation::Archive {
+                    archive_url,
+                    archive_sha256,
+                    archive_format,
+                })
+            }
+            _ => Err(format!(
+                "source {:?} must define exactly one fetch location: git_url + git_rev, or archive_url + archive_sha256 + archive_format",
+                self.id
+            )),
+        }
+    }
+
+    pub(super) fn requires_sparse_paths(&self) -> bool {
+        matches!(self.location(), Ok(SourceLocation::Git { .. }))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(super) struct SourceFamily {
     pub(super) id: String,
     pub(super) target_root: PathBuf,
+    #[serde(default)]
     pub(super) sparse_paths: Vec<PathBuf>,
     #[serde(default, rename = "file")]
     pub(super) files: Vec<SourceFile>,
@@ -220,17 +274,39 @@ fn validate_source_manifest(report: &Report, manifest: &SourceManifestFile) -> R
                 source.id, report.id
             ));
         }
-        if source.git_url.is_empty() {
-            return Err(format!(
-                "source {:?} in report {:?} must define git_url",
-                source.id, report.id
-            ));
-        }
-        if source.git_rev.is_empty() {
-            return Err(format!(
-                "source {:?} in report {:?} must define git_rev",
-                source.id, report.id
-            ));
+        match source.location()? {
+            SourceLocation::Git { git_url, git_rev } => {
+                if git_url.is_empty() {
+                    return Err(format!(
+                        "source {:?} in report {:?} must define git_url",
+                        source.id, report.id
+                    ));
+                }
+                if git_rev.is_empty() {
+                    return Err(format!(
+                        "source {:?} in report {:?} must define git_rev",
+                        source.id, report.id
+                    ));
+                }
+            }
+            SourceLocation::Archive {
+                archive_url,
+                archive_sha256,
+                archive_format: _,
+            } => {
+                if archive_url.is_empty() {
+                    return Err(format!(
+                        "source {:?} in report {:?} must define archive_url",
+                        source.id, report.id
+                    ));
+                }
+                if !super::validate::is_valid_sha256(archive_sha256) {
+                    return Err(format!(
+                        "invalid archive_sha256 {:?} for source {:?} in report {:?}",
+                        archive_sha256, source.id, report.id
+                    ));
+                }
+            }
         }
         let mut source_families = BTreeSet::new();
         for family in &source.families {

@@ -10,12 +10,13 @@ use super::model::{
     is_non_failing_status, report_status_display,
 };
 
-const REPORT_MODEL_SUFFIXES: [(&str, usize); 5] = [
+const REPORT_MODEL_SUFFIXES: [(&str, usize); 6] = [
     (" (DMG)", 0),
-    (" (GBC)", 1),
-    (" (AGB)", 2),
-    (" (SGB)", 3),
-    (" (SGB2)", 4),
+    (" (MGB)", 1),
+    (" (GBC)", 2),
+    (" (AGB)", 3),
+    (" (SGB)", 4),
+    (" (SGB2)", 5),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

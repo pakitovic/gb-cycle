@@ -1,0 +1,18 @@
+family = "wilbertpol"
+suite_name = "wilbertpol-manual"
+report = "wilbertpol"
+timeout_frames = 180
+
+[[case]]
+id = "wilbertpol-manual-sprite-priority-dmg"
+rom = "manual-only/sprite_priority.gb"
+model = "dmg"
+report_model_suffix = true
+oracle = { type = "framebuffer", fixture = "manual-only/sprite_priority-dmg.png" }
+
+[[case]]
+id = "wilbertpol-manual-sprite-priority-cgb"
+rom = "manual-only/sprite_priority.gb"
+model = "cgb"
+report_model_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "manual-only/sprite_priority-cgb.png" }

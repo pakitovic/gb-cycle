@@ -67,7 +67,7 @@ Do not declare a closure area healthy while its strict gate is failing, while a 
 
 Coverage thresholds are enforced per repo-gated crate by the isolated CI lanes. The concrete `.cargo/config.toml` coverage aliases are authoritative and must not be lowered without an explicit rationale.
 
-GitHub workflows are stratified: `ci` runs Rust checks plus an isolated per-crate coverage matrix; `test-roms` runs promoted strict ROM reports; `test-roms-extra` runs standalone exploratory report lanes. RealBoot, commercial, red, linked, and local-only lanes must publish separately and must not dilute the strict closure signal.
+GitHub workflows are stratified: `ci` runs Rust checks plus an isolated per-crate coverage matrix; `test-roms` runs promoted strict ROM reports; `test-roms-extra` runs explicitly promoted standalone exploratory report lanes. RealBoot, commercial, red, linked, local-only, and not-yet-green standalone lanes such as `wilbertpol` must publish separately and must not dilute the strict closure signal.
 
 Failure artifacts should make first diagnosis possible without rerunning: include logs, status rows, serial/text output, framebuffer output, snapshots, traces, and diffs when relevant.
 

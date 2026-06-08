@@ -65,6 +65,11 @@ store_dir = "samesuite"
 sources = "samesuite/sources.report.toml"
 
 [[report]]
+id = "wilbertpol"
+store_dir = "wilbertpol"
+sources = "wilbertpol/sources.report.toml"
+
+[[report]]
 id = "linked"
 local = true
 store_dir = "linked"

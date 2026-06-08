@@ -1,0 +1,10 @@
+family = "wilbertpol"
+suite_name = "wilbertpol-madness"
+report = "wilbertpol"
+model = "mgb"
+timeout_frames = 660
+oracle = { type = "framebuffer", fixture = "madness/mgb_oam_dma_halt_sprites_expected.png" }
+
+[[case]]
+id = "wilbertpol-madness-mgb-oam-dma-halt-sprites"
+rom = "madness/mgb_oam_dma_halt_sprites.gb"

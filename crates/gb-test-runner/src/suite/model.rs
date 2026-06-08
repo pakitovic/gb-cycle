@@ -61,6 +61,7 @@ impl SuiteCase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ReportModel {
     Dmg,
+    Mgb,
     Cgb,
     Agb,
     Sgb,
@@ -71,6 +72,7 @@ impl ReportModel {
     pub(super) const fn report_suffix(self) -> &'static str {
         match self {
             Self::Dmg => "(DMG)",
+            Self::Mgb => "(MGB)",
             Self::Cgb => "(GBC)",
             Self::Agb => "(AGB)",
             Self::Sgb => "(SGB)",
