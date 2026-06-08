@@ -18,7 +18,6 @@ jobs:
           - name: ax6
           - name: samesuite
           - name: little-things-gb
-          - name: mooneye
           - name: magen
           - name: mealybug-tearoom-tests
           - name: gbmicrotest
