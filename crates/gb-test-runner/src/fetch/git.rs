@@ -160,7 +160,7 @@ fn fetch_archive_source_into_temp(
         )
     })?;
     let actual_hash = sha256_hex(&archive_bytes);
-    if actual_hash != archive_sha256 {
+    if !sha256_hex_eq(archive_sha256, &actual_hash) {
         return Err(format!(
             "archive hash mismatch for source {}: expected {}, got {}",
             source.id, archive_sha256, actual_hash
@@ -316,7 +316,7 @@ fn verify_required_file(
         )
     })?;
     let actual_hash = sha256_hex(&bytes);
-    if actual_hash != file.sha256 {
+    if !sha256_hex_eq(&file.sha256, &actual_hash) {
         return Err(format!(
             "hash mismatch for source {} family {} file {}: expected {}, got {}",
             source.id,
@@ -378,6 +378,10 @@ pub(super) fn sha256_hex(bytes: &[u8]) -> String {
         let _ = write!(&mut hex, "{byte:02x}");
     }
     hex
+}
+
+pub(super) fn sha256_hex_eq(expected: &str, actual: &str) -> bool {
+    expected.eq_ignore_ascii_case(actual)
 }
 
 pub(super) fn scrub_inherited_git_repository_context(command: &mut Command) {

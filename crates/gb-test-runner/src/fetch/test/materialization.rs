@@ -142,8 +142,9 @@ fn materializes_selected_family_from_local_zip_archive_source() {
         ],
     );
     let archive_hash =
-        sha256_hex(&fs::read(&archive_path).expect("archive should be readable for hash"));
-    let rom_hash = sha256_hex(b"rom bytes");
+        sha256_hex(&fs::read(&archive_path).expect("archive should be readable for hash"))
+            .to_uppercase();
+    let rom_hash = sha256_hex(b"rom bytes").to_uppercase();
 
     write_reports(
         &workspace_root,

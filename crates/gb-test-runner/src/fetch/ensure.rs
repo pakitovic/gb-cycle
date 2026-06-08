@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 
 use super::cli::{FetchRequest, run_fetch_request, writeln_checked};
-use super::git::sha256_hex;
+use super::git::{sha256_hex, sha256_hex_eq};
 use super::manifest::{
     Report, filter_sources_for_families, load_report_manifest, load_source_manifest,
     report_families, select_families,
@@ -84,7 +84,7 @@ fn materialization_issues(
                 match fs::read(&target) {
                     Ok(bytes) => {
                         let actual_hash = sha256_hex(&bytes);
-                        if actual_hash != file.sha256 {
+                        if !sha256_hex_eq(&file.sha256, &actual_hash) {
                             issues.insert(
                                 family.id.clone(),
                                 MaterializationIssue {
