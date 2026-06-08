@@ -499,6 +499,36 @@ fn dmg_real_boot_power_on_first_lcd_enable_starts_from_the_observed_dot_phase() 
 }
 
 #[test]
+fn dmg0_direct_boot_handoff_phase_clears_when_vblank_starts() {
+    let mut ppu = PpuTestRig::dmg();
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x83,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x01,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.apply_dmg0_direct_boot_handoff_stat_phase();
+    assert!(ppu.stat_state.boot_power_on_ppu_phase_active);
+    assert!(ppu.stat_state.boot_power_on_ppu_phase_extends_until_vblank);
+
+    ppu.ly = VISIBLE_SCANLINES - 1;
+    ppu.line_dot = DOTS_PER_SCANLINE - 1;
+    ppu.tick();
+
+    assert_eq!(ppu.ly, VISIBLE_SCANLINES);
+    assert_eq!(ppu.line_dot, 0);
+    assert!(!ppu.stat_state.boot_power_on_ppu_phase_active);
+    assert_eq!(ppu.stat_state.boot_power_on_ppu_phase_base_dot, 0);
+    assert!(!ppu.stat_state.boot_power_on_ppu_phase_extends_until_vblank);
+}
+
+#[test]
 #[ignore = "diagnostic direct-read experiment for offscreen-right mode0 publication"]
 fn cpu_stat_read_switches_to_hblank_one_dot_before_mode0_start_for_offscreen_right_sprites() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);

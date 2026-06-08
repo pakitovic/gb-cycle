@@ -1219,9 +1219,7 @@ impl Ppu {
                         self.stat_state.startup_mode0_irq_phase_active = false;
                     }
                     if self.ly >= 3 && !self.dmg0_direct_boot_handoff_stat_phase_active() {
-                        self.stat_state.boot_power_on_ppu_phase_active = false;
-                        self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
-                        self.stat_state.boot_power_on_ppu_phase_extends_until_vblank = false;
+                        self.clear_boot_power_on_ppu_phase();
                     }
                     if self.ly >= VISIBLE_SCANLINES {
                         self.window_state.reset();
@@ -1229,11 +1227,7 @@ impl Ppu {
                         self.stat_state
                             .real_boot_handoff_mode0_scx_seam_phase_active = false;
                         self.stat_state.skip_boot_ly_read_lag_active = false;
-                        if !self.dmg0_direct_boot_handoff_stat_phase_active() {
-                            self.stat_state.boot_power_on_ppu_phase_active = false;
-                            self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
-                            self.stat_state.boot_power_on_ppu_phase_extends_until_vblank = false;
-                        }
+                        self.clear_boot_power_on_ppu_phase();
                     }
                     self.mode2_scan_state.reset_scanline();
                     self.bg_pipeline_state.reset();
@@ -1273,6 +1267,12 @@ impl Ppu {
     fn dmg0_direct_boot_handoff_stat_phase_active(&self) -> bool {
         self.stat_state.boot_power_on_ppu_phase_active
             && self.stat_state.boot_power_on_ppu_phase_extends_until_vblank
+    }
+
+    fn clear_boot_power_on_ppu_phase(&mut self) {
+        self.stat_state.boot_power_on_ppu_phase_active = false;
+        self.stat_state.boot_power_on_ppu_phase_base_dot = 0;
+        self.stat_state.boot_power_on_ppu_phase_extends_until_vblank = false;
     }
 
     pub fn snapshot(&self) -> PpuSnapshot {
