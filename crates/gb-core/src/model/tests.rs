@@ -48,6 +48,14 @@ fn console_models_publish_default_and_active_revisions() {
         &[HardwareRevision::DmgCpu0, HardwareRevision::DmgCpuC]
     );
     assert_eq!(
+        ConsoleModel::GameBoy.active_revisions_on_host(HostPlatform::Sgb),
+        &[HardwareRevision::DmgCpuC]
+    );
+    assert_eq!(
+        ConsoleModel::GameBoy.active_revisions_on_host(HostPlatform::Sgb2),
+        &[HardwareRevision::DmgCpuC]
+    );
+    assert_eq!(
         ConsoleModel::GameBoyPocket.default_revision(),
         HardwareRevision::CpuMgb
     );
@@ -68,6 +76,14 @@ fn console_models_publish_default_and_active_revisions() {
         &[HardwareRevision::CpuAgbA]
     );
     assert!(ConsoleModel::GameBoy.supports_revision(HardwareRevision::DmgCpu0));
+    assert!(
+        !ConsoleModel::GameBoy
+            .supports_revision_on_host(HostPlatform::Sgb, HardwareRevision::DmgCpu0)
+    );
+    assert!(
+        ConsoleModel::GameBoy
+            .supports_revision_on_host(HostPlatform::Sgb, HardwareRevision::DmgCpuC)
+    );
     assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgbE));
     assert!(ConsoleModel::GameBoyAdvance.supports_revision(HardwareRevision::CpuAgbA));
     assert!(!ConsoleModel::GameBoy.supports_revision(HardwareRevision::CpuCgbE));
@@ -304,6 +320,19 @@ fn sgb_profile_selection_tracks_and_validates_host_platform() {
     assert_eq!(sgb2.sgb_profile, Some(SgbHostProfile::Sgb2Ntsc));
     assert_eq!(sgb2.boot_rom_asset_kind(), BootRomAssetKind::Sgb2);
     assert!(sgb2.model_axes_are_coherent());
+
+    let sgb_rejects_dmg0 = MachineConfig::new(ConsoleModel::GameBoy)
+        .with_revision(HardwareRevision::DmgCpu0)
+        .with_sgb_profile(SgbHostProfile::SgbNtsc);
+    assert_eq!(sgb_rejects_dmg0.revision, HardwareRevision::DmgCpuC);
+    assert!(!sgb_rejects_dmg0.uses_handheld_dmg0_revision());
+
+    let mut manual_sgb_dmg0 = MachineConfig::new(ConsoleModel::GameBoy)
+        .with_revision(HardwareRevision::DmgCpu0)
+        .with_host_platform(HostPlatform::Sgb);
+    manual_sgb_dmg0.revision = HardwareRevision::DmgCpu0;
+    assert!(!manual_sgb_dmg0.model_axes_are_coherent());
+    assert!(!manual_sgb_dmg0.uses_handheld_dmg0_revision());
 
     let mut impossible_pal_sgb2 = sgb2.clone();
     impossible_pal_sgb2.sgb_profile = Some(SgbHostProfile::SgbPal);

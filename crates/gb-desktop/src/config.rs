@@ -1,6 +1,6 @@
 use gb_core::{
     BootRomAssetError, BootRomAssetKind, BootRomAssets, CompatibilityPolicy, ConsoleModel,
-    ExecutionMode, HardwareRevision, MachineConfig, MachineRewindConfig,
+    ExecutionMode, HardwareRevision, HostPlatform, MachineConfig, MachineRewindConfig,
     MachineRewindSubframeCadence, SgbHostProfile, SgbVideoStandard, StartupMode,
 };
 use gb_persistence::{CartridgeSaveKey, CartridgeSaveKeyError};
@@ -116,6 +116,23 @@ impl DesktopConsoleModel {
             Self::GameBoyAdvance => ConsoleModel::GameBoyAdvance,
             Self::SuperGameBoy | Self::SuperGameBoy2 => ConsoleModel::GameBoy,
         }
+    }
+
+    pub const fn host_platform(self) -> HostPlatform {
+        match self {
+            Self::SuperGameBoy => HostPlatform::Sgb,
+            Self::SuperGameBoy2 => HostPlatform::Sgb2,
+            Self::GameBoy
+            | Self::GameBoyPocket
+            | Self::GameBoyLight
+            | Self::GameBoyColor
+            | Self::GameBoyAdvance => HostPlatform::Handheld,
+        }
+    }
+
+    pub fn active_revisions(self) -> &'static [HardwareRevision] {
+        self.console_model()
+            .active_revisions_on_host(self.host_platform())
     }
 
     pub const fn sgb_profile(self) -> Option<SgbHostProfile> {
@@ -265,7 +282,7 @@ impl LaunchOptions {
         if self
             .console_model
             .console_model()
-            .supports_revision(self.revision)
+            .supports_revision_on_host(self.console_model.host_platform(), self.revision)
         {
             self.revision
         } else {

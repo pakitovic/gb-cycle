@@ -603,6 +603,20 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
     );
     assert_eq!(sgb2_manifest.cases[0].report_model, ReportModel::Sgb2);
 
+    let sgb_dmg0_model = sgb_model.replace(
+        "model = \"sgb\"",
+        "model = \"sgb\"\nrevision = \"dmg-cpu-0\"",
+    );
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("samesuite.suite.toml"),
+            "gb-emulator-shootout",
+            &sgb_dmg0_model,
+        )
+        .expect_err("SGB should reject DMG0")
+        .contains("does not support revision DmgCpu0")
+    );
+
     let report_suffix = basic_manifest(
         "gb-emulator-shootout",
         "acid",

@@ -64,6 +64,16 @@ impl ConsoleModel {
         }
     }
 
+    pub const fn active_revisions_on_host(
+        self,
+        host_platform: HostPlatform,
+    ) -> &'static [HardwareRevision] {
+        match (self, host_platform) {
+            (Self::GameBoy, HostPlatform::Sgb | HostPlatform::Sgb2) => &ACTIVE_SGB_REVISIONS,
+            _ => self.active_revisions(),
+        }
+    }
+
     pub const fn supports_revision(self, revision: HardwareRevision) -> bool {
         match self {
             Self::GameBoy => matches!(
@@ -78,6 +88,19 @@ impl ConsoleModel {
                 HardwareRevision::CpuCgbC | HardwareRevision::CpuCgbD | HardwareRevision::CpuCgbE
             ),
             Self::GameBoyAdvance => matches!(revision, HardwareRevision::CpuAgbA),
+        }
+    }
+
+    pub const fn supports_revision_on_host(
+        self,
+        host_platform: HostPlatform,
+        revision: HardwareRevision,
+    ) -> bool {
+        match (self, host_platform) {
+            (Self::GameBoy, HostPlatform::Sgb | HostPlatform::Sgb2) => {
+                matches!(revision, HardwareRevision::DmgCpuC)
+            }
+            _ => self.supports_revision(revision),
         }
     }
 
@@ -132,6 +155,7 @@ impl ConsoleModel {
 
 const ACTIVE_DMG_REVISIONS: [HardwareRevision; 2] =
     [HardwareRevision::DmgCpu0, HardwareRevision::DmgCpuC];
+const ACTIVE_SGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::DmgCpuC];
 const ACTIVE_MGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::CpuMgb];
 const ACTIVE_CGB_REVISIONS: [HardwareRevision; 3] = [
     HardwareRevision::CpuCgbC,
@@ -607,7 +631,7 @@ impl MachineConfig {
         if !console_model.supports_operating_mode(self.operating_mode) {
             self.operating_mode = console_model.default_operating_mode();
         }
-        if !console_model.supports_revision(self.revision) {
+        if !console_model.supports_revision_on_host(self.host_platform, self.revision) {
             self.revision = console_model.default_revision();
         }
         self
@@ -626,12 +650,14 @@ impl MachineConfig {
     pub fn with_host_platform(mut self, host_platform: HostPlatform) -> Self {
         self.host_platform = host_platform;
         self.sgb_profile = SgbHostProfile::default_for_host_platform(host_platform);
+        self.normalize_revision_for_profile();
         self
     }
 
     pub fn with_sgb_profile(mut self, sgb_profile: SgbHostProfile) -> Self {
         self.host_platform = sgb_profile.host_platform();
         self.sgb_profile = Some(sgb_profile);
+        self.normalize_revision_for_profile();
         self
     }
 
@@ -663,6 +689,22 @@ impl MachineConfig {
         CapabilitySet::from_model_axes(self.console_model, self.operating_mode, self.host_platform)
     }
 
+    fn normalize_revision_for_profile(&mut self) {
+        if !self
+            .console_model
+            .supports_revision_on_host(self.host_platform, self.revision)
+        {
+            self.revision = self.console_model.default_revision();
+        }
+    }
+
+    pub const fn uses_handheld_dmg0_revision(&self) -> bool {
+        matches!(self.console_model, ConsoleModel::GameBoy)
+            && matches!(self.revision, HardwareRevision::DmgCpu0)
+            && matches!(self.host_platform, HostPlatform::Handheld)
+            && self.sgb_profile.is_none()
+    }
+
     pub fn apply_direct_boot_cartridge_header(&mut self, header: Option<&CartridgeHeader>) {
         if !self.startup_mode.uses_direct_boot_state() {
             return;
@@ -685,7 +727,9 @@ impl MachineConfig {
     pub const fn model_axes_are_coherent(&self) -> bool {
         self.console_model
             .supports_operating_mode(self.operating_mode)
-            && self.console_model.supports_revision(self.revision)
+            && self
+                .console_model
+                .supports_revision_on_host(self.host_platform, self.revision)
             && self.sgb_profile_matches_host_platform()
     }
 

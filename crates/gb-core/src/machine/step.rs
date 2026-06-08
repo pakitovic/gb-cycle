@@ -16,7 +16,7 @@ use crate::dma::{DmaController, VramDmaRuntimeContext};
 use crate::external_port::{ExternalPort, ExternalPortAttachmentKind};
 use crate::interrupts::InterruptController;
 use crate::joypad::Joypad;
-use crate::model::{ConsoleModel, HardwareRevision, MachineConfig, StartupMode};
+use crate::model::{MachineConfig, StartupMode};
 use crate::ppu::{Ppu, PpuBusStateSnapshot, PpuDmaOamConflict, PpuStepRegion};
 use crate::scheduler::{
     CycleContext, ExternalEvent, InterruptSource, SchedulerPhase, SchedulerSideEffect,
@@ -82,10 +82,7 @@ pub(super) fn finalize_cgb_real_boot_handoff_if_needed(
         && config.startup_mode == StartupMode::RealBoot
         && config.console_model.is_dmg_family()
     {
-        if matches!(
-            (config.console_model, config.revision),
-            (ConsoleModel::GameBoy, HardwareRevision::DmgCpu0)
-        ) {
+        if config.uses_handheld_dmg0_revision() {
             let correction =
                 dmg0_direct_boot_system_counter().wrapping_sub(timer.snapshot().system_counter);
             if correction != 0 {

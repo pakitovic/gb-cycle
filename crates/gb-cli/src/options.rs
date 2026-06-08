@@ -1,7 +1,8 @@
 use crate::framebuffer::{DisplayPalette, RunDisplayPalette};
 use gb_benchmark::BenchmarkCase;
 use gb_core::{
-    ConsoleModel, ExecutionMode, HardwareRevision, SgbHostProfile, SgbVideoStandard, StartupMode,
+    ConsoleModel, ExecutionMode, HardwareRevision, HostPlatform, SgbHostProfile, SgbVideoStandard,
+    StartupMode,
 };
 use std::path::PathBuf;
 
@@ -40,6 +41,16 @@ impl RunModel {
             Self::Color => ConsoleModel::GameBoyColor,
             Self::Advance => ConsoleModel::GameBoyAdvance,
             Self::SuperGameBoy | Self::SuperGameBoy2 => ConsoleModel::GameBoy,
+        }
+    }
+
+    pub(crate) const fn host_platform(self) -> HostPlatform {
+        match self {
+            Self::SuperGameBoy => HostPlatform::Sgb,
+            Self::SuperGameBoy2 => HostPlatform::Sgb2,
+            Self::GameBoy | Self::Pocket | Self::Light | Self::Color | Self::Advance => {
+                HostPlatform::Handheld
+            }
         }
     }
 

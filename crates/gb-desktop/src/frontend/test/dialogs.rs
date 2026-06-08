@@ -196,6 +196,14 @@ fn system_option_cycle_helpers_wrap_in_the_expected_order() {
         HardwareRevision::CpuMgb
     );
     assert_eq!(
+        next_revision(DesktopConsoleModel::SuperGameBoy, HardwareRevision::DmgCpu0),
+        HardwareRevision::DmgCpuC
+    );
+    assert_eq!(
+        next_revision(DesktopConsoleModel::SuperGameBoy, HardwareRevision::DmgCpuC),
+        HardwareRevision::DmgCpuC
+    );
+    assert_eq!(
         next_sgb_video_standard(SgbVideoStandard::Ntsc),
         SgbVideoStandard::Pal
     );

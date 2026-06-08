@@ -78,6 +78,14 @@ fn parse_accepts_sgb_profiles_as_dmg_core_models() {
         parse_cli_arguments(["demo.gb", "--model", "SGB2", "--sgb-standard", "ntsc"])
             .expect_err("SGB2 should not accept an explicit SGB standard");
     assert_eq!(sgb2_standard_error, "--sgb-standard requires --model SGB");
+
+    let sgb_dmg0_error =
+        parse_cli_arguments(["demo.gb", "--model", "SGB", "--revision", "dmg-cpu-0"])
+            .expect_err("SGB should reject DMG0");
+    assert_eq!(
+        sgb_dmg0_error,
+        "--revision dmg-cpu-0 is not supported by --model SGB; expected one of: dmg-cpu-c"
+    );
 }
 
 #[test]
@@ -231,12 +239,16 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
         "cpu-agb-a"
     );
     assert_eq!(
-        supported_revision_names(gb_core::ConsoleModel::GameBoyColor),
+        supported_revision_names(DesktopConsoleModel::GameBoyColor),
         "cpu-cgb-c, cpu-cgb-d, cpu-cgb-e"
     );
     assert_eq!(
-        supported_revision_names(gb_core::ConsoleModel::GameBoyAdvance),
+        supported_revision_names(DesktopConsoleModel::GameBoyAdvance),
         "cpu-agb-a"
+    );
+    assert_eq!(
+        supported_revision_names(DesktopConsoleModel::SuperGameBoy),
+        "dmg-cpu-c"
     );
 
     assert_eq!(parse_startup_mode("skip-boot"), Ok(StartupMode::SkipBoot));

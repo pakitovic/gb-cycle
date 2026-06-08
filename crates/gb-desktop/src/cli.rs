@@ -364,12 +364,13 @@ fn validate_model_axes(
     explicit_sgb_video_standard: bool,
 ) -> Result<(), String> {
     let console_model = config.launch.console_model.console_model();
-    if !console_model.supports_revision(config.launch.revision) {
+    let host_platform = config.launch.console_model.host_platform();
+    if !console_model.supports_revision_on_host(host_platform, config.launch.revision) {
         return Err(format!(
             "--revision {} is not supported by --model {}; expected one of: {}",
             revision_argument_name(config.launch.revision),
             config.launch.console_model.name(),
-            supported_revision_names(console_model)
+            supported_revision_names(config.launch.console_model)
         ));
     }
     if explicit_sgb_video_standard
@@ -573,7 +574,7 @@ fn revision_argument_name(revision: HardwareRevision) -> &'static str {
     }
 }
 
-fn supported_revision_names(console_model: gb_core::ConsoleModel) -> String {
+fn supported_revision_names(console_model: DesktopConsoleModel) -> String {
     console_model
         .active_revisions()
         .iter()

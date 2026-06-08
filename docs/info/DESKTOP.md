@@ -41,7 +41,7 @@ Local `DMG-07` 4-Player Adapter sessions and CGB IR/accessory sessions are overl
 
 The desktop model contract mirrors [`CLI.md`](CLI.md): public model names are `DMG`, `MGB`, `LGB`, `CGB`, `AGB`, `SGB`, and `SGB2`; old product names and lowercase legacy aliases are rejected. `AGB` is displayed as `MODEL GB ADVANCE` and maps to the active AGB GB/C compatibility profile; there are intentionally no separate `GBA SP` or `GB PLAYER` UI models because the current core-visible GBA-enhanced behavior is the same. `SGB` and `SGB2` are frontend machine profiles that wrap the shared DMG-compatible GB core in an SGB host profile, not CGB mode and not a forked GB core.
 
-`--revision` and `CONFIG -> SYSTEM -> REV` select the active handheld revision for the chosen model. `CGB` cycles through `CPU CGB C`, `CPU CGB D`, and `CPU CGB E`; `AGB` shows `CPU AGB A`; `DMG`, `MGB`, and `LGB` currently expose one active revision each; `SGB` shows `SGB-CPU 01`; `SGB2` shows `CPU SGB2`.
+`--revision` and `CONFIG -> SYSTEM -> REV` select the active revision for the chosen model profile. `DMG` cycles through `DMG-CPU 0` and `DMG-CPU C`; `CGB` cycles through `CPU CGB C`, `CPU CGB D`, and `CPU CGB E`; `MGB`, `LGB`, and `AGB` have one active revision each; `SGB` and `SGB2` use their SGB-profile-backed `DMG-CPU C` GB core and do not expose `DMG-CPU 0`, because the SGB startup state is selected by `SgbHostProfile` rather than by DMG0 handheld boot rules.
 
 `--sgb-standard <ntsc|pal>` and `CONFIG -> SYSTEM -> VIDEO NTSC/PAL` apply only to original `SGB`. `SGB2` is fixed to its corrected NTSC SGB2 host profile and shows the item disabled rather than pretending a PAL variant exists.
 

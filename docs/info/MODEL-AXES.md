@@ -38,6 +38,7 @@ Examples:
 - `ConsoleModel::GameBoyColor` + `OperatingMode::CgbDmgExt` = experimental CGB-family silicon running a DMG software contract with a narrow DocBoy `dmg_ext_mode`-style register profile, not full PGB/PSM support
 - `HostPlatform::Sgb` or `HostPlatform::Sgb2` = SGB shell around the shared GB core, not a different GB silicon family
 - `SgbHostProfile::SgbNtsc`, `SgbHostProfile::SgbPal`, or `SgbHostProfile::Sgb2Ntsc` = the concrete SGB/SGB2 host profile used for video standard, source clock, corrected-clock fact, and physical Game Link availability; `SgbPal` is only coherent with `HostPlatform::Sgb`, and `Sgb2Ntsc` is only coherent with `HostPlatform::Sgb2`
+- `DmgCpu0` is active only for handheld `GameBoy` profiles; SGB/SGB2 profiles share the `GameBoy` console family but expose only their profile-backed `DmgCpuC` GB core so handheld DMG0 boot handoff corrections do not contaminate SGB startup state.
 
 `CapabilitySet` is the derived semantic view over the broad model axes. SGB host-profile facts currently live on `SgbHostProfile` because they are profile-specific timing/link facts rather than GB-silicon behavior; code that needs SGB2 Game Link availability or corrected clock should consult the selected SGB profile instead of duplicating `HostPlatform` checks.
 

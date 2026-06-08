@@ -534,7 +534,7 @@ fn parse_case(
     };
     if !model_profile
         .console_model
-        .supports_revision(hardware_revision)
+        .supports_revision_on_host(model_profile.host_platform, hardware_revision)
     {
         return Err(format!(
             "case {:?} in {}: model {:?} does not support revision {:?}",
