@@ -1,5 +1,5 @@
 [[source]]
-id = "game-boy-test-roms-v7"
+id = "game-boy-test-roms"
 archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
 archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
 archive_format = "zip"
