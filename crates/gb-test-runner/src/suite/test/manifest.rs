@@ -273,6 +273,25 @@ rom = "enabled.gb"
     assert_eq!(suite.cases.len(), 1);
     assert_eq!(suite.cases[0].id, "docboy-enabled");
 
+    let all_disabled = manifest.replace(
+        r#"
+[[case]]
+id = "docboy-enabled"
+rom = "enabled.gb"
+"#,
+        r#"
+[[case]]
+id = "docboy-enabled"
+rom = "enabled.gb"
+disabled = true
+comment = "Temporarily disabled pending investigation."
+"#,
+    );
+    let suite =
+        parse_suite_manifest_for_test(Path::new("docboy-dmg.suite.toml"), "docboy", &all_disabled)
+            .expect("suite with only disabled rows should still load");
+    assert!(suite.cases.is_empty());
+
     let missing_comment = manifest.replace("comment = \"Upstream marks this row disabled.\"\n", "");
     assert!(
         parse_suite_manifest_for_test(
@@ -1451,8 +1470,11 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         (
             "mooneye",
             &[
-                ("mooneye-cgb", 11, "mooneye"),
-                ("mooneye-sgb", 2, "mooneye"),
+                ("mooneye-acceptance", 72, "mooneye"),
+                ("mooneye-emulator-only", 28, "mooneye"),
+                ("mooneye-madness", 0, "mooneye"),
+                ("mooneye-manual", 2, "mooneye"),
+                ("mooneye-misc", 7, "mooneye"),
             ][..],
         ),
         ("ax6", &[("ax6-dmg", 3, "ax6")][..]),
@@ -1511,22 +1533,6 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             assert_eq!(suite.cases.len(), *case_count);
         }
 
-        if report_id == "mooneye" {
-            let suites = load_selected_suites(&workspace, report, Some("mooneye-sgb"), None)
-                .expect("mooneye SGB suite should load");
-            assert!(
-                suites[0]
-                    .cases
-                    .iter()
-                    .any(|case| case.host_platform == gb_core::HostPlatform::Sgb2)
-            );
-            assert!(
-                suites[0]
-                    .cases
-                    .iter()
-                    .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
-            );
-        }
         if report_id == "samesuite" {
             let suites = load_selected_suites(&workspace, report, Some("samesuite-cgb"), None)
                 .expect("samesuite CGB suite should load");

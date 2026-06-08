@@ -4,7 +4,8 @@ const MAGIC_BREAKPOINT_OPCODE: u8 = 0x40;
 const LEGACY_MAGIC_BREAKPOINT_OPCODE: u8 = 0xED;
 const PASS_SIGNATURE: [u8; 6] = [3, 5, 8, 13, 21, 34];
 const FAIL_SIGNATURE: [u8; 6] = [0x42; 6];
-const HALT_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
+const NOP_PADDED_TERMINAL_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
+const COMPACT_TERMINAL_LOOP_BYTES: [u8; 3] = [0x40, 0x18, 0xFE];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FibonacciResultOracle {
@@ -129,12 +130,19 @@ impl FibonacciFailure {
 fn terminal_signal_reached(cpu: CpuObservation, legacy: bool) -> bool {
     cpu.current_opcode == Some(MAGIC_BREAKPOINT_OPCODE)
         || legacy && legacy_terminal_signal_reached(cpu)
-        || cpu
-            .pc_window
-            .windows(HALT_LOOP_BYTES.len())
-            .any(|window| window == HALT_LOOP_BYTES)
+        || terminal_loop_reached(cpu)
 }
 
 fn legacy_terminal_signal_reached(cpu: CpuObservation) -> bool {
     cpu.current_opcode == Some(LEGACY_MAGIC_BREAKPOINT_OPCODE)
+}
+
+fn terminal_loop_reached(cpu: CpuObservation) -> bool {
+    cpu.pc_window
+        .windows(NOP_PADDED_TERMINAL_LOOP_BYTES.len())
+        .any(|window| window == NOP_PADDED_TERMINAL_LOOP_BYTES)
+        || cpu
+            .pc_window
+            .windows(COMPACT_TERMINAL_LOOP_BYTES.len())
+            .any(|window| window == COMPACT_TERMINAL_LOOP_BYTES)
 }

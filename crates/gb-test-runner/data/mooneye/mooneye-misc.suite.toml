@@ -1,0 +1,47 @@
+family = "mooneye"
+suite_name = "mooneye-misc"
+report = "mooneye"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "mooneye-misc-bits-unused-hwio-c"
+rom = "misc/bits/unused_hwio-C.gb"
+model = "cgb"
+
+[[case]]
+id = "mooneye-misc-boot-div-a"
+rom = "misc/boot_div-A.gb"
+model = "agb"
+
+[[case]]
+id = "mooneye-misc-boot-div-cgb0"
+rom = "misc/boot_div-cgb0.gb"
+model = "cgb"
+disabled = true
+comment = "Requires CGB-CPU 0; gb-cycle currently supports active CGB C, D, and E revisions only."
+
+[[case]]
+id = "mooneye-misc-boot-div-cgbabcde"
+rom = "misc/boot_div-cgbABCDE.gb"
+model = "cgb"
+
+[[case]]
+id = "mooneye-misc-boot-hwio-c"
+rom = "misc/boot_hwio-C.gb"
+model = "cgb"
+
+[[case]]
+id = "mooneye-misc-boot-regs-a"
+rom = "misc/boot_regs-A.gb"
+model = "agb"
+
+[[case]]
+id = "mooneye-misc-boot-regs-cgb"
+rom = "misc/boot_regs-cgb.gb"
+model = "cgb"
+
+[[case]]
+id = "mooneye-misc-ppu-vblank-stat-intr-c"
+rom = "misc/ppu/vblank_stat_intr-C.gb"
+model = "cgb"

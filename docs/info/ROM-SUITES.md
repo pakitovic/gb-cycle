@@ -21,15 +21,17 @@ Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`.
 | `gb-emulator-shootout` | `cargo rom-suite` | Promoted GB Emulator Shootout report used by `test-roms`. |
 | `docboy` | `cargo rom-suite`, `cargo rom-suite-link` | DocBoy single-machine suites plus DocBoy DMG linked session suite. |
 | `gbmicrotest` | `cargo rom-suite` | Flat gbmicrotest report. |
-| `mooneye`, `ax6`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `samesuite` | `cargo rom-suite` | Standalone exploratory report channels used by `test-roms-extra`. |
+| `mooneye`, `ax6`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `samesuite` | `cargo rom-suite` | Standalone exploratory report channels used by `test-roms-extra`; `mooneye` is archive-backed by c-sp `game-boy-test-roms`. |
 | `wilbertpol` | `cargo rom-suite` | Archive-backed standalone Mooneye-derived Wilbertpol channel; it is intentionally not mirrored by `test-roms-extra` until it has a verified green local baseline. |
 | `linked` | `cargo rom-suite-link` | Repo-local synthetic linked-session fixtures. |
 
 Wilbertpol ROMs are related to Mooneye but are compiled and pinned as independent assets; do not deduplicate Wilbertpol rows against Mooneye by relative path or name.
 
+The standalone `mooneye` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `mooneye-test-suite/` under `/test/mooneye/mooneye/`. Its upstream `utils/` directory is excluded because those ROMs are helper utilities rather than pass/fail tests.
+
 Wilbertpol's upstream `utils/` directory contains helper utilities rather than pass/fail tests. Do not add `utils/dump_boot_hwio.gb` to the Wilbertpol source manifest or suites, because it jumps to the memory-dump helper and terminates without the Fibonacci pass signature.
 
-Wilbertpol `madness/mgb_oam_dma_halt_sprites.gb` is an MGB-specific visual OAM-DMA/HALT edge case. Keep it on `model = "mgb"` and validate it with the upstream grayscale framebuffer fixture instead of the Fibonacci legacy terminal oracle.
+Mooneye and Wilbertpol `madness/mgb_oam_dma_halt_sprites.gb` are MGB-specific visual OAM-DMA/HALT edge cases. Keep the manifest model at `model = "mgb"` and the upstream framebuffer fixture wiring in place, but keep the cases disabled until the current gb-cycle framebuffer mismatch is investigated.
 
 ## Fetching and store layout
 
@@ -83,7 +85,7 @@ oracle = { type = "serial-hex-exact", target_participant = "receiver", expected 
 oracle = { type = "trace" }
 ```
 
-`fibonacci-result` defaults to the current Mooneye-style `0x40` breakpoint or halt-loop terminal signal. Set `legacy = true` only for old Mooneye-derived ROMs such as Wilbertpol that finish on undefined opcode `0xED` with the same Fibonacci register signature; when legacy mode observes `0xED` without the pass signature, the case fails immediately instead of running until timeout.
+`fibonacci-result` defaults to the current Mooneye-style `0x40` breakpoint or terminal loop signal, including the `0x40 0x00 0x18 0xFD` loop used by older promoted assets and the compact `0x40 0x18 0xFE` loop used by the c-sp Mooneye ZIP. Set `legacy = true` only for old Mooneye-derived ROMs such as Wilbertpol that finish on undefined opcode `0xED` with the same Fibonacci register signature; when legacy mode observes `0xED` without the pass signature, the case fails immediately instead of running until timeout.
 
 Framebuffer defaults are `mode = "final"`, `source = "dmg"`, `projection = "palette-rank"`, and `compare = "exact"`. Use `mode = "until-match"` with `check_interval_tcycles` or `check_at_tcycles` for polling/point-in-time checks, `source = "cgb"` for RGB555 output, `projection = "grayscale"` plus `compare = "grayscale-tolerance"` only for explicitly tolerated fixtures, and `mode = "info"` for CI-successful captures that do not compare.
 

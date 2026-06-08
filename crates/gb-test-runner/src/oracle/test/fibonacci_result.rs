@@ -55,6 +55,12 @@ fn halt_loop_window() -> [u8; CPU_OBSERVATION_WINDOW_BYTES] {
     window
 }
 
+fn compact_terminal_loop_window() -> [u8; CPU_OBSERVATION_WINDOW_BYTES] {
+    let mut window = [0xFF; CPU_OBSERVATION_WINDOW_BYTES];
+    window[2..5].copy_from_slice(&[0x40, 0x18, 0xFE]);
+    window
+}
+
 fn fibonacci_oracle() -> Oracle {
     Oracle::from_manifest(&parse_oracle_config(
         "oracle = { type = \"fibonacci-result\" }",
@@ -145,7 +151,7 @@ fn fibonacci_result_requires_terminal_signal_for_known_signature() {
 }
 
 #[test]
-fn fibonacci_result_legacy_mode_passes_on_old_mooneye_breakpoint() {
+fn fibonacci_result_legacy_mode_passes_on_legacy_breakpoint() {
     let mut oracle = legacy_fibonacci_oracle();
     assert_eq!(
         oracle
@@ -188,7 +194,7 @@ fn fibonacci_result_legacy_mode_fails_immediately_without_pass_signature() {
 }
 
 #[test]
-fn fibonacci_result_default_mode_ignores_old_mooneye_breakpoint_without_pass_signature() {
+fn fibonacci_result_default_mode_ignores_legacy_breakpoint_without_pass_signature() {
     let mut oracle = fibonacci_oracle();
     assert_eq!(
         oracle
@@ -205,7 +211,7 @@ fn fibonacci_result_default_mode_ignores_old_mooneye_breakpoint_without_pass_sig
 }
 
 #[test]
-fn fibonacci_result_default_mode_ignores_old_mooneye_breakpoint() {
+fn fibonacci_result_default_mode_ignores_legacy_breakpoint() {
     let mut oracle = fibonacci_oracle();
     assert_eq!(
         oracle
@@ -241,6 +247,31 @@ fn fibonacci_result_detects_post_breakpoint_halt_loop_near_pc() {
     assert_eq!(
         oracle
             .finish(observations(PASS_SIGNATURE, None, halt_loop_window()))
+            .expect("oracle should finish"),
+        OracleOutcome::Passed
+    );
+}
+
+#[test]
+fn fibonacci_result_detects_compact_breakpoint_loop_near_pc() {
+    let mut oracle = fibonacci_oracle();
+    assert_eq!(
+        oracle
+            .observe(observations(
+                PASS_SIGNATURE,
+                None,
+                compact_terminal_loop_window()
+            ))
+            .expect("oracle should observe"),
+        OracleStep::Stop
+    );
+    assert_eq!(
+        oracle
+            .finish(observations(
+                PASS_SIGNATURE,
+                None,
+                compact_terminal_loop_window()
+            ))
             .expect("oracle should finish"),
         OracleOutcome::Passed
     );
