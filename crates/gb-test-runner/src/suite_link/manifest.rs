@@ -702,6 +702,10 @@ fn parse_model_profile(model: &str) -> Result<ModelProfile, String> {
             console_model: ConsoleModel::GameBoy,
             host_platform: HostPlatform::Handheld,
         }),
+        "mgb" => Ok(ModelProfile {
+            console_model: ConsoleModel::GameBoyPocket,
+            host_platform: HostPlatform::Handheld,
+        }),
         "cgb" => Ok(ModelProfile {
             console_model: ConsoleModel::GameBoyColor,
             host_platform: HostPlatform::Handheld,

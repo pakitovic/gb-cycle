@@ -434,6 +434,34 @@ pressed = false
 
 #[test]
 fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
+    let mgb_model = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-mgb",
+        "which.gb",
+    )
+    .replace("model = \"dmg\"", "model = \"mgb\"");
+    let mgb_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &mgb_model,
+    )
+    .expect("mgb should parse");
+    assert_eq!(
+        mgb_manifest.cases[0].console_model,
+        gb_core::ConsoleModel::GameBoyPocket
+    );
+    assert_eq!(
+        mgb_manifest.cases[0].hardware_revision,
+        gb_core::HardwareRevision::CpuMgb
+    );
+    assert_eq!(
+        mgb_manifest.cases[0].host_platform,
+        gb_core::HostPlatform::Handheld
+    );
+    assert_eq!(mgb_manifest.cases[0].report_model, ReportModel::Mgb);
+
     let cgb_model = basic_manifest(
         "gb-emulator-shootout",
         "acid",

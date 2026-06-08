@@ -1,0 +1,50 @@
+family = "wilbertpol"
+suite_name = "wilbertpol-misc"
+report = "wilbertpol"
+timeout_frames = 180
+oracle = { type = "fibonacci-result", legacy = true }
+
+[[case]]
+id = "wilbertpol-misc-bits-unused-hwio-c"
+rom = "misc/bits/unused_hwio-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-misc-boot-hwio-c"
+rom = "misc/boot_hwio-C.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-misc-boot-hwio-s"
+rom = "misc/boot_hwio-S.gb"
+model = "sgb"
+
+[[case]]
+id = "wilbertpol-misc-boot-regs-a"
+rom = "misc/boot_regs-A.gb"
+model = "agb"
+
+[[case]]
+id = "wilbertpol-misc-boot-regs-cgb"
+rom = "misc/boot_regs-cgb.gb"
+model = "cgb"
+
+[[case]]
+id = "wilbertpol-misc-boot-regs-mgb"
+rom = "misc/boot_regs-mgb.gb"
+model = "mgb"
+
+[[case]]
+id = "wilbertpol-misc-boot-regs-sgb"
+rom = "misc/boot_regs-sgb.gb"
+model = "sgb"
+
+[[case]]
+id = "wilbertpol-misc-boot-regs-sgb2"
+rom = "misc/boot_regs-sgb2.gb"
+model = "sgb2"
+
+[[case]]
+id = "wilbertpol-misc-gpu-vblank-stat-intr-c"
+rom = "misc/gpu/vblank_stat_intr-C.gb"
+model = "cgb"

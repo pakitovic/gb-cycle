@@ -1,0 +1,624 @@
+[[source]]
+id = "game-boy-test-roms-v7"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
+
+[[source.family]]
+id = "wilbertpol"
+target_root = "wilbertpol"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/add_sp_e_timing.gb"
+target = "acceptance/add_sp_e_timing.gb"
+sha256 = "b41cadf9d76f60b91b1d010e15dd027e133557f55bf4d28a5758e1e85e26f052"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/bits/mem_oam.gb"
+target = "acceptance/bits/mem_oam.gb"
+sha256 = "344e97a023503e3260e0c79efe2556a98eff2da84b09bb54d0e62b019714b0a7"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/bits/reg_f.gb"
+target = "acceptance/bits/reg_f.gb"
+sha256 = "82503213981de267e76e3c435ff7198073b246c1a337c0603046f5398663c876"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/bits/unused_hwio-GS.gb"
+target = "acceptance/bits/unused_hwio-GS.gb"
+sha256 = "0873b09426154c41b36fea5a791ba9a9af36b4fc48ea24ff2ec904b15f9e0cf0"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/boot_hwio-G.gb"
+target = "acceptance/boot_hwio-G.gb"
+sha256 = "a174eb29253b666db4d4f41950c7cd3471e80ebd0ef80a7d7e211ef036fe68a0"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/boot_regs-dmg.gb"
+target = "acceptance/boot_regs-dmg.gb"
+sha256 = "4365c82754a4f1788b2f6eee62c080a5cf522ff162f84e50461fce47578020b2"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/call_cc_timing.gb"
+target = "acceptance/call_cc_timing.gb"
+sha256 = "079f50aec14ab50564fc6a40254fec816b05995ed8a4450dbf5790b93d8665c9"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/call_cc_timing2.gb"
+target = "acceptance/call_cc_timing2.gb"
+sha256 = "9d64c91f8e524a7faf6939cf30072d8b3caac1c801953a25d5a0ae37538010da"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/call_timing.gb"
+target = "acceptance/call_timing.gb"
+sha256 = "60c2351eea40f63a3f56f47992fe25d41456c08978a899c56344f7eca53ae30c"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/call_timing2.gb"
+target = "acceptance/call_timing2.gb"
+sha256 = "23ff63a1f622daeefb9ce532475fe1c98b14f84680b7d1d5a8ff7654d4f12074"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/di_timing-GS.gb"
+target = "acceptance/di_timing-GS.gb"
+sha256 = "315381a807d3bdf381ebeaba785dbf624db1e66e7a70496b453b932500379d93"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/div_timing.gb"
+target = "acceptance/div_timing.gb"
+sha256 = "9ada0c96cfa17b0efbd63e3e5cc51749802fed250102b27b09047819687773b6"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/ei_timing.gb"
+target = "acceptance/ei_timing.gb"
+sha256 = "506d20285188fda3481a878ba34d3d3b09e85700ac6435625515311fad7079e9"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/hblank_ly_scx_timing-C.gb"
+target = "acceptance/gpu/hblank_ly_scx_timing-C.gb"
+sha256 = "b74c84ad030f5db7ac364998a357ee752d3ab9e42f9fe03d015bff2e6bc3dd36"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/hblank_ly_scx_timing-GS.gb"
+target = "acceptance/gpu/hblank_ly_scx_timing-GS.gb"
+sha256 = "6286ab55b2531ff9502f827abcc83a8b87e4d9b68a4686480d8d7a2398dfab23"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/hblank_ly_scx_timing_nops.gb"
+target = "acceptance/gpu/hblank_ly_scx_timing_nops.gb"
+sha256 = "61183d7bcdc5d03ba8b7108041968a6cd4b5310febf409b4c8542a3f887d6e29"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/hblank_ly_scx_timing_variant_nops.gb"
+target = "acceptance/gpu/hblank_ly_scx_timing_variant_nops.gb"
+sha256 = "9b1220c834725c8399807cf28e629c5bc18fd81c93217596659757bb258eca36"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_0_timing.gb"
+target = "acceptance/gpu/intr_0_timing.gb"
+sha256 = "ccc00d67624ad8c2919404895b6a0933d050a2fa303a64f35c48dddff03eb28f"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_1_2_timing-GS.gb"
+target = "acceptance/gpu/intr_1_2_timing-GS.gb"
+sha256 = "75eca431803774bc8a6d14653edddf863d2717f14b472a11a4fb4f22624cc3d8"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_1_timing.gb"
+target = "acceptance/gpu/intr_1_timing.gb"
+sha256 = "70492c127e4f726acb3c72c458c20f9d5c440a19a2c35d221709d5b8272535ba"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_0_timing.gb"
+target = "acceptance/gpu/intr_2_0_timing.gb"
+sha256 = "4275663fe793bd7d221602a2e66a2314cb89ce94aa510c01acf51d38898ff368"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_scx1_timing_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_scx1_timing_nops.gb"
+sha256 = "0ebe1604391156cad024bbf3f0b7931898d367b31df8cf8fddd47f3ed123bebf"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_scx2_timing_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_scx2_timing_nops.gb"
+sha256 = "d770e00649b7d18d1e9c6de5e6077495f24842079c744ed1b4490686aa308533"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_scx3_timing_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_scx3_timing_nops.gb"
+sha256 = "656f374244d4c0720e343a989586bb45f5d9ed2de0e02ef96ce4bc2292ff065f"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_scx4_timing_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_scx4_timing_nops.gb"
+sha256 = "18ac960c6547b7605da41330ea5e7d08097fa2d26fa3ada1512683ebc166703b"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_scx5_timing_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_scx5_timing_nops.gb"
+sha256 = "99298d24d3d0cb538d0d4d72e60e9fac288d57485198f03400b6fa7e65c40d47"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_scx6_timing_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_scx6_timing_nops.gb"
+sha256 = "d2f3aecadffa55b7832a36e5666430e670efd617c9e3bf2b919507e2cee81d39"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_scx7_timing_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_scx7_timing_nops.gb"
+sha256 = "28e4f594ae4ecff9176dc924f7634d1d26845ec4bc65b3351e5ca4be6a22543e"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_scx8_timing_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_scx8_timing_nops.gb"
+sha256 = "e57e0755d3d8224d0a22d61de1c319b1d2c7cbd00cbfcd2c04f7e7fbd0fdee89"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_timing.gb"
+target = "acceptance/gpu/intr_2_mode0_timing.gb"
+sha256 = "8bc26151ef1b873aac22ff65c5924e3a3955d172ac5cfe381cfd03bd2a386daf"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites.gb"
+target = "acceptance/gpu/intr_2_mode0_timing_sprites.gb"
+sha256 = "0dad8b6ada1dadea4b31dea6d48299c4e9711a058d505a11aae3b0f6a2788041"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_timing_sprites_nops.gb"
+sha256 = "3b9bb7fe0aa602abf06f24ef6f389689a2711a303ec3f4ea0de9b1eb126abcb6"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites_scx1_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_timing_sprites_scx1_nops.gb"
+sha256 = "a954d69b3fd2b16f1292d1aa2813d618500376f364f9e01ffc152f4af97e1160"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites_scx2_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_timing_sprites_scx2_nops.gb"
+sha256 = "1af1cb94dbde9c193c31abdade88be4e60170133d90fed274b92b9bf983e40d0"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites_scx3_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_timing_sprites_scx3_nops.gb"
+sha256 = "ef4c309014b23b920fb3b49edbc269dc7da44958c25119e30e5ebcfbac1414b6"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites_scx4_nops.gb"
+target = "acceptance/gpu/intr_2_mode0_timing_sprites_scx4_nops.gb"
+sha256 = "a4096f89b3432a7a2f64be0c80e417bab629c31f44d5e8ea7ab1e4b81fc9e4aa"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_mode3_timing.gb"
+target = "acceptance/gpu/intr_2_mode3_timing.gb"
+sha256 = "b06f1689962ca320bc56ce9fe380022d790980b324086974eaa682bd026aa72f"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_oam_ok_timing.gb"
+target = "acceptance/gpu/intr_2_oam_ok_timing.gb"
+sha256 = "18e8bb995199167bb025180fd19448da9b508c2d1a4aad609582c37cc0bd5154"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/intr_2_timing.gb"
+target = "acceptance/gpu/intr_2_timing.gb"
+sha256 = "6afd0096ea314ca004aa6cbd2787243233f5e4046a615c3910f1d2091fc4d8f9"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/lcdon_mode_timing.gb"
+target = "acceptance/gpu/lcdon_mode_timing.gb"
+sha256 = "b9186047eeeb87709eaf1338b39202509f5c2adef1de900509673d8df497bca4"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly00_01_mode0_2.gb"
+target = "acceptance/gpu/ly00_01_mode0_2.gb"
+sha256 = "4704eea7062a8a46cfbc37c67711d5be82cd304b67159edb1dc1f472573bfc95"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly00_mode0_2-GS.gb"
+target = "acceptance/gpu/ly00_mode0_2-GS.gb"
+sha256 = "01e54f1ae872ffb0d970b4099af4e4497ec36fed4d5f052bdd686fbaf32d79fe"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly00_mode1_0-GS.gb"
+target = "acceptance/gpu/ly00_mode1_0-GS.gb"
+sha256 = "22054f3009cdfb32fdc2c0e861fa97d31e2a058cd2367758c3e24ecd111bb21b"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly00_mode1_2-C.gb"
+target = "acceptance/gpu/ly00_mode1_2-C.gb"
+sha256 = "e5f3fda2101ccab4c9a09d9b07b4da6c6657b9c25e943c1a335669860b1c606f"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly00_mode2_3.gb"
+target = "acceptance/gpu/ly00_mode2_3.gb"
+sha256 = "719d28780db1c8834b1dfa74a53e55b440771ff18e97456b03d2e166cd9c425b"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly00_mode3_0.gb"
+target = "acceptance/gpu/ly00_mode3_0.gb"
+sha256 = "173ae13551395d1b4b5a628244e48d618f78ca6b2f5edc52af1bedfb7c2cbad8"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly143_144_145.gb"
+target = "acceptance/gpu/ly143_144_145.gb"
+sha256 = "afdbe336a541b9be948019c00d95948ad2f270ff7b06cf257c076b1194398588"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly143_144_152_153.gb"
+target = "acceptance/gpu/ly143_144_152_153.gb"
+sha256 = "d02ea52846bcbdca6daf681a622b639fb072efbf054017c24c4816ad70a2f14b"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly143_144_mode0_1.gb"
+target = "acceptance/gpu/ly143_144_mode0_1.gb"
+sha256 = "bd0feaa0c2aba8a69430766fe481d71639e52bfa56ae3f007b2755832df46eec"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly143_144_mode3_0.gb"
+target = "acceptance/gpu/ly143_144_mode3_0.gb"
+sha256 = "d4d1291e369d7872d5111a3095baf36d37021210a199a1f5e19fe61eebbd5cbb"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc-C.gb"
+target = "acceptance/gpu/ly_lyc-C.gb"
+sha256 = "943cb0d0a96fbb40c219f5865d91505c762a9b58abe95d777bcee77b8683bf3f"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc-GS.gb"
+target = "acceptance/gpu/ly_lyc-GS.gb"
+sha256 = "4afb6820ced76e875ea432417f963df76b15aede2eda03a3c79b91db57d1b1ca"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_0-C.gb"
+target = "acceptance/gpu/ly_lyc_0-C.gb"
+sha256 = "a8ade24ce55cc6145f31bfc74ab939e1b37111a46d3e4eb946228f4c3803b4bb"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_0-GS.gb"
+target = "acceptance/gpu/ly_lyc_0-GS.gb"
+sha256 = "e96270df5e9d0764f8003fa30cbe02aaf9f13922f01ee05998f1d7e1cc2abd9e"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_0_write-C.gb"
+target = "acceptance/gpu/ly_lyc_0_write-C.gb"
+sha256 = "f53e065c61a687caa665e10515d079a3b99a89c363f5dcf52a8fbea3e50718fe"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_0_write-GS.gb"
+target = "acceptance/gpu/ly_lyc_0_write-GS.gb"
+sha256 = "45d9af3ef937193aa78e3a36e72ab86a3042565c6591a0dbc508c41e7f868db8"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_144-C.gb"
+target = "acceptance/gpu/ly_lyc_144-C.gb"
+sha256 = "30d78d0d94115164cfb0c63804d89d0e8a13ad379cb2b8cfd428bdb0b52c338e"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_144-GS.gb"
+target = "acceptance/gpu/ly_lyc_144-GS.gb"
+sha256 = "1cf8e88753e90985edd8b01e1fee04e80f448426f502637b31f4fe202e808100"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_153-C.gb"
+target = "acceptance/gpu/ly_lyc_153-C.gb"
+sha256 = "651e4946c437aaa554ac04e1fe77b607052c8420e3d49e04ad463ba51ee75361"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_153-GS.gb"
+target = "acceptance/gpu/ly_lyc_153-GS.gb"
+sha256 = "6c84c412baa250a281d1d982737ddb62817493d1e9f1d083398f39ecbd924649"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_153_write-C.gb"
+target = "acceptance/gpu/ly_lyc_153_write-C.gb"
+sha256 = "cc0c7e304cad5f5f16f6474e145813e1451b05c6551c3bd379e0a68af8d2b151"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_153_write-GS.gb"
+target = "acceptance/gpu/ly_lyc_153_write-GS.gb"
+sha256 = "0000a6d5acebbf1aebcaabf2864746b9d1a0f3c32616be54d82036c9c5cb161a"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_write-C.gb"
+target = "acceptance/gpu/ly_lyc_write-C.gb"
+sha256 = "c30d45798e9f0ecf47a7a9d4d511dbebaac279bfe3c1abb7d36fe836420f7a19"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_lyc_write-GS.gb"
+target = "acceptance/gpu/ly_lyc_write-GS.gb"
+sha256 = "feb5096707a39346112edf820adda4a77486357ab566d3831aaeccf00f115b49"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_new_frame-C.gb"
+target = "acceptance/gpu/ly_new_frame-C.gb"
+sha256 = "56de624262504ed61c49f0df6ef39d0df7917c8fec5a174dc66b7b7d2ba5cf9d"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/ly_new_frame-GS.gb"
+target = "acceptance/gpu/ly_new_frame-GS.gb"
+sha256 = "095450df64b2ee6528b022930882700e7777b1f94189d28547c38fd3e947e212"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/stat_irq_blocking.gb"
+target = "acceptance/gpu/stat_irq_blocking.gb"
+sha256 = "2275c9ef8aa7e91e5dcaca9f8018bca3b9b9a6f849dc4132e884019e90763011"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/stat_write_if-C.gb"
+target = "acceptance/gpu/stat_write_if-C.gb"
+sha256 = "750e97c4ed388d6dea3bdf8fffb9cf4db2c4ea54c3e24028846df0c1e75a0bb8"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/stat_write_if-GS.gb"
+target = "acceptance/gpu/stat_write_if-GS.gb"
+sha256 = "4b10e50242d0bb61052b16fd791cb16cfb1403b33d20f5e9debdcb8237e13775"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/vblank_if_timing.gb"
+target = "acceptance/gpu/vblank_if_timing.gb"
+sha256 = "aa84aa3056190d15115c803880c7a9504e320ba35fe2ccb9fa4e5bcfd07bafcf"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/gpu/vblank_stat_intr-GS.gb"
+target = "acceptance/gpu/vblank_stat_intr-GS.gb"
+sha256 = "ba6e28b8052ec77b7fad6dfef4434419ca8cf6eb2fcfef1f41c22fdf0ab5d2df"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/halt_ime0_ei.gb"
+target = "acceptance/halt_ime0_ei.gb"
+sha256 = "0ff894507b302be5c6594637eca75156d802623679152785d059b9d33d433967"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/halt_ime0_nointr_timing.gb"
+target = "acceptance/halt_ime0_nointr_timing.gb"
+sha256 = "5c4203655de407e0fba7eae46c43e2294cbbb1d6245561417c92e516b86829ba"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/halt_ime1_timing.gb"
+target = "acceptance/halt_ime1_timing.gb"
+sha256 = "8725f65b96040b4360d5e6f88f80b09ca7ccfe8156a9d18f6e125a5a4febd2f0"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/halt_ime1_timing2-GS.gb"
+target = "acceptance/halt_ime1_timing2-GS.gb"
+sha256 = "5a40d0c3a8a5106cf2504fde6fbe1942184b0dc0ceeee3a1e7a21111929d820e"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/if_ie_registers.gb"
+target = "acceptance/if_ie_registers.gb"
+sha256 = "65fbd4b7b68f11e68d63759341e87e71ed38db888930803db18f5cf094370c8b"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/intr_timing.gb"
+target = "acceptance/intr_timing.gb"
+sha256 = "c07a7a65f3adb4075e1765a9a9b623c4bf8e5175f8661566b2d357c838f9a2c9"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/jp_cc_timing.gb"
+target = "acceptance/jp_cc_timing.gb"
+sha256 = "3274290ac946144a0491135dca1206e7ac8207526901fe413dc6dab0c76c78fb"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/jp_timing.gb"
+target = "acceptance/jp_timing.gb"
+sha256 = "18f6d830b5ff0f1565e83e281f27538c3a871682f09f71ea53f1ddd85807f79c"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/ld_hl_sp_e_timing.gb"
+target = "acceptance/ld_hl_sp_e_timing.gb"
+sha256 = "82eb40da3a262ad00a8760efc7916973257853b6bc01cfb101bb438cf8e2620c"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/oam_dma_restart.gb"
+target = "acceptance/oam_dma_restart.gb"
+sha256 = "615216e231921e6e1f0810edbe7f1740d13020c38a17e72562aad3defda60283"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/oam_dma_start.gb"
+target = "acceptance/oam_dma_start.gb"
+sha256 = "60ebf59cfba1fa692f33deec4965457062ce905775108dfa6ec31d7657dede28"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/oam_dma_timing.gb"
+target = "acceptance/oam_dma_timing.gb"
+sha256 = "c8151f5b50c91056f83ca2f9a2a07ae44175e7b9a15abe8a69e2c4c6f0ac7146"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/pop_timing.gb"
+target = "acceptance/pop_timing.gb"
+sha256 = "8d2739123d9e1fd7f90879eaf73a5bc464623250c3a9cac2b2af7a5032552b65"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/push_timing.gb"
+target = "acceptance/push_timing.gb"
+sha256 = "c078aca5989f26b411f03f9540f3a0de1b592866fcde65ccf9ae3c7760a5bfc2"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/rapid_di_ei.gb"
+target = "acceptance/rapid_di_ei.gb"
+sha256 = "39d29d60ff352d81871d2efc08e2a3cf04841e6bcd285281abd3822ec442ef3a"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/ret_cc_timing.gb"
+target = "acceptance/ret_cc_timing.gb"
+sha256 = "a6280905ed75061c963fda9f4b22a6c832993be3ffd1c11ab16473ecf224611c"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/ret_timing.gb"
+target = "acceptance/ret_timing.gb"
+sha256 = "e393e1f37a089936a4e50abc35228c13f52a2d923f972642e74ca6818634f32a"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/reti_intr_timing.gb"
+target = "acceptance/reti_intr_timing.gb"
+sha256 = "a56a23afae3a4ac01163d8c70bf32cfd542ff5608d5ea72f89c861aaebea5ee6"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/reti_timing.gb"
+target = "acceptance/reti_timing.gb"
+sha256 = "338e9843be90d3abca29eef239e0c3e07845518df164c0dc2a2933421a5c5c08"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/rst_timing.gb"
+target = "acceptance/rst_timing.gb"
+sha256 = "7d18baea16a3838f16f8abb53591bf09c76ae57fe1e8e58f1e0462aac317f753"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/div_write.gb"
+target = "acceptance/timer/div_write.gb"
+sha256 = "08ba309cccb69c64d56c11f002c3f0ff879185e273cc9b59e5bd5e024dbb367c"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/rapid_toggle.gb"
+target = "acceptance/timer/rapid_toggle.gb"
+sha256 = "f4ee330b2e7bcbeb813362946f3bb3525a87358e41f1396cf8aa4cd94dd6e96b"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tim00.gb"
+target = "acceptance/timer/tim00.gb"
+sha256 = "40d3bc3af47bd17e4a08e2569c913a266d0b9aca84798a940328557ccdad7eda"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tim00_div_trigger.gb"
+target = "acceptance/timer/tim00_div_trigger.gb"
+sha256 = "65b2b5324109ed1267fb7e626510175b1360723cd908cbc4aeea8d511ea0b2ef"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tim01.gb"
+target = "acceptance/timer/tim01.gb"
+sha256 = "f016780232c1c0e8de8ec5f9c0cd21cb494905c4542d8c43c191597b8e48e24e"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tim01_div_trigger.gb"
+target = "acceptance/timer/tim01_div_trigger.gb"
+sha256 = "2f784b3b73a78d9e23f87ab0c60512777b5313feee1dd71c4b01baf21ab82163"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tim10.gb"
+target = "acceptance/timer/tim10.gb"
+sha256 = "996f4fcb164b945f97db1d18425c7515cd36d7ba1f4baaec4ffb24e6cdcedffe"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tim10_div_trigger.gb"
+target = "acceptance/timer/tim10_div_trigger.gb"
+sha256 = "97067aec4ae4d9f20b360e65cdd4708ad533ff1637c1ab0c795c6113a377e671"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tim11.gb"
+target = "acceptance/timer/tim11.gb"
+sha256 = "42d6eee77136c52e25a735c03082324d4fffaf86b35480a2ac6f69ab0f789372"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tim11_div_trigger.gb"
+target = "acceptance/timer/tim11_div_trigger.gb"
+sha256 = "31bbd6f05e28b844ff4dd427ff979035795dab4deea5de0d719a41a5586838e3"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tima_reload.gb"
+target = "acceptance/timer/tima_reload.gb"
+sha256 = "5cde0a7d91bf49815e74007f137e824e627fef496a942bb2a70fbad672a5a82e"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tima_write_reloading.gb"
+target = "acceptance/timer/tima_write_reloading.gb"
+sha256 = "694bf9f46226c2b3fe0ca1c8c8149bcf3aeffff560c694e07177f94b6469bfc1"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/timer_if.gb"
+target = "acceptance/timer/timer_if.gb"
+sha256 = "c191f740f1ce8c3bc2909df7565e6f87024e045de5b5affc3275b9ff4929edc5"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/acceptance/timer/tma_write_reloading.gb"
+target = "acceptance/timer/tma_write_reloading.gb"
+sha256 = "7decd6cebfec684cd55e9c313e41ef849cedceba6060287a144c831297d80b4f"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/emulator-only/mbc1_rom_4banks.gb"
+target = "emulator-only/mbc1_rom_4banks.gb"
+sha256 = "1a49d8e48f0dcdf91362cb002af41a40bb9f556799c6b8507470f39df5c9bcb0"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/logic-analysis/external-bus/read_timing/read_timing.gb"
+target = "logic-analysis/external-bus/read_timing/read_timing.gb"
+sha256 = "d4847fa3f12ce1aa0e3b8fc1102fea01b88f0f404983893d0af97b54e0886395"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/logic-analysis/external-bus/write_timing/write_timing.gb"
+target = "logic-analysis/external-bus/write_timing/write_timing.gb"
+sha256 = "c171a03f45000045b486de3674ce37042287dc1747bbcd362bd58e701792efa7"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/logic-analysis/ppu/simple_scx/simple_scx.gb"
+target = "logic-analysis/ppu/simple_scx/simple_scx.gb"
+sha256 = "40cac9ef751cbe0048c66f2f18a083a76117831c6b2002ad99669d8bf1aff02e"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/madness/mgb_oam_dma_halt_sprites.gb"
+target = "madness/mgb_oam_dma_halt_sprites.gb"
+sha256 = "c15f602d63334b5992faccf220a304f2865faa9f824d331933395a0c3ccf0593"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/madness/mgb_oam_dma_halt_sprites_expected.png"
+target = "madness/mgb_oam_dma_halt_sprites_expected.png"
+sha256 = "fb33257aabbfc44ad393bb14bdf446311e74369d9dde9f96adc270bc58136c6c"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/manual-only/sprite_priority-cgb.png"
+target = "manual-only/sprite_priority-cgb.png"
+sha256 = "94eca538f151931de571988845ec9891a79350ae78db4acb4750801e343b6d13"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/manual-only/sprite_priority-dmg.png"
+target = "manual-only/sprite_priority-dmg.png"
+sha256 = "6b3d1fb9231d8ad58b6901cfa7fadf047f9c36e84d1ae079eb61f92d7bc861b8"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/manual-only/sprite_priority.gb"
+target = "manual-only/sprite_priority.gb"
+sha256 = "574545318b63922eb90b37a24eb2cd78d41f9aa338aa69af71e57acf7711adcd"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/bits/unused_hwio-C.gb"
+target = "misc/bits/unused_hwio-C.gb"
+sha256 = "dc4a03b3bfbcf3dccb3dfd5f5ba9ae50cf62a4bf62d004ad6a2027ce19b670cd"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/boot_hwio-C.gb"
+target = "misc/boot_hwio-C.gb"
+sha256 = "674e2cc7285815614a6f6a961ce4dc667c44205d78f3b996826859ff2a2500e7"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/boot_hwio-S.gb"
+target = "misc/boot_hwio-S.gb"
+sha256 = "79034e1726d84c677b310f3f7b0240819cd6cda1fbb0c78d33357fc7914b1403"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/boot_regs-A.gb"
+target = "misc/boot_regs-A.gb"
+sha256 = "d8a3194092b5a4c5e756dfa4c8d7007b6696e63b80ba087a646f720ab8b883fd"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/boot_regs-cgb.gb"
+target = "misc/boot_regs-cgb.gb"
+sha256 = "c829f52806324d726c486104fd16af7becc4c55a314130247791962eed9471ca"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/boot_regs-mgb.gb"
+target = "misc/boot_regs-mgb.gb"
+sha256 = "c74aaa8222e214bc11c368514feb94c39ca63d46cf29d1f8129ba484160a537f"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/boot_regs-sgb.gb"
+target = "misc/boot_regs-sgb.gb"
+sha256 = "ad168bfcc49e438a71a43ff276afdc10d8720a7457202571fa1d38a1d14eae86"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/boot_regs-sgb2.gb"
+target = "misc/boot_regs-sgb2.gb"
+sha256 = "19b8321a94878c065b03d1dc2388dc5bee23263007d2b4e4ebe46cf416dcfa76"
+
+[[source.family.file]]
+path = "mooneye-test-suite-wilbertpol/misc/gpu/vblank_stat_intr-C.gb"
+target = "misc/gpu/vblank_stat_intr-C.gb"
+sha256 = "626c31ebffc410324bdc09dc9323668e427844d76dbcd4275913be334e2acad2"

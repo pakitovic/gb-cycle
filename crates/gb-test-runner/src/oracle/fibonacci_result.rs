@@ -1,6 +1,7 @@
 use super::catalog::{CpuObservation, OracleConfig, OracleObservations, OracleOutcome, OracleStep};
 
 const MAGIC_BREAKPOINT_OPCODE: u8 = 0x40;
+const LEGACY_MAGIC_BREAKPOINT_OPCODE: u8 = 0xED;
 const PASS_SIGNATURE: [u8; 6] = [3, 5, 8, 13, 21, 34];
 const FAIL_SIGNATURE: [u8; 6] = [0x42; 6];
 const HALT_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
@@ -8,22 +9,28 @@ const HALT_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FibonacciResultOracle {
     result: Option<FibonacciResult>,
+    legacy: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FibonacciResult {
     Passed,
-    Failed,
+    Failed(FibonacciFailure),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FibonacciFailure {
+    FailureSignature,
+    LegacyTerminalWithoutPassSignature,
 }
 
 impl FibonacciResultOracle {
     pub(super) fn from_manifest(config: &OracleConfig) -> Result<Self, String> {
-        config.reject_unknown_parameters(&[])?;
-        Ok(Self::new())
-    }
-
-    pub(crate) const fn new() -> Self {
-        Self { result: None }
+        config.reject_unknown_parameters(&["legacy"])?;
+        Ok(Self {
+            result: None,
+            legacy: config.optional_bool("legacy")?.unwrap_or(false),
+        })
     }
 
     pub(crate) fn observe(
@@ -48,8 +55,8 @@ impl FibonacciResultOracle {
         };
         Ok(match result {
             Some(FibonacciResult::Passed) => OracleOutcome::Passed,
-            Some(FibonacciResult::Failed) => {
-                OracleOutcome::Failed("fibonacci result reported failure signature".to_string())
+            Some(FibonacciResult::Failed(failure)) => {
+                OracleOutcome::Failed(failure.message(observations))
             }
             None => OracleOutcome::Failed(self.failure_message(observations)),
         })
@@ -62,10 +69,16 @@ impl FibonacciResultOracle {
         let cpu = observations
             .cpu
             .ok_or_else(|| "fibonacci-result oracle requires CPU observation".to_string())?;
-        let Some(result) = result_for_signature(cpu) else {
+        let result = result_for_signature(cpu);
+        if self.legacy && legacy_terminal_signal_reached(cpu) {
+            return Ok(Some(result.unwrap_or(FibonacciResult::Failed(
+                FibonacciFailure::LegacyTerminalWithoutPassSignature,
+            ))));
+        }
+        let Some(result) = result else {
             return Ok(None);
         };
-        if terminal_signal_reached(cpu) {
+        if terminal_signal_reached(cpu, self.legacy) {
             Ok(Some(result))
         } else {
             Ok(None)
@@ -74,7 +87,10 @@ impl FibonacciResultOracle {
 
     fn failure_message(&self, observations: OracleObservations<'_>) -> String {
         match observations.cpu {
-            Some(cpu) if result_for_signature(cpu).is_some() && !terminal_signal_reached(cpu) => {
+            Some(cpu)
+                if result_for_signature(cpu).is_some()
+                    && !terminal_signal_reached(cpu, self.legacy) =>
+            {
                 format!(
                     "fibonacci result signature reached without terminal signal at PC {:#06X}",
                     cpu.pc
@@ -90,15 +106,35 @@ fn result_for_signature(cpu: CpuObservation) -> Option<FibonacciResult> {
     let signature = [cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l];
     match signature {
         PASS_SIGNATURE => Some(FibonacciResult::Passed),
-        FAIL_SIGNATURE => Some(FibonacciResult::Failed),
+        FAIL_SIGNATURE => Some(FibonacciResult::Failed(FibonacciFailure::FailureSignature)),
         _ => None,
     }
 }
 
-fn terminal_signal_reached(cpu: CpuObservation) -> bool {
+impl FibonacciFailure {
+    fn message(self, observations: OracleObservations<'_>) -> String {
+        match self {
+            Self::FailureSignature => "fibonacci result reported failure signature".to_string(),
+            Self::LegacyTerminalWithoutPassSignature => match observations.cpu {
+                Some(cpu) => format!(
+                    "legacy fibonacci terminal reached without pass signature at PC {:#06X}",
+                    cpu.pc
+                ),
+                None => "legacy fibonacci terminal reached without pass signature".to_string(),
+            },
+        }
+    }
+}
+
+fn terminal_signal_reached(cpu: CpuObservation, legacy: bool) -> bool {
     cpu.current_opcode == Some(MAGIC_BREAKPOINT_OPCODE)
+        || legacy && legacy_terminal_signal_reached(cpu)
         || cpu
             .pc_window
             .windows(HALT_LOOP_BYTES.len())
             .any(|window| window == HALT_LOOP_BYTES)
+}
+
+fn legacy_terminal_signal_reached(cpu: CpuObservation) -> bool {
+    cpu.current_opcode == Some(LEGACY_MAGIC_BREAKPOINT_OPCODE)
 }

@@ -2,16 +2,17 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
+use zip::ZipArchive;
 
 use super::cli::writeln_checked;
-use super::manifest::{Source, SourceFamily, SourceFile};
+use super::manifest::{Source, SourceArchiveFormat, SourceFamily, SourceFile, SourceLocation};
 
 static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -55,7 +56,24 @@ fn fetch_source_into_temp<W: Write>(
     output: &mut W,
 ) -> Result<(), String> {
     remove_path_if_present(temp_root, "stale temporary fetch directory")?;
-    checkout_source_into_temp(temp_root, source)?;
+    match source.location()? {
+        SourceLocation::Git { git_url, git_rev } => {
+            checkout_source_into_temp(temp_root, source, git_url, git_rev)?;
+        }
+        SourceLocation::Archive {
+            archive_url,
+            archive_sha256,
+            archive_format,
+        } => {
+            fetch_archive_source_into_temp(
+                temp_root,
+                source,
+                archive_url,
+                archive_sha256,
+                archive_format,
+            )?;
+        }
+    }
     verify_required_files(temp_root, source)?;
     writeln_checked(
         output,
@@ -68,7 +86,12 @@ fn fetch_source_into_temp<W: Write>(
     Ok(())
 }
 
-fn checkout_source_into_temp(temp_root: &Path, source: &Source) -> Result<(), String> {
+fn checkout_source_into_temp(
+    temp_root: &Path,
+    source: &Source,
+    git_url: &str,
+    git_rev: &str,
+) -> Result<(), String> {
     fs::create_dir_all(temp_root).map_err(|error| {
         format!(
             "failed to create temporary fetch directory {} for source {}: {error}",
@@ -77,11 +100,7 @@ fn checkout_source_into_temp(temp_root: &Path, source: &Source) -> Result<(), St
         )
     })?;
     run_git(temp_root, ["init"], source)?;
-    run_git(
-        temp_root,
-        ["remote", "add", "origin", &source.git_url],
-        source,
-    )?;
+    run_git(temp_root, ["remote", "add", "origin", git_url], source)?;
 
     let sparse_checkout_paths = source_sparse_checkout_paths(source);
     if !sparse_checkout_paths.is_empty() {
@@ -98,7 +117,7 @@ fn checkout_source_into_temp(temp_root: &Path, source: &Source) -> Result<(), St
 
     run_git(
         temp_root,
-        ["fetch", "--depth", "1", "origin", &source.git_rev],
+        ["fetch", "--depth", "1", "origin", git_rev],
         source,
     )?;
     run_git(temp_root, ["checkout", "--detach", "FETCH_HEAD"], source)?;
@@ -114,6 +133,151 @@ fn checkout_source_into_temp(temp_root: &Path, source: &Source) -> Result<(), St
         })?;
     }
 
+    Ok(())
+}
+
+fn fetch_archive_source_into_temp(
+    temp_root: &Path,
+    source: &Source,
+    archive_url: &str,
+    archive_sha256: &str,
+    archive_format: SourceArchiveFormat,
+) -> Result<(), String> {
+    fs::create_dir_all(temp_root).map_err(|error| {
+        format!(
+            "failed to create temporary fetch directory {} for source {}: {error}",
+            temp_root.display(),
+            source.id
+        )
+    })?;
+    let archive_path = temp_root.join("source-archive");
+    download_archive_to_path(archive_url, &archive_path, source)?;
+    let archive_bytes = fs::read(&archive_path).map_err(|error| {
+        format!(
+            "failed to read downloaded archive {} for source {}: {error}",
+            archive_path.display(),
+            source.id
+        )
+    })?;
+    let actual_hash = sha256_hex(&archive_bytes);
+    if actual_hash != archive_sha256 {
+        return Err(format!(
+            "archive hash mismatch for source {}: expected {}, got {}",
+            source.id, archive_sha256, actual_hash
+        ));
+    }
+    match archive_format {
+        SourceArchiveFormat::Zip => extract_required_zip_files(temp_root, source, archive_bytes),
+    }
+}
+
+fn download_archive_to_path(archive_url: &str, path: &Path, source: &Source) -> Result<(), String> {
+    if let Some(file_path) = archive_url.strip_prefix("file://") {
+        fs::copy(file_path, path).map_err(|error| {
+            format!(
+                "failed to copy archive {} -> {} for source {}: {error}",
+                archive_url,
+                path.display(),
+                source.id
+            )
+        })?;
+        return Ok(());
+    }
+
+    let mut command = Command::new("curl");
+    command
+        .arg("--fail")
+        .arg("--location")
+        .arg("--silent")
+        .arg("--show-error")
+        .arg("--output")
+        .arg(path)
+        .arg(archive_url);
+    let output = command.output().map_err(|error| {
+        format!(
+            "failed to spawn curl for archive download in source {}: {error}",
+            source.id
+        )
+    })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let mut message = format!(
+        "curl archive download failed for source {} with status {}",
+        source.id, output.status
+    );
+    append_command_output(&mut message, "stdout", &output.stdout);
+    append_command_output(&mut message, "stderr", &output.stderr);
+    Err(message)
+}
+
+fn extract_required_zip_files(
+    temp_root: &Path,
+    source: &Source,
+    archive_bytes: Vec<u8>,
+) -> Result<(), String> {
+    let mut archive = ZipArchive::new(Cursor::new(archive_bytes)).map_err(|error| {
+        format!(
+            "failed to open zip archive for source {}: {error}",
+            source.id
+        )
+    })?;
+    for family in &source.families {
+        for file in &family.files {
+            extract_required_zip_file(temp_root, source, family, file, &mut archive)?;
+        }
+    }
+    Ok(())
+}
+
+fn extract_required_zip_file<R: io::Read + io::Seek>(
+    temp_root: &Path,
+    source: &Source,
+    family: &SourceFamily,
+    file: &SourceFile,
+    archive: &mut ZipArchive<R>,
+) -> Result<(), String> {
+    let entry_name = source_path_key(&file.path);
+    let mut entry = archive.by_name(&entry_name).map_err(|error| {
+        format!(
+            "failed to read required zip entry {} for source {} family {}: {error}",
+            entry_name, source.id, family.id
+        )
+    })?;
+    if entry.is_dir() {
+        return Err(format!(
+            "required zip entry {} for source {} family {} is a directory",
+            entry_name, source.id, family.id
+        ));
+    }
+    let target = temp_root.join(&file.path);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create extracted archive parent {} for source {} family {}: {error}",
+                parent.display(),
+                source.id,
+                family.id
+            )
+        })?;
+    }
+    let mut output = fs::File::create(&target).map_err(|error| {
+        format!(
+            "failed to create extracted archive file {} for source {} family {}: {error}",
+            target.display(),
+            source.id,
+            family.id
+        )
+    })?;
+    io::copy(&mut entry, &mut output).map_err(|error| {
+        format!(
+            "failed to extract zip entry {} -> {} for source {} family {}: {error}",
+            entry_name,
+            target.display(),
+            source.id,
+            family.id
+        )
+    })?;
     Ok(())
 }
 
@@ -163,6 +327,10 @@ fn verify_required_file(
         ));
     }
     Ok(())
+}
+
+fn source_path_key(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 pub(super) fn cleanup_fetched_sources(fetched_sources: &[FetchedSource]) -> Result<(), String> {
@@ -256,4 +424,12 @@ fn run_git_command(mut command: Command, source: &Source, label: &str) -> Result
             .map_or_else(|| "signal".to_string(), |code| code.to_string()),
         stderr.trim()
     ))
+}
+
+fn append_command_output(message: &mut String, label: &str, output: &[u8]) {
+    let text = String::from_utf8_lossy(output);
+    let trimmed = text.trim();
+    if !trimmed.is_empty() {
+        let _ = write!(message, "; {label}: {trimmed}");
+    }
 }

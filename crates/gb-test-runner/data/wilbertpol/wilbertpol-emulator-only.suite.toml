@@ -1,0 +1,10 @@
+family = "wilbertpol"
+suite_name = "wilbertpol-emulator-only"
+report = "wilbertpol"
+model = "dmg"
+timeout_frames = 180
+oracle = { type = "fibonacci-result", legacy = true }
+
+[[case]]
+id = "wilbertpol-emulator-only-mbc1-rom-4banks"
+rom = "emulator-only/mbc1_rom_4banks.gb"

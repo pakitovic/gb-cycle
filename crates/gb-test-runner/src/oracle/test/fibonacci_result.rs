@@ -62,6 +62,13 @@ fn fibonacci_oracle() -> Oracle {
     .expect("fibonacci-result oracle should parse")
 }
 
+fn legacy_fibonacci_oracle() -> Oracle {
+    Oracle::from_manifest(&parse_oracle_config(
+        "oracle = { type = \"fibonacci-result\", legacy = true }",
+    ))
+    .expect("legacy fibonacci-result oracle should parse")
+}
+
 #[test]
 fn catalog_builds_fibonacci_result_oracle_from_manifest_config() {
     assert!(matches!(fibonacci_oracle(), Oracle::FibonacciResult(_)));
@@ -132,6 +139,91 @@ fn fibonacci_result_requires_terminal_signal_for_known_signature() {
     assert!(matches!(
         oracle
             .finish(observations(PASS_SIGNATURE, None, no_halt_loop_window()))
+            .expect("oracle should finish"),
+        OracleOutcome::Failed(message) if message.contains("without terminal signal")
+    ));
+}
+
+#[test]
+fn fibonacci_result_legacy_mode_passes_on_old_mooneye_breakpoint() {
+    let mut oracle = legacy_fibonacci_oracle();
+    assert_eq!(
+        oracle
+            .observe(observations(
+                PASS_SIGNATURE,
+                Some(0xED),
+                no_halt_loop_window()
+            ))
+            .expect("oracle should observe"),
+        OracleStep::Stop
+    );
+    assert_eq!(
+        oracle
+            .finish(observations(
+                PASS_SIGNATURE,
+                Some(0xED),
+                no_halt_loop_window()
+            ))
+            .expect("oracle should finish"),
+        OracleOutcome::Passed
+    );
+}
+
+#[test]
+fn fibonacci_result_legacy_mode_fails_immediately_without_pass_signature() {
+    let mut oracle = legacy_fibonacci_oracle();
+    assert_eq!(
+        oracle
+            .observe(observations([0; 6], Some(0xED), no_halt_loop_window()))
+            .expect("oracle should observe"),
+        OracleStep::Stop
+    );
+    assert!(matches!(
+        oracle
+            .finish(observations([0; 6], Some(0xED), no_halt_loop_window()))
+            .expect("oracle should finish"),
+        OracleOutcome::Failed(message)
+            if message.contains("legacy fibonacci terminal reached without pass signature")
+    ));
+}
+
+#[test]
+fn fibonacci_result_default_mode_ignores_old_mooneye_breakpoint_without_pass_signature() {
+    let mut oracle = fibonacci_oracle();
+    assert_eq!(
+        oracle
+            .observe(observations([0; 6], Some(0xED), no_halt_loop_window()))
+            .expect("oracle should observe"),
+        OracleStep::Continue
+    );
+    assert!(matches!(
+        oracle
+            .finish(observations([0; 6], Some(0xED), no_halt_loop_window()))
+            .expect("oracle should finish"),
+        OracleOutcome::Failed(message) if message.contains("was not reached")
+    ));
+}
+
+#[test]
+fn fibonacci_result_default_mode_ignores_old_mooneye_breakpoint() {
+    let mut oracle = fibonacci_oracle();
+    assert_eq!(
+        oracle
+            .observe(observations(
+                PASS_SIGNATURE,
+                Some(0xED),
+                no_halt_loop_window()
+            ))
+            .expect("oracle should observe"),
+        OracleStep::Continue
+    );
+    assert!(matches!(
+        oracle
+            .finish(observations(
+                PASS_SIGNATURE,
+                Some(0xED),
+                no_halt_loop_window()
+            ))
             .expect("oracle should finish"),
         OracleOutcome::Failed(message) if message.contains("without terminal signal")
     ));

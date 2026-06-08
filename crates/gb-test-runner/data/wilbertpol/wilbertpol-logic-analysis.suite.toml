@@ -1,0 +1,18 @@
+family = "wilbertpol"
+suite_name = "wilbertpol-logic-analysis"
+report = "wilbertpol"
+model = "dmg"
+timeout_frames = 180
+oracle = { type = "fibonacci-result", legacy = true }
+
+[[case]]
+id = "wilbertpol-logic-analysis-external-bus-read-timing-read-timing"
+rom = "logic-analysis/external-bus/read_timing/read_timing.gb"
+
+[[case]]
+id = "wilbertpol-logic-analysis-external-bus-write-timing-write-timing"
+rom = "logic-analysis/external-bus/write_timing/write_timing.gb"
+
+[[case]]
+id = "wilbertpol-logic-analysis-ppu-simple-scx-simple-scx"
+rom = "logic-analysis/ppu/simple_scx/simple_scx.gb"

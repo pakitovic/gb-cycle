@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
 use super::super::git::sha256_hex;
@@ -9,14 +10,18 @@ use super::common::{
     basic_report, commit_upstream_repo, unique_temp_dir, write_basic_reports, write_reports,
     write_source_manifest,
 };
+use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 #[test]
 fn duplicate_targets_are_rejected() {
     let report = basic_report();
     let source = Source {
         id: "source".to_string(),
-        git_url: "file:///unused".to_string(),
-        git_rev: "rev".to_string(),
+        git_url: Some("file:///unused".to_string()),
+        git_rev: Some("rev".to_string()),
+        archive_url: None,
+        archive_sha256: None,
+        archive_format: None,
         families: vec![SourceFamily {
             id: "family-a".to_string(),
             target_root: PathBuf::from("family-a"),
@@ -120,6 +125,163 @@ fn materializes_selected_family_from_local_git_source() {
 
     let _ = fs::remove_dir_all(workspace_root);
     let _ = fs::remove_dir_all(upstream_root);
+}
+
+#[test]
+fn materializes_selected_family_from_local_zip_archive_source() {
+    let workspace_root = unique_temp_dir("archive-workspace");
+    let archive_root = unique_temp_dir("archive-source");
+    let archive_path = archive_root.join("test-roms.zip");
+    fs::create_dir_all(&archive_root).expect("archive root should be creatable");
+    write_test_zip(
+        &archive_path,
+        &[
+            ("roms/family-a/test.gb", b"rom bytes".as_slice()),
+            ("roms/family-a/not-declared.gb", b"not declared".as_slice()),
+            ("roms/family-b/test.gb", b"other family".as_slice()),
+        ],
+    );
+    let archive_hash =
+        sha256_hex(&fs::read(&archive_path).expect("archive should be readable for hash"));
+    let rom_hash = sha256_hex(b"rom bytes");
+
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"sample-report\"\n",
+            "store_dir = \"sample-report\"\n",
+            "sources = \"report/sources.report.toml\"\n",
+        ),
+    );
+    write_source_manifest(
+        &workspace_root,
+        "report/sources.report.toml",
+        &format!(
+            concat!(
+                "[[source]]\n",
+                "id = \"archive-source\"\n",
+                "archive_url = {:?}\n",
+                "archive_sha256 = {:?}\n",
+                "archive_format = \"zip\"\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"family-a\"\n",
+                "target_root = \"family-a\"\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/family-a/test.gb\"\n",
+                "target = \"test.gb\"\n",
+                "sha256 = {:?}\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"family-b\"\n",
+                "target_root = \"family-b\"\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/family-b/test.gb\"\n",
+                "target = \"test.gb\"\n",
+                "sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+            ),
+            format!("file://{}", archive_path.display()),
+            archive_hash,
+            rom_hash,
+        ),
+    );
+
+    let store_root = workspace_root.join("test/sample-report");
+    fs::create_dir_all(store_root.join("family-a")).expect("family root should be creatable");
+    fs::write(store_root.join("family-a/stale.gb"), b"stale")
+        .expect("stale ROM should be writable");
+
+    let mut output = Vec::new();
+    run_fetch_command(["sample-report", "family-a"], &workspace_root, &mut output)
+        .expect("archive fetch should materialize selected family");
+
+    assert_eq!(
+        fs::read(store_root.join("family-a/test.gb")).expect("materialized ROM should exist"),
+        b"rom bytes"
+    );
+    assert!(
+        !store_root.join("family-a/not-declared.gb").exists(),
+        "archive extraction should only materialize declared files"
+    );
+    assert!(
+        !store_root.join("family-b/test.gb").exists(),
+        "unselected archive families should not be materialized"
+    );
+    assert!(
+        !store_root.join("family-a/stale.gb").exists(),
+        "selected family root should be replaced"
+    );
+
+    let _ = fs::remove_dir_all(workspace_root);
+    let _ = fs::remove_dir_all(archive_root);
+}
+
+#[test]
+fn archive_source_fetch_rejects_archive_hash_mismatch() {
+    let workspace_root = unique_temp_dir("archive-mismatch-workspace");
+    let archive_root = unique_temp_dir("archive-mismatch-source");
+    let archive_path = archive_root.join("test-roms.zip");
+    fs::create_dir_all(&archive_root).expect("archive root should be creatable");
+    write_test_zip(&archive_path, &[("roms/family-a/test.gb", b"rom bytes")]);
+    let rom_hash = sha256_hex(b"rom bytes");
+
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"sample-report\"\n",
+            "store_dir = \"sample-report\"\n",
+            "sources = \"report/sources.report.toml\"\n",
+        ),
+    );
+    write_source_manifest(
+        &workspace_root,
+        "report/sources.report.toml",
+        &format!(
+            concat!(
+                "[[source]]\n",
+                "id = \"archive-source\"\n",
+                "archive_url = {:?}\n",
+                "archive_sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+                "archive_format = \"zip\"\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"family-a\"\n",
+                "target_root = \"family-a\"\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"roms/family-a/test.gb\"\n",
+                "target = \"test.gb\"\n",
+                "sha256 = {:?}\n",
+            ),
+            format!("file://{}", archive_path.display()),
+            rom_hash,
+        ),
+    );
+
+    let mut output = Vec::new();
+    let error = run_fetch_command(["sample-report"], &workspace_root, &mut output)
+        .expect_err("archive hash mismatch should fail");
+    assert!(error.contains("archive hash mismatch"));
+    assert!(
+        !workspace_root
+            .join("test/sample-report/family-a/test.gb")
+            .exists()
+    );
+
+    let _ = fs::remove_dir_all(workspace_root);
+    let _ = fs::remove_dir_all(archive_root);
 }
 
 #[test]
@@ -267,4 +429,16 @@ fn flat_target_root_replaces_selected_first_components_only() {
 
     let _ = fs::remove_dir_all(workspace_root);
     let _ = fs::remove_dir_all(upstream_root);
+}
+
+fn write_test_zip(path: &std::path::Path, entries: &[(&str, &[u8])]) {
+    let file = fs::File::create(path).expect("zip file should be creatable");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+    for (name, bytes) in entries {
+        zip.start_file(*name, options)
+            .expect("zip entry should start");
+        zip.write_all(bytes).expect("zip entry should be writable");
+    }
+    zip.finish().expect("zip should finish");
 }
