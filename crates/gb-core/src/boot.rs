@@ -1353,6 +1353,8 @@ const CGB_SKIP_BOOT_DIV: u8 = 0x26;
 const CGB0_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2880;
 // Mooneye's `boot_div-cgbABCDE.gb` is a DMG-compatible CGB header and owns the fallback direct-start phase.
 const CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2674;
+// Mooneye's `boot_div-A.gb` validates the AGB CGB-compatible boot ROM handoff phase for DMG-compatible headers.
+const AGB_DMG_COMPATIBLE_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2678;
 // Ashiepaws `bully.gb` is a native-CGB, non-Nintendo old-licensee header. This value matches gb-cycle's observed standard `cgb_boot.bin` handoff phase for that bucket; the complete CGB header table is tracked as follow-up documentation debt.
 const CGB_NATIVE_NON_NINTENDO_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x1E84;
 // Nitro2k01 `whichboot.gb` is a native-CGB old-licensee `$33` header with binary-zero new-licensee bytes. Its hardware-facing timing reference identifies a distinct CGB boot-entry bucket one final boot-ROM IF-poll period after gb-cycle's raw `cgb_boot.bin` handoff for that header.
@@ -1385,9 +1387,8 @@ fn direct_start_system_counter(
         ConsoleModel::GameBoyColor if matches!(revision, HardwareRevision::CpuCgb0) => {
             CGB0_DIRECT_BOOT_SYSTEM_COUNTER
         }
-        ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
-            cgb_direct_start_system_counter(header)
-        }
+        ConsoleModel::GameBoyColor => cgb_direct_start_system_counter(header),
+        ConsoleModel::GameBoyAdvance => agb_direct_start_system_counter(header),
     }
 }
 
@@ -1416,6 +1417,18 @@ fn cgb_direct_start_system_counter(header: Option<&CartridgeHeader>) -> u16 {
     }
 
     CGB_NATIVE_NON_NINTENDO_DIRECT_BOOT_SYSTEM_COUNTER
+}
+
+fn agb_direct_start_system_counter(header: Option<&CartridgeHeader>) -> u16 {
+    let Some(header) = header else {
+        return CGB_DEFAULT_DIRECT_BOOT_SYSTEM_COUNTER;
+    };
+
+    if !header.cgb_flag.enables_cgb_native_mode() {
+        return AGB_DMG_COMPATIBLE_DIRECT_BOOT_SYSTEM_COUNTER;
+    }
+
+    cgb_direct_start_system_counter(Some(header))
 }
 
 pub(crate) fn cgb_real_boot_handoff_correction_t_cycles(header: Option<&CartridgeHeader>) -> u16 {
