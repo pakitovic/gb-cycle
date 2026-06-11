@@ -46,7 +46,7 @@ pub(crate) fn revision_argument_name(revision: HardwareRevision) -> &'static str
         HardwareRevision::DmgCpuB => "dmg-cpu-b",
         HardwareRevision::DmgCpuC => "dmg-cpu-c",
         HardwareRevision::CpuMgb => "cpu-mgb",
-        HardwareRevision::CpuCgb => "cpu-cgb",
+        HardwareRevision::CpuCgb0 => "cpu-cgb-0",
         HardwareRevision::CpuCgbA => "cpu-cgb-a",
         HardwareRevision::CpuCgbB => "cpu-cgb-b",
         HardwareRevision::CpuCgbC => "cpu-cgb-c",

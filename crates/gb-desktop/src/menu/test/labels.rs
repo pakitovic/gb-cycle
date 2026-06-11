@@ -363,6 +363,11 @@ fn menu_item_labels_cover_runtime_variants_and_binding_summaries() {
         "REV CPU SGB2"
     );
     presentation.console_model = DesktopConsoleModel::GameBoyColor;
+    presentation.revision = HardwareRevision::CpuCgb0;
+    assert_eq!(
+        presentation.item_label(MenuItem::HardwareRevision),
+        "REV CGB-CPU 0"
+    );
     presentation.revision = HardwareRevision::CpuCgbC;
     assert_eq!(
         presentation.item_label(MenuItem::HardwareRevision),

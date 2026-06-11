@@ -72,7 +72,7 @@ fn sha_and_expected_sha_helpers_cover_all_supported_boot_rom_revisions() {
         64
     );
     assert_eq!(
-        HardwareRevision::boot_rom_expected_sha256(HardwareRevision::CpuCgb).len(),
+        HardwareRevision::boot_rom_expected_sha256(HardwareRevision::CpuCgb0).len(),
         64
     );
     assert_eq!(

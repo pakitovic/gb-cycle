@@ -165,6 +165,10 @@ fn system_option_cycle_helpers_wrap_in_the_expected_order() {
         DesktopConsoleModel::GameBoy
     );
     assert_eq!(
+        next_revision(DesktopConsoleModel::GameBoyColor, HardwareRevision::CpuCgb0),
+        HardwareRevision::CpuCgbC
+    );
+    assert_eq!(
         next_revision(DesktopConsoleModel::GameBoyColor, HardwareRevision::CpuCgbC),
         HardwareRevision::CpuCgbD
     );
@@ -174,7 +178,7 @@ fn system_option_cycle_helpers_wrap_in_the_expected_order() {
     );
     assert_eq!(
         next_revision(DesktopConsoleModel::GameBoyColor, HardwareRevision::CpuCgbE),
-        HardwareRevision::CpuCgbC
+        HardwareRevision::CpuCgb0
     );
     assert_eq!(
         next_revision(

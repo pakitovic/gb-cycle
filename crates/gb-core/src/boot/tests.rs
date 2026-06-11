@@ -408,14 +408,14 @@ fn cgb_boot_rom_assets_also_accept_sparse_address_space_images() {
 #[test]
 fn hardware_revision_boot_rom_assets_are_stored_independently() {
     let assets = BootRomAssets::none()
-        .with_bytes(HardwareRevision::CpuCgb, vec![0xC0; CGB_BOOT_ROM_RAW_LEN])
+        .with_bytes(HardwareRevision::CpuCgb0, vec![0xC0; CGB_BOOT_ROM_RAW_LEN])
         .expect("CGB0 image should validate")
         .with_bytes(HardwareRevision::CpuCgbE, vec![0xCE; CGB_BOOT_ROM_RAW_LEN])
         .expect("CGBE image should validate");
 
     assert_eq!(assets.dynamic_payload_bytes(), CGB_BOOT_ROM_RAW_LEN * 2);
     assert_eq!(
-        assets.read_byte(HardwareRevision::CpuCgb, 0x0000),
+        assets.read_byte(HardwareRevision::CpuCgb0, 0x0000),
         Some(0xC0)
     );
     assert_eq!(
@@ -741,6 +741,29 @@ fn cgb_direct_start_system_counter_keeps_mooneye_baseline_for_missing_or_dmg_hea
 }
 
 #[test]
+fn cgb0_direct_start_system_counter_uses_early_boot_handoff_bucket() {
+    let dmg_compatible_header = test_header_with_cgb_header(0x00, 0x33, *b"ZZ");
+    let native_header = test_header_with_cgb_header(0x80, 0x00, *b"00");
+
+    assert_eq!(
+        direct_start_system_counter(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgb0,
+            Some(&dmg_compatible_header)
+        ),
+        0x2880
+    );
+    assert_eq!(
+        direct_start_system_counter(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgb0,
+            Some(&native_header)
+        ),
+        0x2880
+    );
+}
+
+#[test]
 fn cgb_skip_and_custom_boot_share_header_derived_timer_for_native_non_nintendo_roms() {
     let cartridge = loaded_test_cartridge_with_cgb_header(0x80, 0x00, *b"00");
     let skip_boot = boot(
@@ -777,6 +800,39 @@ fn cgb_skip_and_custom_boot_share_header_derived_timer_for_native_non_nintendo_r
         machine_custom_boot.startup_memory_policy,
         StartupMemoryPolicy::CgbRealBootEntryWithDmgBootLogoTiles
     );
+}
+
+#[test]
+fn cgb0_skip_and_custom_boot_use_zeroed_wave_ram_and_early_timer_bucket() {
+    let cartridge = loaded_test_cartridge_with_cgb_header(0x00, 0x33, *b"ZZ");
+    let skip_boot = boot_with_revision(
+        ConsoleModel::GameBoyColor,
+        HardwareRevision::CpuCgb0,
+        StartupMode::SkipBoot,
+        empty_assets(),
+    );
+    let custom_boot = boot_with_revision(
+        ConsoleModel::GameBoyColor,
+        HardwareRevision::CpuCgb0,
+        StartupMode::CustomBoot,
+        empty_assets(),
+    );
+
+    for startup_state in [
+        skip_boot
+            .machine_skip_boot_state(Some(&cartridge))
+            .expect("SkipBoot should expose CGB0 direct state"),
+        custom_boot
+            .machine_skip_boot_state(Some(&cartridge))
+            .expect("CustomBoot should expose CGB0 direct state"),
+    ] {
+        assert_eq!(startup_state.timer.system_counter, 0x2880);
+        assert_eq!(startup_state.io.div, 0x28);
+        assert_eq!(
+            startup_state.apu.wave_ram_startup_policy,
+            WaveRamStartupPolicy::DeterministicZeroed
+        );
+    }
 }
 
 #[test]
@@ -1073,7 +1129,7 @@ fn boot_rom_assets_can_load_all_directory_images_independently() {
         (HardwareRevision::DmgCpu0, 0xD0, DMG_FAMILY_BOOT_ROM_LEN),
         (HardwareRevision::DmgCpuC, 0xD1, DMG_FAMILY_BOOT_ROM_LEN),
         (HardwareRevision::CpuMgb, 0xD2, DMG_FAMILY_BOOT_ROM_LEN),
-        (HardwareRevision::CpuCgb, 0xC0, CGB_BOOT_ROM_RAW_LEN),
+        (HardwareRevision::CpuCgb0, 0xC0, CGB_BOOT_ROM_RAW_LEN),
         (HardwareRevision::CpuCgbC, 0xC1, CGB_BOOT_ROM_RAW_LEN),
         (HardwareRevision::CpuCgbE, 0xCE, CGB_BOOT_ROM_RAW_LEN),
         (HardwareRevision::CpuAgbA, 0xA0, CGB_BOOT_ROM_RAW_LEN),
@@ -1105,7 +1161,7 @@ fn boot_rom_assets_can_load_all_directory_images_independently() {
         Some(0xD2)
     );
     assert_eq!(
-        assets.read_byte(HardwareRevision::CpuCgb, 0x0000),
+        assets.read_byte(HardwareRevision::CpuCgb0, 0x0000),
         Some(0xC0)
     );
     assert_eq!(
@@ -1212,7 +1268,7 @@ fn boot_rom_asset_directory_length_errors_cover_each_model_slot() {
         (HardwareRevision::DmgCpu0, DMG_FAMILY_BOOT_ROM_LEN - 1),
         (HardwareRevision::DmgCpuC, DMG_FAMILY_BOOT_ROM_LEN - 1),
         (HardwareRevision::CpuMgb, DMG_FAMILY_BOOT_ROM_LEN - 1),
-        (HardwareRevision::CpuCgb, CGB_BOOT_ROM_RAW_LEN - 1),
+        (HardwareRevision::CpuCgb0, CGB_BOOT_ROM_RAW_LEN - 1),
         (HardwareRevision::CpuCgbC, CGB_BOOT_ROM_RAW_LEN - 1),
         (HardwareRevision::CpuCgbE, CGB_BOOT_ROM_RAW_LEN - 1),
         (HardwareRevision::CpuAgbA, CGB_BOOT_ROM_RAW_LEN - 1),

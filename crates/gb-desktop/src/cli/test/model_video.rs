@@ -225,11 +225,16 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
     assert_eq!(parse_revision("dmg-cpu-0"), Ok(HardwareRevision::DmgCpu0));
     assert_eq!(parse_revision("dmg-cpu-c"), Ok(HardwareRevision::DmgCpuC));
     assert_eq!(parse_revision("cpu-mgb"), Ok(HardwareRevision::CpuMgb));
+    assert_eq!(parse_revision("cpu-cgb-0"), Ok(HardwareRevision::CpuCgb0));
     assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));
     assert_eq!(parse_revision("cpu-cgb-d"), Ok(HardwareRevision::CpuCgbD));
     assert_eq!(parse_revision("cpu-cgb-e"), Ok(HardwareRevision::CpuCgbE));
     assert_eq!(parse_revision("cpu-agb-a"), Ok(HardwareRevision::CpuAgbA));
     assert!(parse_revision("cpu-cgb-b").is_err());
+    assert_eq!(
+        revision_argument_name(HardwareRevision::CpuCgb0),
+        "cpu-cgb-0"
+    );
     assert_eq!(
         revision_argument_name(HardwareRevision::CpuCgbE),
         "cpu-cgb-e"
@@ -240,7 +245,7 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
     );
     assert_eq!(
         supported_revision_names(DesktopConsoleModel::GameBoyColor),
-        "cpu-cgb-c, cpu-cgb-d, cpu-cgb-e"
+        "cpu-cgb-0, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e"
     );
     assert_eq!(
         supported_revision_names(DesktopConsoleModel::GameBoyAdvance),

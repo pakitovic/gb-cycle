@@ -3148,7 +3148,7 @@ fn hardware_revision_menu_name(revision: HardwareRevision) -> &'static str {
         HardwareRevision::DmgCpuB => "DMG-CPU B",
         HardwareRevision::DmgCpuC => "DMG-CPU C",
         HardwareRevision::CpuMgb => "CPU MGB",
-        HardwareRevision::CpuCgb => "CPU CGB",
+        HardwareRevision::CpuCgb0 => "CGB-CPU 0",
         HardwareRevision::CpuCgbA => "CPU CGB A",
         HardwareRevision::CpuCgbB => "CPU CGB B",
         HardwareRevision::CpuCgbC => "CPU CGB C",

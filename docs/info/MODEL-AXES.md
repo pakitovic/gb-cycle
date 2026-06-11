@@ -44,7 +44,7 @@ Examples:
 
 ## Reference model profiles
 
-This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. `HardwareRevision` now models the DMG/MGB/CGB/AGB CPU revision profiles listed below, but only a subset is active in frontends and manifests: `DmgCpu0` and `DmgCpuC` for `GameBoy`, `CpuMgb` for `GameBoyPocket` / `GameBoyLight`, `CpuCgbC` / `CpuCgbD` / `CpuCgbE` for `GameBoyColor`, and `CpuAgbA` for `GameBoyAdvance`. Rows that do not have current Rust enum variants remain forward-looking documentation-only. Revision defaults, active revision sets, derived firmware filenames, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
+This table is an informative reference for aligning the public axes with the hardware profile names used in research notes and user-facing documentation. `HardwareRevision` now models the DMG/MGB/CGB/AGB CPU revision profiles listed below, but only a subset is active in frontends and manifests: `DmgCpu0` and `DmgCpuC` for `GameBoy`, `CpuMgb` for `GameBoyPocket` / `GameBoyLight`, `CpuCgb0` / `CpuCgbC` / `CpuCgbD` / `CpuCgbE` for `GameBoyColor`, and `CpuAgbA` for `GameBoyAdvance`. Rows that do not have current Rust enum variants remain forward-looking documentation-only. Revision defaults, active revision sets, derived firmware filenames, and `SkipBoot` profiles remain owned by [`hardware/BOOT-ROM.md`](../hardware/BOOT-ROM.md#product-and-firmware-profiles).
 
 | Default | Console Model | Host Platform | CPU | Boot ROM | Operation Mode | Color Mode | Info |
 |---:|---|---:|---|---|---|---|---|
@@ -54,7 +54,7 @@ This table is an informative reference for aligning the public axes with the har
 | true | Game Boy | Handheld | `DMG-CPU C` | `dmg_boot.bin` | DMG | DMG green palette | Late DMG revision; standard DMG boot ROM. |
 | true | Game Boy Pocket | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGB gray palette | DMG-class mode with MGB boot; final A register value `$FF` enables software detection. |
 | true | Game Boy Light | Handheld | `CPU MGB` | `mgb_boot.bin` | DMG | MGL light palette | DMG-class mode with MGB boot; MGL distinction is the light/backlit display profile. |
-| false | Game Boy Color | Handheld | `CPU CGB` | `cgb0_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Initial CPU without suffix; early CGB/CGB0; boot ROM does not initialize wave RAM. |
+| false | Game Boy Color | Handheld | `CGB-CPU 0` | `cgb0_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Initial CPU without suffix; active for explicit `cpu-cgb-0` boot validation; boot ROM does not initialize wave RAM. |
 | false | Game Boy Color | Handheld | `CPU CGB A` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Early CGB revision; pre-D family, keep CGB timing/APU quirks distinct from D/E. |
 | false | Game Boy Color | Handheld | `CPU CGB B` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Common early CGB revision; pre-D family with known audio, double-speed, and LCD timing quirks. |
 | false | Game Boy Color | Handheld | `CPU CGB C` | `cgb_boot.bin` | CGB; GB Compatible on CGB; CGB DMG-ext experimental | CGB color; GB with CGB palettes | Last pre-D CGB-family revision; known APU/audio-register, double-speed, and LCD timing quirks. |
