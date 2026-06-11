@@ -332,6 +332,12 @@ fn parse_suite_manifest(
         .clone()
         .or_else(|| parsed.defaults.family.clone())
         .ok_or_else(|| format!("suite manifest {} must define family", path.display()))?;
+    if parsed.cases.is_empty() {
+        return Err(format!(
+            "suite manifest {} must define at least one case",
+            path.display()
+        ));
+    }
     let mut seen_cases = BTreeSet::new();
     let mut cases = Vec::new();
     for case in parsed.cases {
@@ -355,12 +361,6 @@ fn parse_suite_manifest(
             &parsed.defaults,
             case,
         )?);
-    }
-    if cases.is_empty() {
-        return Err(format!(
-            "suite manifest {} must define at least one case",
-            path.display()
-        ));
     }
 
     Ok(SuiteManifest {

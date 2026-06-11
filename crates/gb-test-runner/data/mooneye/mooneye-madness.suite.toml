@@ -1,12 +1,12 @@
-family = "wilbertpol"
-suite_name = "wilbertpol-madness"
-report = "wilbertpol"
+family = "mooneye"
+suite_name = "mooneye-madness"
+report = "mooneye"
 model = "mgb"
 timeout_frames = 660
 oracle = { type = "framebuffer", fixture = "madness/mgb_oam_dma_halt_sprites_expected.png" }
 
 [[case]]
-id = "wilbertpol-madness-mgb-oam-dma-halt-sprites"
+id = "mooneye-madness-mgb-oam-dma-halt-sprites"
 rom = "madness/mgb_oam_dma_halt_sprites.gb"
 disabled = true
 comment = "Disabled pending MGB framebuffer investigation: the current gb-cycle output does not match the upstream expected fixture."
