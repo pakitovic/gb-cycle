@@ -140,6 +140,7 @@ impl Ppu {
             && !self.runtime.blank_frame_active
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot == self.current_mode0_start_dot()
+            && (self.scx == 0 || self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0)
             && !context.sprite_extended_mode3
         {
             return Some(PpuAccessMode::HBlank);

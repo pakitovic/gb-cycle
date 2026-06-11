@@ -779,6 +779,11 @@ fn ly_read_advances_early_only_on_visible_hblank_lines() {
         wx: 0x00,
         obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     });
+    assert_eq!(LY_READ_ADVANCE_START_DOT, DOTS_PER_SCANLINE - 5);
+    visible.line_dot = LY_READ_ADVANCE_START_DOT - 1;
+    assert_eq!(visible.snapshot().mode, PpuAccessMode::HBlank);
+    assert_eq!(visible.read_register(0xFF44), 0x20);
+
     visible.line_dot = LY_READ_ADVANCE_START_DOT;
     assert_eq!(visible.snapshot().mode, PpuAccessMode::HBlank);
     assert_eq!(visible.read_register(0xFF44), 0x21);
