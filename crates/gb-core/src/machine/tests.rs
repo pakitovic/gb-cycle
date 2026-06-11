@@ -62,6 +62,12 @@ fn build_cgb_native_test_rom(program: &[u8]) -> Vec<u8> {
     rom
 }
 
+fn build_dmg_compatible_test_rom(program: &[u8]) -> Vec<u8> {
+    let mut rom = build_test_rom(program);
+    rom[0x0143] = 0x00;
+    rom
+}
+
 fn build_cgb_native_binary_zero_new_licensee_test_rom(program: &[u8]) -> Vec<u8> {
     let mut rom = build_cgb_native_test_rom(program);
     rom[0x0144] = 0x00;
@@ -187,6 +193,26 @@ fn cgb_custom_boot_uses_cartridge_entry_timer_and_raster_phase() {
     assert_eq!(machine.timer().snapshot().system_counter, 0x1E98);
     assert_eq!(machine.ppu().snapshot().ly, 0x90);
     assert_eq!(machine.ppu().snapshot().line_dot, 173);
+}
+
+#[test]
+fn cgb_and_agb_dmg_compatible_direct_boot_use_model_specific_timer_phase() {
+    let mut cgb = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    cgb.load_cartridge(build_dmg_compatible_test_rom(&[0x00]))
+        .expect("CGB DMG-compatible test ROM should load");
+
+    let mut agb = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyAdvance).with_startup_mode(StartupMode::SkipBoot),
+    );
+    agb.load_cartridge(build_dmg_compatible_test_rom(&[0x00]))
+        .expect("AGB DMG-compatible test ROM should load");
+
+    assert_eq!(cgb.timer().snapshot().system_counter, 0x2674);
+    assert_eq!(agb.timer().snapshot().system_counter, 0x2678);
+    assert_eq!(cgb.read_bus(0xFF04), 0x26);
+    assert_eq!(agb.read_bus(0xFF04), 0x26);
 }
 
 #[test]
