@@ -160,6 +160,55 @@ fn ordinary_mode0_stat_pretrigger_is_hidden_from_same_cycle_cpu_if_reads() {
 }
 
 #[test]
+fn mode0_hblank_halt_wake_defers_only_the_model_scx_pretrigger_aperture() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(OperatingMode::Cgb);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_MODE0_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.ly = 1;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.startup_mode_latch = None;
+
+    let mode0_start_dot = ppu.current_mode0_start_dot();
+    ppu.line_dot = mode0_start_dot - 5;
+    assert!(!ppu.mode0_hblank_halt_wake_deferred());
+
+    ppu.line_dot = mode0_start_dot - 4;
+    assert!(ppu.mode0_hblank_halt_wake_deferred());
+
+    ppu.line_dot = mode0_start_dot - 1;
+    assert!(ppu.mode0_hblank_halt_wake_deferred());
+
+    ppu.line_dot = mode0_start_dot;
+    assert!(!ppu.mode0_hblank_halt_wake_deferred());
+
+    ppu.stat_interrupt_enable = STAT_MODE2_INTERRUPT_ENABLE_BIT;
+    ppu.line_dot = mode0_start_dot - 4;
+    assert!(!ppu.mode0_hblank_halt_wake_deferred());
+
+    for scx in 0..=7 {
+        let mut dmg = dmg_mode0_stat_ppu(scx);
+        dmg.line_dot = dmg.current_mode0_start_dot() - 4;
+        assert_eq!(
+            dmg.mode0_hblank_halt_wake_deferred(),
+            matches!(scx, 1 | 2 | 5 | 6),
+            "SCX low bits {scx}"
+        );
+    }
+}
+
+#[test]
 fn ordinary_mode2_stat_pretrigger_is_hidden_from_same_cycle_cpu_if_reads() {
     let mut ppu = dmg_mode2_stat_ppu();
 

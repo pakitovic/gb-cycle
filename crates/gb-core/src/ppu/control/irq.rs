@@ -385,6 +385,15 @@ impl Ppu {
             && self.line_dot + 4 >= self.current_scanline_length()
     }
 
+    pub(crate) fn mode0_hblank_halt_wake_deferred(&self) -> bool {
+        (self.console_model.is_cgb_family() || matches!(self.scx & 0x07, 1 | 2 | 5 | 6))
+            && self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot < self.current_mode0_start_dot()
+            && self.line_dot + 4 >= self.current_mode0_start_dot()
+    }
+
     pub(crate) fn dmg_mode2_vblank_entry_interrupt_service_deferred(&self) -> bool {
         self.console_model.is_dmg_family()
             && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0

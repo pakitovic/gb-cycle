@@ -983,6 +983,7 @@ impl MachinePhaseRunner<'_> {
             if cpu.execution_state() == CpuExecutionState::Halted
                 && interrupts.highest_pending() == Some(InterruptSource::LcdStat)
                 && (ppu.dmg_lcd_reenable_mode0_halt_wake_deferred()
+                    || ppu.mode0_hblank_halt_wake_deferred()
                     || ppu.dmg_mode2_oam_halt_wake_deferred()
                     || ppu.dmg_mode2_vblank_entry_halt_wake_deferred())
             {

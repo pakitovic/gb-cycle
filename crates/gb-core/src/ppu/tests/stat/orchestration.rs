@@ -191,7 +191,7 @@ fn published_stat_keep_drawing_orchestrator_beats_the_base_published_hblank_mode
 
 #[test]
 fn published_stat_terminal_boundary_orchestrator_switches_to_hblank_on_non_extended_mode0_start() {
-    let mut ppu = dmg_stat_ppu(0x08);
+    let mut ppu = dmg_stat_ppu(STAT_MODE0_INTERRUPT_ENABLE_BIT);
     ppu.ly = 1;
     ppu.line_dot = MODE0_START_DOT;
 
@@ -207,6 +207,28 @@ fn published_stat_terminal_boundary_orchestrator_switches_to_hblank_on_non_exten
     assert_eq!(
         ppu.current_published_stat_access_mode(),
         PpuAccessMode::HBlank
+    );
+}
+
+#[test]
+fn nonzero_scx_mode2_only_terminal_boundary_keeps_published_drawing() {
+    let mut ppu = dmg_stat_ppu(STAT_MODE2_INTERRUPT_ENABLE_BIT);
+    ppu.scx = 4;
+    ppu.ly = 1;
+    ppu.line_dot = MODE0_START_DOT;
+
+    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT);
+    assert_eq!(
+        ppu.access_mode_for_line_dot(ppu.line_dot - 1),
+        PpuAccessMode::Drawing
+    );
+    assert_eq!(
+        ppu.access_mode_for_line_dot(ppu.line_dot),
+        PpuAccessMode::HBlank
+    );
+    assert_eq!(
+        ppu.current_published_stat_access_mode(),
+        PpuAccessMode::Drawing
     );
 }
 
