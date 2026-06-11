@@ -588,9 +588,10 @@ impl Apu {
         let mut output = self.channels.output_state();
         let startup_silent_channel_mask = self.startup_silent_channel_mask & CHANNEL_ACTIVE_MASK;
         if startup_silent_channel_mask != 0 {
-            for (index, digital_output) in output.digital_outputs.iter_mut().enumerate() {
-                if startup_silent_channel_mask & CHANNEL_MASKS[index] != 0 {
-                    *digital_output = 0;
+            for (index, channel_mask) in CHANNEL_MASKS.iter().copied().enumerate() {
+                if startup_silent_channel_mask & channel_mask != 0 {
+                    output.digital_outputs[index] = 0;
+                    output.dac_mask &= !channel_mask;
                 }
             }
         }

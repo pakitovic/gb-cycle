@@ -64,7 +64,7 @@ fn cgb_pcm_registers_expose_current_channel_digital_outputs() {
 }
 
 #[test]
-fn cgb_direct_start_silent_mask_preserves_nr52_but_mutes_pcm_until_trigger() {
+fn cgb_direct_start_silent_mask_preserves_nr52_but_mutes_pcm_and_dac_until_trigger() {
     let mut apu = Apu::new(ConsoleModel::GameBoyColor);
 
     apu.apply_startup_state(ApuStartupState {
@@ -95,13 +95,33 @@ fn cgb_direct_start_silent_mask_preserves_nr52_but_mutes_pcm_until_trigger() {
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     });
 
+    let snapshot = apu.snapshot();
     assert_eq!(apu.read_register(0xFF26), 0xF1);
-    assert_eq!(apu.snapshot().channel_active_mask, CHANNEL_ACTIVE_CH1);
-    assert_eq!(apu.snapshot().channel_dac_mask, CHANNEL_ACTIVE_CH1);
+    assert_eq!(snapshot.channel_active_mask, CHANNEL_ACTIVE_CH1);
+    assert_eq!(snapshot.channel_dac_mask, 0x00);
+    assert_eq!(snapshot.output.channel_digital_outputs[0], 0);
+    assert_eq!(snapshot.output.channel_dac_outputs[0], 0);
+    assert_eq!(
+        snapshot.output.mixer_output,
+        ApuStereoOutputSnapshot::default()
+    );
+    assert_eq!(
+        snapshot.output.master_output,
+        ApuStereoOutputSnapshot::default()
+    );
+    assert_eq!(
+        snapshot.output.hpf_output,
+        ApuStereoOutputSnapshot::default()
+    );
     assert_eq!(apu.read_pcm12(), 0x00);
+    assert_eq!(
+        apu.recorded_channel_tap_pre_hpf(ApuRecordedChannel::Ch1),
+        ApuRecordedChannelMixTap::default()
+    );
 
     apu.write_register(0xFF10, 0x00);
     assert_eq!(apu.read_register(0xFF26), 0xF1);
+    assert_eq!(apu.snapshot().channel_dac_mask, 0x00);
     assert_eq!(apu.read_pcm12(), 0x00);
 
     apu.write_register(0xFF11, 0x80);
@@ -111,8 +131,16 @@ fn cgb_direct_start_silent_mask_preserves_nr52_but_mutes_pcm_until_trigger() {
     apu.channels.channel_1.pulse.suppress_initial_trigger_output = false;
     apu.channels.channel_1.pulse.trigger_delay_t_cycles = 0;
     apu.channels.channel_1.pulse.duty_step = 0;
+    apu.preview_output_path();
 
+    let snapshot = apu.snapshot();
+    assert_eq!(snapshot.channel_dac_mask, CHANNEL_ACTIVE_CH1);
     assert_eq!(apu.read_pcm12(), 0x0F);
+    assert_ne!(snapshot.output.channel_dac_outputs[0], 0);
+    assert!(
+        apu.recorded_channel_tap_pre_hpf(ApuRecordedChannel::Ch1)
+            .any_output_connected
+    );
 }
 
 #[test]
