@@ -453,6 +453,28 @@ pressed = false
 
 #[test]
 fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
+    let dmg0_model = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-dmg0",
+        "which.gb",
+    )
+    .replace(
+        "model = \"dmg\"",
+        "model = \"dmg\"\nrevision = \"dmg-cpu-0\"",
+    );
+    let dmg0_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &dmg0_model,
+    )
+    .expect("DMG0 should parse");
+    assert_eq!(
+        dmg0_manifest.cases[0].hardware_revision,
+        gb_core::HardwareRevision::DmgCpu0
+    );
+
     let mgb_model = basic_manifest(
         "gb-emulator-shootout",
         "acid",
@@ -580,6 +602,20 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
         gb_core::HostPlatform::Sgb2
     );
     assert_eq!(sgb2_manifest.cases[0].report_model, ReportModel::Sgb2);
+
+    let sgb_dmg0_model = sgb_model.replace(
+        "model = \"sgb\"",
+        "model = \"sgb\"\nrevision = \"dmg-cpu-0\"",
+    );
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("samesuite.suite.toml"),
+            "gb-emulator-shootout",
+            &sgb_dmg0_model,
+        )
+        .expect_err("SGB should reject DMG0")
+        .contains("does not support revision DmgCpu0")
+    );
 
     let report_suffix = basic_manifest(
         "gb-emulator-shootout",
@@ -1470,7 +1506,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         (
             "mooneye",
             &[
-                ("mooneye-acceptance", 72, "mooneye"),
+                ("mooneye-acceptance", 75, "mooneye"),
                 ("mooneye-emulator-only", 28, "mooneye"),
                 ("mooneye-madness", 0, "mooneye"),
                 ("mooneye-manual", 2, "mooneye"),

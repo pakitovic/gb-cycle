@@ -11,7 +11,7 @@ fn phase_4_inc_hl_rom_fixture_matches_expected_oam_state_and_traces_for_all_mode
     let trace_cases = [
         (
             ConsoleModel::GameBoy,
-            HardwareRevision::DmgCpu,
+            HardwareRevision::DmgCpu0,
             INC_HL_DMG0_TRACE_NAME,
             true,
         ),

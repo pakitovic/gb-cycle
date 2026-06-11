@@ -534,7 +534,7 @@ fn parse_case(
     };
     if !model_profile
         .console_model
-        .supports_revision(hardware_revision)
+        .supports_revision_on_host(model_profile.host_platform, hardware_revision)
     {
         return Err(format!(
             "case {:?} in {}: model {:?} does not support revision {:?}",
@@ -740,7 +740,7 @@ fn parse_model_profile(model: &str) -> Result<ModelProfile, String> {
 
 fn parse_hardware_revision(revision: &str) -> Result<HardwareRevision, String> {
     match revision {
-        "dmg-cpu" => Ok(HardwareRevision::DmgCpu),
+        "dmg-cpu-0" => Ok(HardwareRevision::DmgCpu0),
         "dmg-cpu-a" => Ok(HardwareRevision::DmgCpuA),
         "dmg-cpu-b" => Ok(HardwareRevision::DmgCpuB),
         "dmg-cpu-c" => Ok(HardwareRevision::DmgCpuC),

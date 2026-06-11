@@ -60,7 +60,7 @@ fn sha_and_expected_sha_helpers_cover_all_supported_boot_rom_revisions() {
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     );
     assert_eq!(
-        HardwareRevision::boot_rom_expected_sha256(HardwareRevision::DmgCpu).len(),
+        HardwareRevision::boot_rom_expected_sha256(HardwareRevision::DmgCpu0).len(),
         64
     );
     assert_eq!(

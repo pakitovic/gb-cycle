@@ -2,7 +2,8 @@ use crate::host_io::writeln_checked;
 use gb_core::{
     BootRomAssetError, CartridgeDiagnostic, CartridgeDiagnosticSeverity, CartridgeHeaderParseError,
     CartridgeLoadError, CartridgeSelection, CgbFlag, CompatibilityPolicy, ConsoleModel,
-    ExecutionMode, HardwareRevision, SgbFlag, StartupMode, UnsupportedCartridgeCategory,
+    ExecutionMode, HardwareRevision, HostPlatform, SgbFlag, StartupMode,
+    UnsupportedCartridgeCategory,
 };
 use gb_persistence::{
     CartridgeSaveBackendError, EXTERNAL_SAVE_FILE_EXTENSION, ExternalSaveError,
@@ -40,7 +41,7 @@ pub(crate) fn compatibility_for_execution_mode(
 
 pub(crate) fn revision_argument_name(revision: HardwareRevision) -> &'static str {
     match revision {
-        HardwareRevision::DmgCpu => "dmg-cpu",
+        HardwareRevision::DmgCpu0 => "dmg-cpu-0",
         HardwareRevision::DmgCpuA => "dmg-cpu-a",
         HardwareRevision::DmgCpuB => "dmg-cpu-b",
         HardwareRevision::DmgCpuC => "dmg-cpu-c",
@@ -55,9 +56,17 @@ pub(crate) fn revision_argument_name(revision: HardwareRevision) -> &'static str
     }
 }
 
+#[cfg(test)]
 pub(crate) fn supported_revision_names(console_model: ConsoleModel) -> String {
+    supported_revision_names_on_host(console_model, HostPlatform::Handheld)
+}
+
+pub(crate) fn supported_revision_names_on_host(
+    console_model: ConsoleModel,
+    host_platform: HostPlatform,
+) -> String {
     console_model
-        .active_revisions()
+        .active_revisions_on_host(host_platform)
         .iter()
         .map(|revision| revision_argument_name(*revision))
         .collect::<Vec<_>>()

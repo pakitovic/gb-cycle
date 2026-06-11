@@ -392,7 +392,12 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
     assert_eq!(
         parse_run_arguments(["demo.gb", "--revision", "cpu-cgb-e"])
             .expect_err("CGB-E hardware requires CGB model"),
-        "--revision cpu-cgb-e is not supported by --model DMG; expected one of: dmg-cpu-c"
+        "--revision cpu-cgb-e is not supported by --model DMG; expected one of: dmg-cpu-0, dmg-cpu-c"
+    );
+    assert_eq!(
+        parse_run_arguments(["demo.gb", "--model", "SGB", "--revision", "dmg-cpu-0"])
+            .expect_err("DMG0 hardware requires handheld DMG model"),
+        "--revision dmg-cpu-0 is not supported by --model SGB; expected one of: dmg-cpu-c"
     );
     assert_eq!(
         parse_run_arguments(["demo.gb", "--cgb-revision", "cgb-e"])

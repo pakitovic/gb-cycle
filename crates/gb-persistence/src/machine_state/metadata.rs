@@ -219,7 +219,7 @@ pub(super) fn decode_operating_mode(
 
 pub(super) fn encode_revision(value: HardwareRevision) -> u8 {
     match value {
-        HardwareRevision::DmgCpu => 0,
+        HardwareRevision::DmgCpu0 => 0,
         HardwareRevision::DmgCpuA => 1,
         HardwareRevision::DmgCpuB => 2,
         HardwareRevision::DmgCpuC => 3,
@@ -239,7 +239,7 @@ pub(super) fn decode_revision(
     field: &'static str,
 ) -> Result<HardwareRevision, CartridgeSaveBackendError> {
     match tag {
-        0 => Ok(HardwareRevision::DmgCpu),
+        0 => Ok(HardwareRevision::DmgCpu0),
         1 => Ok(HardwareRevision::DmgCpuA),
         2 => Ok(HardwareRevision::DmgCpuB),
         3 => Ok(HardwareRevision::DmgCpuC),

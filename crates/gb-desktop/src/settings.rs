@@ -646,8 +646,8 @@ impl PersistedSgbVideoStandard {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 enum PersistedHardwareRevision {
-    #[serde(rename = "dmg-cpu")]
-    DmgCpu,
+    #[serde(rename = "dmg-cpu-0")]
+    DmgCpu0,
     #[serde(rename = "dmg-cpu-a")]
     DmgCpuA,
     #[serde(rename = "dmg-cpu-b")]
@@ -676,7 +676,7 @@ enum PersistedHardwareRevision {
 impl PersistedHardwareRevision {
     fn from_external(value: HardwareRevision) -> Self {
         match value {
-            HardwareRevision::DmgCpu => Self::DmgCpu,
+            HardwareRevision::DmgCpu0 => Self::DmgCpu0,
             HardwareRevision::DmgCpuA => Self::DmgCpuA,
             HardwareRevision::DmgCpuB => Self::DmgCpuB,
             HardwareRevision::DmgCpuC => Self::DmgCpuC,
@@ -693,7 +693,7 @@ impl PersistedHardwareRevision {
 
     fn to_external(self) -> HardwareRevision {
         match self {
-            Self::DmgCpu => HardwareRevision::DmgCpu,
+            Self::DmgCpu0 => HardwareRevision::DmgCpu0,
             Self::DmgCpuA => HardwareRevision::DmgCpuA,
             Self::DmgCpuB => HardwareRevision::DmgCpuB,
             Self::DmgCpuC => HardwareRevision::DmgCpuC,

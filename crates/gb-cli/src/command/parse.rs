@@ -4,7 +4,7 @@ use crate::options::{
     BenchmarkRunOptions, BootRomVerificationMode, DefaultRunBudget, InspectRomOptions, RunModel,
     RunOptions, SavePolicy, SavesDirection, SavesOptions, SgbBorderPresentationMode,
 };
-use crate::report::{revision_argument_name, supported_revision_names};
+use crate::report::{revision_argument_name, supported_revision_names_on_host};
 use gb_core::{ExecutionMode, HardwareRevision, SgbVideoStandard, StartupMode};
 use std::path::PathBuf;
 
@@ -279,12 +279,13 @@ pub(crate) fn validate_run_model_axes(
     sgb_video_standard_explicit: bool,
 ) -> Result<(), String> {
     let console_model = options.model.console_model();
-    if !console_model.supports_revision(options.revision) {
+    let host_platform = options.model.host_platform();
+    if !console_model.supports_revision_on_host(host_platform, options.revision) {
         return Err(format!(
             "--revision {} is not supported by --model {}; expected one of: {}",
             revision_argument_name(options.revision),
             options.model.name(),
-            supported_revision_names(console_model)
+            supported_revision_names_on_host(console_model, host_platform)
         ));
     }
     if sgb_video_standard_explicit && options.model != RunModel::SuperGameBoy {
@@ -440,6 +441,7 @@ pub(crate) fn parse_run_model(value: &str) -> Result<RunModel, String> {
 
 pub(crate) fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
     match value {
+        "dmg-cpu-0" => Ok(HardwareRevision::DmgCpu0),
         "dmg-cpu-c" => Ok(HardwareRevision::DmgCpuC),
         "cpu-mgb" => Ok(HardwareRevision::CpuMgb),
         "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
@@ -447,7 +449,7 @@ pub(crate) fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
         "cpu-agb-a" => Ok(HardwareRevision::CpuAgbA),
         _ => Err(format!(
-            "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e, or cpu-agb-a"
+            "unsupported --revision value {value:?}; expected dmg-cpu-0, dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e, or cpu-agb-a"
         )),
     }
 }

@@ -15,12 +15,21 @@ fn boot(
     startup_mode: StartupMode,
     assets: BootRomAssets,
 ) -> BootController {
-    BootController::new(
+    boot_with_revision(
         console_model,
         console_model.default_revision(),
         startup_mode,
         assets,
     )
+}
+
+fn boot_with_revision(
+    console_model: ConsoleModel,
+    revision: HardwareRevision,
+    startup_mode: StartupMode,
+    assets: BootRomAssets,
+) -> BootController {
+    BootController::new(console_model, revision, startup_mode, assets)
 }
 
 fn test_rom_with_cgb_header(
@@ -235,12 +244,12 @@ fn boot_controller_uses_the_explicit_boot_kind() {
     assert_eq!(
         BootController::new(
             ConsoleModel::GameBoy,
-            HardwareRevision::DmgCpu,
+            HardwareRevision::DmgCpu0,
             StartupMode::RealBoot,
             empty_assets(),
         )
         .revision(),
-        HardwareRevision::DmgCpu
+        HardwareRevision::DmgCpu0
     );
 }
 
@@ -591,15 +600,24 @@ fn agb_dmg_mode_boot_flags_follow_the_final_b_increment() {
     half_carry_title[0] = 0x0F;
     let half_carry_header =
         test_header_with_cgb_header_and_title(half_carry_title, 0x00, 0x01, *b"00");
-    let half_carry =
-        build_skip_boot_cpu_state(ConsoleModel::GameBoyAdvance, None, Some(&half_carry_header));
+    let half_carry = build_skip_boot_cpu_state(
+        ConsoleModel::GameBoyAdvance,
+        HardwareRevision::CpuAgbA,
+        None,
+        Some(&half_carry_header),
+    );
     assert_eq!(half_carry.b, 0x10);
     assert_eq!(half_carry.f, 0x20);
 
     let mut zero_title = [0; 16];
     zero_title[0] = 0xFF;
     let zero_header = test_header_with_cgb_header_and_title(zero_title, 0x00, 0x01, *b"00");
-    let zero = build_skip_boot_cpu_state(ConsoleModel::GameBoyAdvance, None, Some(&zero_header));
+    let zero = build_skip_boot_cpu_state(
+        ConsoleModel::GameBoyAdvance,
+        HardwareRevision::CpuAgbA,
+        None,
+        Some(&zero_header),
+    );
     assert_eq!(zero.b, 0x00);
     assert_eq!(zero.f, 0xA0);
 }
@@ -611,12 +629,22 @@ fn cgb_family_dmg_mode_boot_hl_tracks_logo_tilemap_checksum_cases() {
         title[0] = title_checksum;
         let header = test_header_with_cgb_header_and_title(title, 0x00, 0x01, *b"00");
 
-        let cgb = build_skip_boot_cpu_state(ConsoleModel::GameBoyColor, None, Some(&header));
+        let cgb = build_skip_boot_cpu_state(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbE,
+            None,
+            Some(&header),
+        );
         assert_eq!(cgb.b, cgb_b);
         assert_eq!(cgb.h, 0x99);
         assert_eq!(cgb.l, 0x1A);
 
-        let agb = build_skip_boot_cpu_state(ConsoleModel::GameBoyAdvance, None, Some(&header));
+        let agb = build_skip_boot_cpu_state(
+            ConsoleModel::GameBoyAdvance,
+            HardwareRevision::CpuAgbA,
+            None,
+            Some(&header),
+        );
         assert_eq!(agb.b, agb_b);
         assert_eq!(agb.h, 0x99);
         assert_eq!(agb.l, 0x1A);
@@ -626,12 +654,22 @@ fn cgb_family_dmg_mode_boot_hl_tracks_logo_tilemap_checksum_cases() {
     title[0] = 0x42;
     let header = test_header_with_cgb_header_and_title(title, 0x00, 0x01, *b"00");
 
-    let cgb = build_skip_boot_cpu_state(ConsoleModel::GameBoyColor, None, Some(&header));
+    let cgb = build_skip_boot_cpu_state(
+        ConsoleModel::GameBoyColor,
+        HardwareRevision::CpuCgbE,
+        None,
+        Some(&header),
+    );
     assert_eq!(cgb.b, 0x42);
     assert_eq!(cgb.h, 0x00);
     assert_eq!(cgb.l, 0x7C);
 
-    let agb = build_skip_boot_cpu_state(ConsoleModel::GameBoyAdvance, None, Some(&header));
+    let agb = build_skip_boot_cpu_state(
+        ConsoleModel::GameBoyAdvance,
+        HardwareRevision::CpuAgbA,
+        None,
+        Some(&header),
+    );
     assert_eq!(agb.b, 0x43);
     assert_eq!(agb.h, 0x00);
     assert_eq!(agb.l, 0x7C);
@@ -642,7 +680,11 @@ fn cgb_direct_start_system_counter_uses_native_non_nintendo_header_bucket() {
     let header = test_header_with_cgb_header(0x80, 0x00, *b"00");
 
     assert_eq!(
-        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&header)),
+        direct_start_system_counter(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbE,
+            Some(&header)
+        ),
         0x1E84
     );
 }
@@ -652,7 +694,11 @@ fn cgb_direct_start_system_counter_uses_native_binary_zero_new_licensee_header_b
     let header = test_header_with_cgb_header(0x80, 0x33, [0x00, 0x00]);
 
     assert_eq!(
-        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&header)),
+        direct_start_system_counter(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbE,
+            Some(&header)
+        ),
         0x1E98
     );
     assert_eq!(cgb_real_boot_handoff_correction_t_cycles(Some(&header)), 24);
@@ -665,19 +711,31 @@ fn cgb_direct_start_system_counter_keeps_mooneye_baseline_for_missing_or_dmg_hea
     let cgb_nintendo_header = test_header_with_cgb_header(0x80, 0x01, *b"00");
 
     assert_eq!(
-        direct_start_system_counter(ConsoleModel::GameBoyColor, None),
+        direct_start_system_counter(ConsoleModel::GameBoyColor, HardwareRevision::CpuCgbE, None),
         0x2674
     );
     assert_eq!(
-        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&dmg_compatible_header)),
+        direct_start_system_counter(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbE,
+            Some(&dmg_compatible_header)
+        ),
         0x2674
     );
     assert_eq!(
-        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&cgb_new_licensee_header)),
+        direct_start_system_counter(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbE,
+            Some(&cgb_new_licensee_header)
+        ),
         0x2674
     );
     assert_eq!(
-        direct_start_system_counter(ConsoleModel::GameBoyColor, Some(&cgb_nintendo_header)),
+        direct_start_system_counter(
+            ConsoleModel::GameBoyColor,
+            HardwareRevision::CpuCgbE,
+            Some(&cgb_nintendo_header)
+        ),
         0x2674
     );
 }
@@ -920,15 +978,55 @@ fn dmg_family_skip_boot_flags_follow_the_header_checksum_rule() {
         "empty-slot fallback keeps the common DMG preset"
     );
     assert_eq!(
-        build_skip_boot_cpu_state(ConsoleModel::GameBoy, None, Some(&header)).f,
+        build_skip_boot_cpu_state(
+            ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
+            None,
+            Some(&header)
+        )
+        .f,
         0x80
     );
     rom[0x014D] = 0x7F;
     let header = CartridgeHeader::parse(&rom).expect("header should parse");
     assert_eq!(
-        build_skip_boot_cpu_state(ConsoleModel::GameBoy, None, Some(&header)).f,
+        build_skip_boot_cpu_state(
+            ConsoleModel::GameBoy,
+            HardwareRevision::DmgCpuC,
+            None,
+            Some(&header)
+        )
+        .f,
         0xB0
     );
+}
+
+#[test]
+fn dmg0_skip_boot_state_uses_revision_specific_cpu_and_hwio() {
+    let boot = boot_with_revision(
+        ConsoleModel::GameBoy,
+        HardwareRevision::DmgCpu0,
+        StartupMode::SkipBoot,
+        empty_assets(),
+    );
+    let state = boot
+        .machine_skip_boot_state(None)
+        .expect("DMG0 SkipBoot should expose a direct startup state");
+
+    assert_eq!(state.cpu.a, 0x01);
+    assert_eq!(state.cpu.f, 0x00);
+    assert_eq!(state.cpu.b, 0xFF);
+    assert_eq!(state.cpu.c, 0x13);
+    assert_eq!(state.cpu.d, 0x00);
+    assert_eq!(state.cpu.e, 0xC1);
+    assert_eq!(state.cpu.h, 0x84);
+    assert_eq!(state.cpu.l, 0x03);
+    assert_eq!(state.cpu.sp, 0xFFFE);
+    assert_eq!(state.cpu.pc, 0x0100);
+    assert_eq!(state.io.div, 0x18);
+    assert_eq!(state.io.stat, 0x83);
+    assert_eq!(state.io.ly, 0x01);
+    assert_eq!(state.timer.system_counter, 0x182C);
 }
 
 fn vram_offset(address: u16) -> usize {
@@ -972,7 +1070,7 @@ fn boot_rom_assets_can_load_all_directory_images_independently() {
     let directory = unique_temp_dir();
     fs::create_dir_all(&directory).expect("temporary asset directory should be creatable");
     for (kind, marker, len) in [
-        (HardwareRevision::DmgCpu, 0xD0, DMG_FAMILY_BOOT_ROM_LEN),
+        (HardwareRevision::DmgCpu0, 0xD0, DMG_FAMILY_BOOT_ROM_LEN),
         (HardwareRevision::DmgCpuC, 0xD1, DMG_FAMILY_BOOT_ROM_LEN),
         (HardwareRevision::CpuMgb, 0xD2, DMG_FAMILY_BOOT_ROM_LEN),
         (HardwareRevision::CpuCgb, 0xC0, CGB_BOOT_ROM_RAW_LEN),
@@ -995,7 +1093,7 @@ fn boot_rom_assets_can_load_all_directory_images_independently() {
         DMG_FAMILY_BOOT_ROM_LEN * 3 + CGB_BOOT_ROM_RAW_LEN * 4
     );
     assert_eq!(
-        assets.read_byte(HardwareRevision::DmgCpu, 0x0000),
+        assets.read_byte(HardwareRevision::DmgCpu0, 0x0000),
         Some(0xD0)
     );
     assert_eq!(
@@ -1111,7 +1209,7 @@ fn boot_rom_asset_errors_cover_missing_non_directory_and_read_failure_paths() {
 #[test]
 fn boot_rom_asset_directory_length_errors_cover_each_model_slot() {
     for (kind, len) in [
-        (HardwareRevision::DmgCpu, DMG_FAMILY_BOOT_ROM_LEN - 1),
+        (HardwareRevision::DmgCpu0, DMG_FAMILY_BOOT_ROM_LEN - 1),
         (HardwareRevision::DmgCpuC, DMG_FAMILY_BOOT_ROM_LEN - 1),
         (HardwareRevision::CpuMgb, DMG_FAMILY_BOOT_ROM_LEN - 1),
         (HardwareRevision::CpuCgb, CGB_BOOT_ROM_RAW_LEN - 1),
@@ -1159,7 +1257,7 @@ fn boot_rom_asset_directory_length_errors_cover_each_model_slot() {
 fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
     let assets = BootRomAssets::none()
         .with_bytes(
-            HardwareRevision::DmgCpu,
+            HardwareRevision::DmgCpu0,
             vec![0x10; DMG_FAMILY_BOOT_ROM_LEN],
         )
         .expect("dmg0 image should validate")
@@ -1183,7 +1281,7 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
         .expect("sgb2 image should validate");
 
     assert_eq!(
-        BootRomAssets::filename(HardwareRevision::DmgCpu),
+        BootRomAssets::filename(HardwareRevision::DmgCpu0),
         "dmg0_boot.bin"
     );
     assert_eq!(
@@ -1211,7 +1309,7 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
         "sgb2_boot.bin"
     );
     assert!(!assets.is_empty());
-    assert!(assets.has_image(HardwareRevision::DmgCpu));
+    assert!(assets.has_image(HardwareRevision::DmgCpu0));
     assert!(assets.has_image(HardwareRevision::DmgCpuC));
     assert!(assets.has_image(HardwareRevision::CpuMgb));
     assert!(assets.has_image(HardwareRevision::CpuCgbC));
@@ -1219,7 +1317,7 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
     assert!(assets.has_asset(BootRomAssetKind::Sgb));
     assert!(assets.has_asset(BootRomAssetKind::Sgb2));
     assert_eq!(
-        assets.read_byte(HardwareRevision::DmgCpu, 0x0000),
+        assets.read_byte(HardwareRevision::DmgCpu0, 0x0000),
         Some(0x10)
     );
     assert_eq!(

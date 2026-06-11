@@ -364,12 +364,13 @@ fn validate_model_axes(
     explicit_sgb_video_standard: bool,
 ) -> Result<(), String> {
     let console_model = config.launch.console_model.console_model();
-    if !console_model.supports_revision(config.launch.revision) {
+    let host_platform = config.launch.console_model.host_platform();
+    if !console_model.supports_revision_on_host(host_platform, config.launch.revision) {
         return Err(format!(
             "--revision {} is not supported by --model {}; expected one of: {}",
             revision_argument_name(config.launch.revision),
             config.launch.console_model.name(),
-            supported_revision_names(console_model)
+            supported_revision_names(config.launch.console_model)
         ));
     }
     if explicit_sgb_video_standard
@@ -423,7 +424,7 @@ pub fn help_text() -> &'static str {
         "\n",
         "Options:\n",
         "  --model <DMG|MGB|LGB|CGB|AGB|SGB|SGB2> Select the console model/profile (default: DMG)\n",
-        "  --revision <dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>\n",
+        "  --revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>\n",
         "                                         Select the active hardware revision for --model\n",
         "  --sgb-standard <ntsc|pal>             Select the original SGB video standard (requires --model SGB)\n",
         "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",
@@ -500,6 +501,7 @@ fn parse_console_model(value: &str) -> Result<DesktopConsoleModel, String> {
 
 fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
     match value {
+        "dmg-cpu-0" => Ok(HardwareRevision::DmgCpu0),
         "dmg-cpu-c" => Ok(HardwareRevision::DmgCpuC),
         "cpu-mgb" => Ok(HardwareRevision::CpuMgb),
         "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
@@ -507,7 +509,7 @@ fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
         "cpu-agb-a" => Ok(HardwareRevision::CpuAgbA),
         _ => Err(format!(
-            "unsupported --revision value {value:?}; expected dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e, or cpu-agb-a"
+            "unsupported --revision value {value:?}; expected dmg-cpu-0, dmg-cpu-c, cpu-mgb, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e, or cpu-agb-a"
         )),
     }
 }
@@ -557,7 +559,7 @@ fn parse_boot_rom_verification_mode(value: &str) -> Result<BootRomVerificationMo
 
 fn revision_argument_name(revision: HardwareRevision) -> &'static str {
     match revision {
-        HardwareRevision::DmgCpu => "dmg-cpu",
+        HardwareRevision::DmgCpu0 => "dmg-cpu-0",
         HardwareRevision::DmgCpuA => "dmg-cpu-a",
         HardwareRevision::DmgCpuB => "dmg-cpu-b",
         HardwareRevision::DmgCpuC => "dmg-cpu-c",
@@ -572,7 +574,7 @@ fn revision_argument_name(revision: HardwareRevision) -> &'static str {
     }
 }
 
-fn supported_revision_names(console_model: gb_core::ConsoleModel) -> String {
+fn supported_revision_names(console_model: DesktopConsoleModel) -> String {
     console_model
         .active_revisions()
         .iter()

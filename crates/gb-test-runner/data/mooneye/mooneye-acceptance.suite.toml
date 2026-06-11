@@ -29,8 +29,7 @@ model = "sgb"
 [[case]]
 id = "mooneye-acceptance-boot-div-dmg0"
 rom = "acceptance/boot_div-dmg0.gb"
-disabled = true
-comment = "Requires DMG-CPU 0; gb-cycle currently supports the active DMG-CPU C profile only."
+revision = "dmg-cpu-0"
 
 [[case]]
 id = "mooneye-acceptance-boot-div-dmgabcmgb"
@@ -49,8 +48,7 @@ model = "sgb"
 [[case]]
 id = "mooneye-acceptance-boot-hwio-dmg0"
 rom = "acceptance/boot_hwio-dmg0.gb"
-disabled = true
-comment = "Requires DMG-CPU 0; gb-cycle currently supports the active DMG-CPU C profile only."
+revision = "dmg-cpu-0"
 
 [[case]]
 id = "mooneye-acceptance-boot-hwio-dmgabcmgb"
@@ -59,8 +57,7 @@ rom = "acceptance/boot_hwio-dmgABCmgb.gb"
 [[case]]
 id = "mooneye-acceptance-boot-regs-dmg0"
 rom = "acceptance/boot_regs-dmg0.gb"
-disabled = true
-comment = "Requires DMG-CPU 0; gb-cycle currently supports the active DMG-CPU C profile only."
+revision = "dmg-cpu-0"
 
 [[case]]
 id = "mooneye-acceptance-boot-regs-dmgabc"

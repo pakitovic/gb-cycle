@@ -61,7 +61,7 @@ fn machine_save_state_metadata_codec_covers_tags_fingerprints_and_overrides() {
     ));
 
     for value in [
-        HardwareRevision::DmgCpu,
+        HardwareRevision::DmgCpu0,
         HardwareRevision::DmgCpuA,
         HardwareRevision::DmgCpuB,
         HardwareRevision::DmgCpuC,

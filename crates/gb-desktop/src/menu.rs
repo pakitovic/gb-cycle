@@ -862,9 +862,7 @@ impl MenuPresentation {
             | MenuItem::Return => true,
             MenuItem::SgbVideoStandard => self.console_model.allows_sgb_video_standard_selection(),
             MenuItem::SgbBorder => true,
-            MenuItem::HardwareRevision => {
-                self.console_model.console_model().active_revisions().len() > 1
-            }
+            MenuItem::HardwareRevision => self.console_model.active_revisions().len() > 1,
             MenuItem::ExternalPortNone | MenuItem::ExternalPortPrinter => {
                 self.console_model.allows_ext_port_menu()
             }
@@ -3145,7 +3143,7 @@ fn checked_menu_label(label: &str) -> String {
 
 fn hardware_revision_menu_name(revision: HardwareRevision) -> &'static str {
     match revision {
-        HardwareRevision::DmgCpu => "DMG-CPU",
+        HardwareRevision::DmgCpu0 => "DMG-CPU 0",
         HardwareRevision::DmgCpuA => "DMG-CPU A",
         HardwareRevision::DmgCpuB => "DMG-CPU B",
         HardwareRevision::DmgCpuC => "DMG-CPU C",

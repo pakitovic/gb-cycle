@@ -249,6 +249,41 @@ fn parser_accepts_mgb_participant_profile() {
 }
 
 #[test]
+fn parser_accepts_dmg0_participant_revision() {
+    let manifest = basic_manifest_with_report("linked").replacen(
+        "model = \"dmg\"",
+        "model = \"dmg\"\n  revision = \"dmg-cpu-0\"",
+        1,
+    );
+    let suite =
+        parse_link_suite_manifest_for_test(Path::new("dmg0.link.suite.toml"), "linked", &manifest)
+            .expect("DMG0 participant should parse");
+
+    assert_eq!(
+        suite.cases[0].participants[0].hardware_revision,
+        gb_core::HardwareRevision::DmgCpu0
+    );
+}
+
+#[test]
+fn parser_rejects_dmg0_for_sgb_participant_profile() {
+    let manifest = basic_manifest_with_report("linked").replacen(
+        "model = \"dmg\"",
+        "model = \"sgb\"\n  revision = \"dmg-cpu-0\"",
+        1,
+    );
+    assert!(
+        parse_link_suite_manifest_for_test(
+            Path::new("sgb-dmg0.link.suite.toml"),
+            "linked",
+            &manifest
+        )
+        .expect_err("SGB participant should reject DMG0")
+        .contains("does not support revision DmgCpu0")
+    );
+}
+
+#[test]
 fn parser_accepts_agb_participant_profile() {
     let manifest =
         basic_manifest_with_report("linked").replacen("model = \"dmg\"", "model = \"agb\"", 1);

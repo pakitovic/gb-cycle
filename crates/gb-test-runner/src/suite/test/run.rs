@@ -786,6 +786,55 @@ fn command_boot_rom_dir_uses_case_hardware_revision_for_asset_selection() {
 }
 
 #[test]
+fn command_boot_rom_dir_uses_dmg0_asset_for_dmg0_revision() {
+    let workspace = unique_temp_dir("boot-rom-dir-dmg0-revision");
+    let boot_rom_dir = workspace.join("bootroms");
+    fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/dmg0.suite.toml",
+        &basic_manifest("sample-report", "dmg0", "blargg", "dmg0-case", "case.gb").replace(
+            "model = \"dmg\"",
+            "model = \"dmg\"\nrevision = \"dmg-cpu-0\"",
+        ),
+    );
+    let rom_path = workspace.join("test/sample-report/blargg/case.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
+
+    let mut output = Vec::new();
+    let error = run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "dmg0",
+            "--boot-rom-dir",
+            boot_rom_dir.to_str().expect("path should be utf-8"),
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("forced real-boot should require the DMG0 boot ROM asset");
+    assert!(error.contains("failed to load boot ROM assets"));
+    assert!(error.contains("dmg0_boot.bin"));
+    assert!(!error.contains("dmg_boot.bin"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn run_suite_real_boot_handoff_does_not_consume_case_timeout() {
     let workspace = unique_temp_dir("real-boot-handoff-budget");
     write_reports(

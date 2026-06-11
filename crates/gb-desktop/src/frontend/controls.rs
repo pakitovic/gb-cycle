@@ -2600,7 +2600,7 @@ fn next_revision(
     console_model: DesktopConsoleModel,
     revision: HardwareRevision,
 ) -> HardwareRevision {
-    let active = console_model.console_model().active_revisions();
+    let active = console_model.active_revisions();
     let current_index = active
         .iter()
         .position(|candidate| *candidate == revision)

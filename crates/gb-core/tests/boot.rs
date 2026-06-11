@@ -2,8 +2,9 @@ mod common;
 
 use common::machine_driver::{step_machine_t_cycles, step_machine_until};
 use gb_core::{
-    BootRomAssets, CartridgeSlotState, ConsoleModel, CpuDiagnosticTrap, CpuExecutionState,
-    HardwareRevision, Machine, MachineConfig, StartupMemoryPolicy, StartupMode,
+    BootController, BootRomAssetKind, BootRomAssets, CartridgeSlotState, ConsoleModel,
+    CpuDiagnosticTrap, CpuExecutionState, HardwareRevision, Machine, MachineConfig, SgbHostProfile,
+    StartupMemoryPolicy, StartupMode,
 };
 use std::env;
 use std::fs;
