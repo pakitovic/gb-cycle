@@ -74,7 +74,7 @@ fn console_models_publish_default_and_active_revisions() {
     );
     assert_eq!(
         ConsoleModel::GameBoyAdvance.active_revisions(),
-        &[HardwareRevision::CpuAgbA]
+        &[HardwareRevision::CpuAgb0, HardwareRevision::CpuAgbA]
     );
     assert!(ConsoleModel::GameBoy.supports_revision(HardwareRevision::DmgCpu0));
     assert!(
@@ -87,6 +87,7 @@ fn console_models_publish_default_and_active_revisions() {
     );
     assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgb0));
     assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgbE));
+    assert!(ConsoleModel::GameBoyAdvance.supports_revision(HardwareRevision::CpuAgb0));
     assert!(ConsoleModel::GameBoyAdvance.supports_revision(HardwareRevision::CpuAgbA));
     assert!(!ConsoleModel::GameBoy.supports_revision(HardwareRevision::CpuCgbE));
     assert!(!ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuAgbA));
@@ -263,12 +264,18 @@ fn hardware_revisions_derive_real_boot_images() {
         "cgbE_boot.bin"
     );
     assert_eq!(
+        HardwareRevision::CpuAgb0.boot_rom_filename(),
+        "cgb_agb0_boot.bin"
+    );
+    assert_eq!(
         HardwareRevision::CpuAgbA.boot_rom_filename(),
         "cgb_agb_boot.bin"
     );
     assert_eq!(HardwareRevision::DmgCpuC.boot_rom_expected_size(), 0x0100);
     assert_eq!(HardwareRevision::CpuCgbE.boot_rom_expected_size(), 0x0900);
+    assert_eq!(HardwareRevision::CpuAgb0.boot_rom_expected_size(), 0x0900);
     assert_eq!(HardwareRevision::CpuAgbA.boot_rom_expected_size(), 0x0900);
+    assert!(HardwareRevision::CpuAgb0.uses_cgb_boot_rom());
     assert!(HardwareRevision::CpuAgbA.uses_cgb_boot_rom());
 }
 

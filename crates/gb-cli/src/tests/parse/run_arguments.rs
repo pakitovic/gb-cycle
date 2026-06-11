@@ -400,6 +400,11 @@ fn parse_run_arguments_rejects_invalid_sequences_and_missing_values() {
         "--revision dmg-cpu-0 is not supported by --model SGB; expected one of: dmg-cpu-c"
     );
     assert_eq!(
+        parse_run_arguments(["demo.gbc", "--model", "CGB", "--revision", "cpu-agb-0"])
+            .expect_err("AGB0 hardware requires AGB model"),
+        "--revision cpu-agb-0 is not supported by --model CGB; expected one of: cpu-cgb-0, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e"
+    );
+    assert_eq!(
         parse_run_arguments(["demo.gb", "--cgb-revision", "cgb-e"])
             .expect_err("legacy CGB revision flags should fail"),
         "unknown run option \"--cgb-revision\"; run `gb-cli run --help`"

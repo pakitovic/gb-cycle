@@ -128,7 +128,7 @@ Pass `--html` to also write `test/<report-store>/test-report.html` from the same
 
 `cargo rom-suite` and `cargo rom-suite-link` do not use startup or boot-ROM environment variables. Pass `--boot-rom-dir <dir>` explicitly to force all selected cases or participants through RealBoot.
 
-The directory must contain the required private firmware assets with canonical filenames such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, or `cgb_agb_boot.bin`. The runner verifies only the assets required by the selected model/host profiles.
+The directory must contain the required private firmware assets with canonical filenames such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, `cgb_agb0_boot.bin`, or `cgb_agb_boot.bin`. The runner verifies only the assets required by the selected model/host profiles.
 
 Use RealBoot runs as local comparison evidence. Rerun the matching default startup command afterward when status/artifacts should represent the baseline lane again.
 

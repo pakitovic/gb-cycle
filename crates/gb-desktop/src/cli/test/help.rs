@@ -7,7 +7,7 @@ fn help_text_lists_host_boot_audio_and_input_overrides() {
     assert!(text.contains("Usage:"));
     assert!(text.contains("--boot-rom-dir <dir>"));
     assert!(text.contains(
-        "--revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-0|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>"
+        "--revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-0|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-0|cpu-agb-a>"
     ));
     assert!(!text.contains("--cgb-revision"));
     assert!(!text.contains("--boot-rom <"));

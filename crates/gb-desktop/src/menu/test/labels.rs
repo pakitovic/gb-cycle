@@ -335,11 +335,16 @@ fn menu_item_labels_cover_runtime_variants_and_binding_summaries() {
         "MODEL GB COLOR"
     );
     presentation.console_model = DesktopConsoleModel::GameBoyAdvance;
-    presentation.revision = HardwareRevision::CpuAgbA;
+    presentation.revision = HardwareRevision::CpuAgb0;
     assert_eq!(
         presentation.item_label(MenuItem::ConsoleModel),
         "MODEL GB ADVANCE"
     );
+    assert_eq!(
+        presentation.item_label(MenuItem::HardwareRevision),
+        "REV CPU AGB 0"
+    );
+    presentation.revision = HardwareRevision::CpuAgbA;
     assert_eq!(
         presentation.item_label(MenuItem::HardwareRevision),
         "REV CPU AGB A"

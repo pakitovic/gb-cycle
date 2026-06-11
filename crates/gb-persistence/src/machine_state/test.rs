@@ -72,6 +72,7 @@ fn machine_save_state_metadata_codec_covers_tags_fingerprints_and_overrides() {
         HardwareRevision::CpuCgbC,
         HardwareRevision::CpuCgbD,
         HardwareRevision::CpuCgbE,
+        HardwareRevision::CpuAgb0,
         HardwareRevision::CpuAgbA,
     ] {
         assert_eq!(

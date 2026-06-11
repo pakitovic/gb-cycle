@@ -353,6 +353,32 @@ fn cgb_boot_rom_reads_cover_both_overlay_windows_without_aliasing_to_dmg_assets(
 }
 
 #[test]
+fn agb0_real_boot_reads_use_the_dedicated_cgb_agb0_boot_asset() {
+    let mut agb0_boot = vec![0x00; CGB_BOOT_ROM_RAW_LEN];
+    agb0_boot[0x0000] = 0x90;
+    agb0_boot[0x0100] = 0x91;
+    agb0_boot[CGB_BOOT_ROM_RAW_LEN - 1] = 0x92;
+
+    let assets = BootRomAssets::none()
+        .with_bytes(HardwareRevision::CpuAgb0, agb0_boot)
+        .expect("agb0 image should validate")
+        .with_bytes(HardwareRevision::CpuAgbA, vec![0xA0; CGB_BOOT_ROM_RAW_LEN])
+        .expect("agb image should validate");
+    let agb0 = BootController::new(
+        ConsoleModel::GameBoyAdvance,
+        HardwareRevision::CpuAgb0,
+        StartupMode::RealBoot,
+        assets,
+    );
+
+    assert_eq!(agb0.boot_rom_asset(), BootRomAssetKind::CgbAgb0);
+    assert_eq!(agb0.read_boot_rom(0x0000), 0x90);
+    assert_eq!(agb0.read_boot_rom(0x0100), 0xFF);
+    assert_eq!(agb0.read_boot_rom(0x0200), 0x91);
+    assert_eq!(agb0.read_boot_rom(0x08FF), 0x92);
+}
+
+#[test]
 fn agb_real_boot_reads_use_the_dedicated_cgb_agb_boot_asset() {
     let mut agb_boot = vec![0x00; CGB_BOOT_ROM_RAW_LEN];
     agb_boot[0x0000] = 0xA0;
@@ -561,6 +587,37 @@ fn agb_skip_boot_cpu_state_exposes_gba_enhanced_detection_registers() {
     assert_eq!(dmg_compatible.cpu.b, 0x01);
     assert_eq!(dmg_compatible.cpu.d, 0x00);
     assert_eq!(dmg_compatible.cpu.e, 0x08);
+}
+
+#[test]
+fn agb0_direct_boot_matches_current_agb_profile_except_revision_asset() {
+    let native_cartridge = loaded_test_cartridge_with_cgb_header(0x80, 0x00, *b"00");
+    let agb0_boot = boot_with_revision(
+        ConsoleModel::GameBoyAdvance,
+        HardwareRevision::CpuAgb0,
+        StartupMode::CustomBoot,
+        empty_assets(),
+    );
+    let agb_boot = boot_with_revision(
+        ConsoleModel::GameBoyAdvance,
+        HardwareRevision::CpuAgbA,
+        StartupMode::CustomBoot,
+        empty_assets(),
+    );
+
+    let agb0 = agb0_boot
+        .machine_skip_boot_state(Some(&native_cartridge))
+        .expect("AGB0 CustomBoot should expose direct startup state");
+    let agb = agb_boot
+        .machine_skip_boot_state(Some(&native_cartridge))
+        .expect("AGB CustomBoot should expose direct startup state");
+
+    assert_eq!(agb0.cpu, agb.cpu);
+    assert_eq!(agb0.io, agb.io);
+    assert_eq!(agb0.timer, agb.timer);
+    assert_eq!(agb0.ppu, agb.ppu);
+    assert_eq!(agb0.apu, agb.apu);
+    assert_eq!(agb0.startup_memory_policy, agb.startup_memory_policy);
 }
 
 #[test]
@@ -1133,6 +1190,7 @@ fn boot_rom_assets_can_load_all_directory_images_independently() {
         (HardwareRevision::CpuCgb0, 0xC0, CGB_BOOT_ROM_RAW_LEN),
         (HardwareRevision::CpuCgbC, 0xC1, CGB_BOOT_ROM_RAW_LEN),
         (HardwareRevision::CpuCgbE, 0xCE, CGB_BOOT_ROM_RAW_LEN),
+        (HardwareRevision::CpuAgb0, 0x90, CGB_BOOT_ROM_RAW_LEN),
         (HardwareRevision::CpuAgbA, 0xA0, CGB_BOOT_ROM_RAW_LEN),
     ] {
         fs::write(
@@ -1147,7 +1205,7 @@ fn boot_rom_assets_can_load_all_directory_images_independently() {
 
     assert_eq!(
         assets.dynamic_payload_bytes(),
-        DMG_FAMILY_BOOT_ROM_LEN * 3 + CGB_BOOT_ROM_RAW_LEN * 4
+        DMG_FAMILY_BOOT_ROM_LEN * 3 + CGB_BOOT_ROM_RAW_LEN * 5
     );
     assert_eq!(
         assets.read_byte(HardwareRevision::DmgCpu0, 0x0000),
@@ -1172,6 +1230,10 @@ fn boot_rom_assets_can_load_all_directory_images_independently() {
     assert_eq!(
         assets.read_byte(HardwareRevision::CpuCgbE, 0x0000),
         Some(0xCE)
+    );
+    assert_eq!(
+        assets.read_byte(HardwareRevision::CpuAgb0, 0x0000),
+        Some(0x90)
     );
     assert_eq!(
         assets.read_byte(HardwareRevision::CpuAgbA, 0x0000),
@@ -1272,6 +1334,7 @@ fn boot_rom_asset_directory_length_errors_cover_each_model_slot() {
         (HardwareRevision::CpuCgb0, CGB_BOOT_ROM_RAW_LEN - 1),
         (HardwareRevision::CpuCgbC, CGB_BOOT_ROM_RAW_LEN - 1),
         (HardwareRevision::CpuCgbE, CGB_BOOT_ROM_RAW_LEN - 1),
+        (HardwareRevision::CpuAgb0, CGB_BOOT_ROM_RAW_LEN - 1),
         (HardwareRevision::CpuAgbA, CGB_BOOT_ROM_RAW_LEN - 1),
     ] {
         let directory = unique_temp_dir();
@@ -1330,6 +1393,8 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
         .expect("mgb image should validate")
         .with_bytes(HardwareRevision::CpuCgbC, vec![0x40; CGB_BOOT_ROM_RAW_LEN])
         .expect("cgb image should validate")
+        .with_bytes(HardwareRevision::CpuAgb0, vec![0x90; CGB_BOOT_ROM_RAW_LEN])
+        .expect("agb0 image should validate")
         .with_bytes(HardwareRevision::CpuAgbA, vec![0xA0; CGB_BOOT_ROM_RAW_LEN])
         .expect("agb image should validate")
         .with_asset_bytes(BootRomAssetKind::Sgb, vec![0x51; DMG_FAMILY_BOOT_ROM_LEN])
@@ -1354,6 +1419,10 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
         "cgb_boot.bin"
     );
     assert_eq!(
+        BootRomAssets::filename(HardwareRevision::CpuAgb0),
+        "cgb_agb0_boot.bin"
+    );
+    assert_eq!(
         BootRomAssets::filename(HardwareRevision::CpuAgbA),
         "cgb_agb_boot.bin"
     );
@@ -1370,6 +1439,7 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
     assert!(assets.has_image(HardwareRevision::DmgCpuC));
     assert!(assets.has_image(HardwareRevision::CpuMgb));
     assert!(assets.has_image(HardwareRevision::CpuCgbC));
+    assert!(assets.has_image(HardwareRevision::CpuAgb0));
     assert!(assets.has_image(HardwareRevision::CpuAgbA));
     assert!(assets.has_asset(BootRomAssetKind::Sgb));
     assert!(assets.has_asset(BootRomAssetKind::Sgb2));
@@ -1388,6 +1458,10 @@ fn boot_rom_assets_cover_all_kind_slots_and_exact_filenames() {
     assert_eq!(
         assets.read_byte(HardwareRevision::CpuCgbC, 0x0000),
         Some(0x40)
+    );
+    assert_eq!(
+        assets.read_byte(HardwareRevision::CpuAgb0, 0x0000),
+        Some(0x90)
     );
     assert_eq!(
         assets.read_byte(HardwareRevision::CpuAgbA, 0x0000),

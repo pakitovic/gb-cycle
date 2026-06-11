@@ -90,7 +90,10 @@ impl ConsoleModel {
                     | HardwareRevision::CpuCgbD
                     | HardwareRevision::CpuCgbE
             ),
-            Self::GameBoyAdvance => matches!(revision, HardwareRevision::CpuAgbA),
+            Self::GameBoyAdvance => matches!(
+                revision,
+                HardwareRevision::CpuAgb0 | HardwareRevision::CpuAgbA
+            ),
         }
     }
 
@@ -166,7 +169,8 @@ const ACTIVE_CGB_REVISIONS: [HardwareRevision; 4] = [
     HardwareRevision::CpuCgbD,
     HardwareRevision::CpuCgbE,
 ];
-const ACTIVE_AGB_REVISIONS: [HardwareRevision; 1] = [HardwareRevision::CpuAgbA];
+const ACTIVE_AGB_REVISIONS: [HardwareRevision; 2] =
+    [HardwareRevision::CpuAgb0, HardwareRevision::CpuAgbA];
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
@@ -184,6 +188,7 @@ pub enum HardwareRevision {
     CpuCgbC,
     CpuCgbD,
     CpuCgbE,
+    CpuAgb0,
     CpuAgbA,
 }
 
@@ -209,6 +214,7 @@ impl HardwareRevision {
                 | Self::CpuCgbC
                 | Self::CpuCgbD
                 | Self::CpuCgbE
+                | Self::CpuAgb0
                 | Self::CpuAgbA
         )
     }

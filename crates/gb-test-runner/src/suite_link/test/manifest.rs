@@ -284,6 +284,24 @@ fn parser_rejects_dmg0_for_sgb_participant_profile() {
 }
 
 #[test]
+fn parser_rejects_agb0_for_cgb_participant_profile() {
+    let manifest = basic_manifest_with_report("linked").replacen(
+        "model = \"dmg\"",
+        "model = \"cgb\"\n  revision = \"cpu-agb-0\"",
+        1,
+    );
+    assert!(
+        parse_link_suite_manifest_for_test(
+            Path::new("cgb-agb0.link.suite.toml"),
+            "linked",
+            &manifest
+        )
+        .expect_err("CGB participant should reject AGB0")
+        .contains("does not support revision CpuAgb0")
+    );
+}
+
+#[test]
 fn parser_accepts_cgb0_participant_revision() {
     let manifest = basic_manifest_with_report("linked").replacen(
         "model = \"dmg\"",
@@ -315,6 +333,22 @@ fn parser_accepts_agb_participant_profile() {
     assert_eq!(
         suite.cases[0].participants[0].hardware_revision,
         gb_core::HardwareRevision::CpuAgbA
+    );
+
+    let agb0_manifest = basic_manifest_with_report("linked").replacen(
+        "model = \"dmg\"",
+        "model = \"agb\"\n  revision = \"cpu-agb-0\"",
+        1,
+    );
+    let agb0_suite = parse_link_suite_manifest_for_test(
+        Path::new("agb0.link.suite.toml"),
+        "linked",
+        &agb0_manifest,
+    )
+    .expect("AGB0 participant should parse");
+    assert_eq!(
+        agb0_suite.cases[0].participants[0].hardware_revision,
+        gb_core::HardwareRevision::CpuAgb0
     );
     assert_eq!(
         suite.cases[0].participants[0].host_platform,

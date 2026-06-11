@@ -231,6 +231,7 @@ pub(super) fn encode_revision(value: HardwareRevision) -> u8 {
         HardwareRevision::CpuCgbD => 9,
         HardwareRevision::CpuCgbE => 10,
         HardwareRevision::CpuAgbA => 11,
+        HardwareRevision::CpuAgb0 => 12,
     }
 }
 
@@ -251,6 +252,7 @@ pub(super) fn decode_revision(
         9 => Ok(HardwareRevision::CpuCgbD),
         10 => Ok(HardwareRevision::CpuCgbE),
         11 => Ok(HardwareRevision::CpuAgbA),
+        12 => Ok(HardwareRevision::CpuAgb0),
         _ => unsupported_machine_save_state_tag(field, tag),
     }
 }

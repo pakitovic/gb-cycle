@@ -35,6 +35,14 @@ fn machine_config_applies_revision_for_selected_model() {
     assert_eq!(cgb_config.revision, HardwareRevision::CpuCgbE);
 
     config.launch.console_model = DesktopConsoleModel::GameBoyAdvance;
+    config.launch.revision = HardwareRevision::CpuAgb0;
+    let agb0_config = config
+        .machine_config()
+        .expect("skip-boot should not load firmware");
+    assert_eq!(agb0_config.console_model, ConsoleModel::GameBoyAdvance);
+    assert_eq!(agb0_config.revision, HardwareRevision::CpuAgb0);
+    assert_eq!(agb0_config.boot_rom_asset_kind(), BootRomAssetKind::CgbAgb0);
+
     config.launch.revision = HardwareRevision::CpuAgbA;
     let agb_config = config
         .machine_config()

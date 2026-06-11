@@ -55,8 +55,11 @@ cargo run -p gb-cli -- run path/to/rom.gbc --model CGB --frames 120 --framebuffe
 # Run a GBA Enhanced GB/C title on the AGB / GB ADVANCE compatibility profile
 cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup skip-boot
 
-# Execute the AGB GB/C boot ROM path when private cgb_agb_boot.bin is available; native gba_bios.bin is not used
+# Execute the default AGB GB/C boot ROM path when private cgb_agb_boot.bin is available; native gba_bios.bin is not used
 cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
+
+# Select the explicit AGB0 GB/C boot ROM path when private cgb_agb0_boot.bin is available
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --revision cpu-agb-0 --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
 
 # Run an SGB-enhanced game and export the native 256x224 SGB host frame
 cargo run -p gb-cli -- run path/to/rom.gb --model SGB --frames 120 --framebuffer-out .artifacts/sgb.png

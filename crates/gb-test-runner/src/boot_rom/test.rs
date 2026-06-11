@@ -68,6 +68,14 @@ fn resolves_required_assets_for_console_and_host_profiles() {
     assert_eq!(
         asset_for_profile(
             ConsoleModel::GameBoyAdvance,
+            HardwareRevision::CpuAgb0,
+            HostPlatform::Handheld
+        ),
+        BootRomAssetKind::CgbAgb0
+    );
+    assert_eq!(
+        asset_for_profile(
+            ConsoleModel::GameBoyAdvance,
             HardwareRevision::CpuAgbA,
             HostPlatform::Handheld
         ),
@@ -121,6 +129,11 @@ fn deduplicates_required_assets_and_does_not_require_unselected_profiles() {
         ),
         BootRomProfile::new(
             ConsoleModel::GameBoyAdvance,
+            HardwareRevision::CpuAgb0,
+            HostPlatform::Handheld,
+        ),
+        BootRomProfile::new(
+            ConsoleModel::GameBoyAdvance,
             HardwareRevision::CpuAgbA,
             HostPlatform::Handheld,
         ),
@@ -133,6 +146,7 @@ fn deduplicates_required_assets_and_does_not_require_unselected_profiles() {
             BootRomAssetKind::Dmg,
             BootRomAssetKind::Cgb,
             BootRomAssetKind::CgbE,
+            BootRomAssetKind::CgbAgb0,
             BootRomAssetKind::CgbAgb
         ]
     );
