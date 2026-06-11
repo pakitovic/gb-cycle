@@ -739,6 +739,7 @@ fn parse_hardware_revision(revision: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
         "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        "cpu-agb-0" => Ok(HardwareRevision::CpuAgb0),
         "cpu-agb-a" => Ok(HardwareRevision::CpuAgbA),
         other => Err(format!("unsupported revision {other:?}")),
     }

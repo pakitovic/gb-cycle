@@ -66,10 +66,24 @@ fn public_model_api_exposes_revision_defaults_and_active_sets() {
     );
     assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgb0));
     assert!(ConsoleModel::GameBoyColor.supports_revision(HardwareRevision::CpuCgbE));
+    assert_eq!(
+        ConsoleModel::GameBoyAdvance.default_revision(),
+        HardwareRevision::CpuAgbA
+    );
+    assert_eq!(
+        ConsoleModel::GameBoyAdvance.active_revisions(),
+        &[HardwareRevision::CpuAgb0, HardwareRevision::CpuAgbA]
+    );
+    assert!(ConsoleModel::GameBoyAdvance.supports_revision(HardwareRevision::CpuAgb0));
+    assert!(ConsoleModel::GameBoyAdvance.supports_revision(HardwareRevision::CpuAgbA));
     assert!(!ConsoleModel::GameBoy.supports_revision(HardwareRevision::CpuCgbE));
     assert_eq!(
         HardwareRevision::CpuCgbE.boot_rom_filename(),
         "cgbE_boot.bin"
+    );
+    assert_eq!(
+        HardwareRevision::CpuAgb0.boot_rom_filename(),
+        "cgb_agb0_boot.bin"
     );
 }
 

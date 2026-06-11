@@ -448,9 +448,10 @@ pub(crate) fn parse_revision(value: &str) -> Result<HardwareRevision, String> {
         "cpu-cgb-c" => Ok(HardwareRevision::CpuCgbC),
         "cpu-cgb-d" => Ok(HardwareRevision::CpuCgbD),
         "cpu-cgb-e" => Ok(HardwareRevision::CpuCgbE),
+        "cpu-agb-0" => Ok(HardwareRevision::CpuAgb0),
         "cpu-agb-a" => Ok(HardwareRevision::CpuAgbA),
         _ => Err(format!(
-            "unsupported --revision value {value:?}; expected dmg-cpu-0, dmg-cpu-c, cpu-mgb, cpu-cgb-0, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e, or cpu-agb-a"
+            "unsupported --revision value {value:?}; expected dmg-cpu-0, dmg-cpu-c, cpu-mgb, cpu-cgb-0, cpu-cgb-c, cpu-cgb-d, cpu-cgb-e, cpu-agb-0, or cpu-agb-a"
         )),
     }
 }

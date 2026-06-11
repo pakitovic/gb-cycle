@@ -564,6 +564,27 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
         agb_manifest.cases[0].hardware_revision,
         gb_core::HardwareRevision::CpuAgbA
     );
+    let agb0_model = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-agb0",
+        "cgb-acid2.gbc",
+    )
+    .replace(
+        "model = \"dmg\"",
+        "model = \"agb\"\nrevision = \"cpu-agb-0\"",
+    );
+    let agb0_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &agb0_model,
+    )
+    .expect("agb0 should parse");
+    assert_eq!(
+        agb0_manifest.cases[0].hardware_revision,
+        gb_core::HardwareRevision::CpuAgb0
+    );
     assert_eq!(
         agb_manifest.cases[0].host_platform,
         gb_core::HostPlatform::Handheld
@@ -630,6 +651,17 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
         )
         .expect_err("SGB should reject DMG0")
         .contains("does not support revision DmgCpu0")
+    );
+
+    let cgb_agb0_model = agb0_model.replace("model = \"agb\"", "model = \"cgb\"");
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("acid.suite.toml"),
+            "gb-emulator-shootout",
+            &cgb_agb0_model,
+        )
+        .expect_err("CGB should reject AGB0")
+        .contains("does not support revision CpuAgb0")
     );
 
     let report_suffix = basic_manifest(

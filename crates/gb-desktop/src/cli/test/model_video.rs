@@ -229,6 +229,7 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
     assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));
     assert_eq!(parse_revision("cpu-cgb-d"), Ok(HardwareRevision::CpuCgbD));
     assert_eq!(parse_revision("cpu-cgb-e"), Ok(HardwareRevision::CpuCgbE));
+    assert_eq!(parse_revision("cpu-agb-0"), Ok(HardwareRevision::CpuAgb0));
     assert_eq!(parse_revision("cpu-agb-a"), Ok(HardwareRevision::CpuAgbA));
     assert!(parse_revision("cpu-cgb-b").is_err());
     assert_eq!(
@@ -240,6 +241,10 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
         "cpu-cgb-e"
     );
     assert_eq!(
+        revision_argument_name(HardwareRevision::CpuAgb0),
+        "cpu-agb-0"
+    );
+    assert_eq!(
         revision_argument_name(HardwareRevision::CpuAgbA),
         "cpu-agb-a"
     );
@@ -249,7 +254,7 @@ fn parser_helpers_accept_supported_values_and_reject_unknown_ones() {
     );
     assert_eq!(
         supported_revision_names(DesktopConsoleModel::GameBoyAdvance),
-        "cpu-agb-a"
+        "cpu-agb-0, cpu-agb-a"
     );
     assert_eq!(
         supported_revision_names(DesktopConsoleModel::SuperGameBoy),

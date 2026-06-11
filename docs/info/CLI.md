@@ -14,6 +14,39 @@
 
 Use `cargo run -p gb-cli -- <command> ...` during development, or `gb-cli <command> ...` when running an installed binary.
 
+## Examples
+
+```bash
+# Inspect a ROM header
+cargo run -p gb-cli -- inspect-rom path/to/rom.gb
+
+# Run headless with serial capture
+cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts/serial.bin
+
+# Force the Game Boy Color model and export the final RGB555 framebuffer as PNG
+cargo run -p gb-cli -- run path/to/rom.gbc --model CGB --frames 120 --framebuffer-out .artifacts/frame.png
+
+# Run a GBA Enhanced GB/C title on the AGB / GB ADVANCE compatibility profile
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup skip-boot
+
+# Execute the default AGB GB/C boot ROM path when private cgb_agb_boot.bin is available; native gba_bios.bin is not used
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
+
+# Select the explicit AGB0 GB/C boot ROM path when private cgb_agb0_boot.bin is available
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --revision cpu-agb-0 --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
+
+# Run an SGB-enhanced game and export the native 256x224 SGB host frame
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB --frames 120 --framebuffer-out .artifacts/sgb.png
+
+# Select original SGB PAL, or force LCD-only PNG output without SGB/SGB2 or handheld borrowed borders
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB --sgb-standard pal --framebuffer-out .artifacts/sgb-pal.png
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB2 --border-off --framebuffer-out .artifacts/sgb2-lcd.png
+
+# Save and restore a whole-machine .gbstate
+cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --state-out .artifacts/run.gbstate
+cargo run -p gb-cli -- run path/to/rom.gb --state-in .artifacts/run.gbstate --tcycles 5000
+```
+
 ## `inspect-rom`
 
 ```bash
@@ -39,11 +72,11 @@ Completed serial bytes can stream to stdout with `--serial-stdout`, be captured 
 
 `--model` accepts only the public hardware-profile names `DMG`, `MGB`, `LGB`, `CGB`, `AGB`, `SGB`, and `SGB2`. Older aliases such as `game-boy`, `pocket`, `light`, `color`, `advance`, `gba`, `dmg`, `mgb`, `cgb`, or `agb` are not accepted.
 
-`--revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-0|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>` selects an active hardware revision for the chosen model and invalid pairs are rejected. `DMG` accepts `dmg-cpu-0` and `dmg-cpu-c`; `CGB` defaults to `cpu-cgb-e` but accepts explicit `cpu-cgb-0` for CGB-CPU 0 boot validation; `SGB` and `SGB2` expose only the profile-backed `dmg-cpu-c` GB core so the SGB startup state cannot accidentally use DMG0 direct-boot handoff rules; and `AGB` is the active `GB ADVANCE` GB/C compatibility profile and uses `cpu-agb-a`. `SGB` and `SGB2` use the DMG-compatible GB core behind an SGB host shell; `--sgb-standard <ntsc|pal>` is valid only with `--model SGB`, defaults to `ntsc`, and is rejected for `SGB2` because SGB2 uses its fixed NTSC profile.
+`--revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-0|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-0|cpu-agb-a>` selects an active hardware revision for the chosen model and invalid pairs are rejected. `DMG` accepts `dmg-cpu-0` and `dmg-cpu-c`; `CGB` defaults to `cpu-cgb-e` but accepts explicit `cpu-cgb-0` for CGB-CPU 0 boot validation; `SGB` and `SGB2` expose only the profile-backed `dmg-cpu-c` GB core so the SGB startup state cannot accidentally use DMG0 direct-boot handoff rules; and `AGB` is the active `GB ADVANCE` GB/C compatibility profile, defaults to `cpu-agb-a`, and accepts explicit `cpu-agb-0` for AGB0 boot validation. `SGB` and `SGB2` use the DMG-compatible GB core behind an SGB host shell; `--sgb-standard <ntsc|pal>` is valid only with `--model SGB`, defaults to `ntsc`, and is rejected for `SGB2` because SGB2 uses its fixed NTSC profile.
 
 `--startup <skip-boot|custom-boot|real-boot>` selects the startup path. `skip-boot` is the fast direct-start tooling path; `custom-boot` adds reset/boot-facing direct-start behavior used by selected fixtures; `real-boot` executes a private firmware image and requires `--boot-rom-dir <dir>` unless verification is explicitly relaxed.
 
-`RealBoot` derives the firmware filename from the effective model/revision/profile. Examples include `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, `cgb_agb_boot.bin`, `sgb_boot.bin`, and `sgb2_boot.bin`. `AGB` GB/C real boot uses `cgb_agb_boot.bin`; `gba_bios.bin` is not used by this core path. `--boot-rom` no longer exists; use `--boot-rom-dir <private-dir>` plus `--boot-rom-verify <off|warn|strict>` when overriding firmware lookup or verification.
+`RealBoot` derives the firmware filename from the effective model/revision/profile. Examples include `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, `cgb_agb0_boot.bin`, `cgb_agb_boot.bin`, `sgb_boot.bin`, and `sgb2_boot.bin`. `AGB` GB/C real boot uses `cgb_agb0_boot.bin` for `cpu-agb-0` and `cgb_agb_boot.bin` for `cpu-agb-a`; `gba_bios.bin` is not used by this core path. `--boot-rom` no longer exists; use `--boot-rom-dir <private-dir>` plus `--boot-rom-verify <off|warn|strict>` when overriding firmware lookup or verification.
 
 `--mode <strict|permissive|experimental>` selects cartridge loader and compatibility policy around the same hardware model. `strict` is the default and the only mode suitable for oracle and accuracy claims; `permissive` is for tolerant tooling; `experimental` is for explicitly partial/research paths.
 

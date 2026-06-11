@@ -612,9 +612,9 @@ impl AddressRouter {
             }
             ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
                 let fallback_read_value = match revision {
-                    HardwareRevision::CpuCgbE | HardwareRevision::CpuAgbA => {
-                        cgb_e_extra_oam_read_value(address)
-                    }
+                    HardwareRevision::CpuCgbE
+                    | HardwareRevision::CpuAgb0
+                    | HardwareRevision::CpuAgbA => cgb_e_extra_oam_read_value(address),
                     _ => BLOCKED_READ_VALUE,
                 };
                 UnusableAreaInfo::new(

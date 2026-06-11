@@ -187,6 +187,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(parse_revision("cpu-cgb-c"), Ok(HardwareRevision::CpuCgbC));
     assert_eq!(parse_revision("cpu-cgb-d"), Ok(HardwareRevision::CpuCgbD));
     assert_eq!(parse_revision("cpu-cgb-e"), Ok(HardwareRevision::CpuCgbE));
+    assert_eq!(parse_revision("cpu-agb-0"), Ok(HardwareRevision::CpuAgb0));
     assert_eq!(parse_revision("cpu-agb-a"), Ok(HardwareRevision::CpuAgbA));
     assert!(
         parse_revision("cpu-cgb-b")
@@ -235,6 +236,10 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         "cpu-cgb-e"
     );
     assert_eq!(
+        revision_argument_name(HardwareRevision::CpuAgb0),
+        "cpu-agb-0"
+    );
+    assert_eq!(
         revision_argument_name(HardwareRevision::CpuAgbA),
         "cpu-agb-a"
     );
@@ -244,7 +249,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     );
     assert_eq!(
         supported_revision_names(ConsoleModel::GameBoyAdvance),
-        "cpu-agb-a"
+        "cpu-agb-0, cpu-agb-a"
     );
     assert_eq!(parse_display_palette("grey"), Ok(RunDisplayPalette::Grey));
     assert_eq!(
@@ -418,6 +423,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
         HardwareRevision::CpuCgbC,
         HardwareRevision::CpuCgbD,
         HardwareRevision::CpuCgbE,
+        HardwareRevision::CpuAgb0,
         HardwareRevision::CpuAgbA,
     ] {
         assert_eq!(revision.boot_rom_expected_sha256().len(), 64);

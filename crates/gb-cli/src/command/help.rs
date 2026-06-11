@@ -4,7 +4,7 @@ pub(crate) const RUN_HELP_TEXT: &str = concat!(
     "\n",
     "Options:\n",
     "  --model <DMG|MGB|LGB|CGB|AGB|SGB|SGB2> Select the console model/profile (default: DMG)\n",
-    "  --revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-0|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-a>\n",
+    "  --revision <dmg-cpu-0|dmg-cpu-c|cpu-mgb|cpu-cgb-0|cpu-cgb-c|cpu-cgb-d|cpu-cgb-e|cpu-agb-0|cpu-agb-a>\n",
     "                                         Select the active hardware revision for --model\n",
     "  --sgb-standard <ntsc|pal>             Select the original SGB video standard (requires --model SGB)\n",
     "  --startup <skip-boot|custom-boot|real-boot> Choose startup path (default: skip-boot)\n",

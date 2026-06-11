@@ -188,3 +188,59 @@ oracle = { type = "serial-hex-exact", target_participant = "receiver", expected 
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
+
+#[test]
+fn boot_rom_dir_uses_agb0_participant_revision_for_asset_selection() {
+    let workspace = unique_temp_dir("boot-rom-dir-agb0-revision");
+    let boot_rom_dir = workspace.join("bootroms");
+    fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
+    write_reports(&workspace);
+    let linked_dir = workspace.join("crates/gb-test-runner/data/linked");
+    fs::create_dir_all(&linked_dir).expect("linked dir should be creatable");
+    fs::write(
+        linked_dir.join("agb-link.link.suite.toml"),
+        r#"report = "linked"
+suite_name = "agb-link"
+family = "linked"
+topology = "dmg04"
+timeout_tcycles = 8
+
+[[case]]
+id = "agb0-revision"
+oracle = { type = "serial-hex-exact", target_participant = "left", expected = "" }
+
+  [[case.participant]]
+  id = "left"
+  rom = "fixtures/dmg04/basic-left.gb"
+  model = "agb"
+  revision = "cpu-agb-0"
+
+  [[case.participant]]
+  id = "right"
+  rom = "fixtures/dmg04/basic-right.gb"
+  model = "agb"
+  revision = "cpu-agb-a"
+"#,
+    )
+    .expect("manifest should be written");
+    let mut output = Vec::new();
+
+    let error = run_suite_link_command_with_workspace_for_test(
+        [
+            "linked",
+            "--suite",
+            "agb-link",
+            "--boot-rom-dir",
+            boot_rom_dir.to_str().expect("path should be utf-8"),
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("forced real-boot should require the AGB0 boot ROM asset");
+
+    assert!(error.contains("failed to load boot ROM assets"));
+    assert!(error.contains("cgb_agb0_boot.bin"));
+    assert!(!error.contains("cgb_agb_boot.bin"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}

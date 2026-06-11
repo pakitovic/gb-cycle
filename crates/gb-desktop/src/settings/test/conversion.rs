@@ -36,6 +36,10 @@ fn persisted_conversion_helpers_round_trip_external_values() {
         HardwareRevision::CpuCgbE
     );
     assert_eq!(
+        PersistedHardwareRevision::from_external(HardwareRevision::CpuAgb0).to_external(),
+        HardwareRevision::CpuAgb0
+    );
+    assert_eq!(
         PersistedHardwareRevision::from_external(HardwareRevision::CpuAgbA).to_external(),
         HardwareRevision::CpuAgbA
     );

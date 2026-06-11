@@ -381,7 +381,7 @@ This matrix is an internal core contract for Slice 5 and must be tested with syn
 
 ## Post-Slice 10 — AGB GB/C compatibility profile and remaining GBA / GBP host behavior
 
-- Post-Phase 10 work now includes the explicit `GameBoyAdvance` / `CpuAgbA` GB/C compatibility profile: it is CGB-family for GB/C execution, selects `cgb_agb_boot.bin`, exposes the AGB post-boot detection fingerprint, and must not overload `ConsoleModel::GameBoyColor`.
+- Post-Phase 10 work now includes the explicit `GameBoyAdvance` GB/C compatibility profile with active `CpuAgb0` and default `CpuAgbA` revisions: it is CGB-family for GB/C execution, selects `cgb_agb0_boot.bin` or `cgb_agb_boot.bin`, exposes the AGB post-boot detection fingerprint, and must not overload `ConsoleModel::GameBoyColor`.
 - Native GBA execution, `gba_bios.bin`, AGS/SP UI variants, Game Boy Player host behavior, display correction policy, and GameCube/Game Boy Player Start-up Disc integration remain outside Phase 10 and outside the current AGB GB/C compatibility profile.
 - Commercial smoke titles that mention GBA detection are reference sanity cases for the explicit AGB profile; their broader GBA-specific branches, host BIOS behavior, and Game Boy Player integration must not become CGB acceptance criteria.
 
