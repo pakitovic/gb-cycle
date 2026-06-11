@@ -266,6 +266,26 @@ fn read_corruption_mirrors_the_corrupted_first_word_into_the_previous_row() {
 }
 
 #[test]
+fn read_corruption_does_not_mirror_into_the_previous_row_on_even_rows() {
+    let mut ppu = dmg_mode2_scan_rig();
+    let mut oam_bytes = [0; 160];
+
+    write_oam_corruption_row(&mut oam_bytes, 5, [0xCAFE, 0x1111, 0x1234, 0x2222]);
+    write_oam_corruption_row(&mut oam_bytes, 6, [0x00F0, 0x3333, 0x4444, 0x5555]);
+    ppu.tick_n(25);
+
+    assert_eq!(ppu.snapshot().current_oam_scan_row, Some(6));
+    assert!(ppu.apply_oam_corruption_event(OamCorruptionEventKind::Read, &mut oam_bytes));
+
+    let expected_first = 0xCAFE_u16 | (0x00F0 & 0x1234);
+    assert_eq!(read_oam_word(&oam_bytes, 5, 0), 0xCAFE);
+    assert_eq!(read_oam_word(&oam_bytes, 6, 0), expected_first);
+    assert_eq!(read_oam_word(&oam_bytes, 6, 1), 0x1111);
+    assert_eq!(read_oam_word(&oam_bytes, 6, 2), 0x1234);
+    assert_eq!(read_oam_word(&oam_bytes, 6, 3), 0x2222);
+}
+
+#[test]
 fn read_plus_incdec_uses_its_dedicated_complex_path_in_rows_four_through_eighteen() {
     let mut ppu = dmg_mode2_scan_rig();
     let mut oam_bytes = [0; 160];
