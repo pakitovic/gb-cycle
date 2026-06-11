@@ -38,7 +38,7 @@ CGB-only MMIO must be routed through typed owners, not through generic `FFxx` st
 | `OPRI` / `FF6C` | PPU priority policy | Implemented latch/readback and boot-selected priority mode; ordinary post-boot writes do not currently mutate visual priority | Unavailable | Latch/readback only; no live visual priority mutation |
 | `HDMA1`-`HDMA5` / `FF51`-`FF55` | DMA controller | GDMA and HDMA route through [`DMA.md`](DMA.md) | Unavailable | Unavailable |
 | `RP` / `FF56` | bus infrared sensor + link topology | Emitter, read-enable, sensor-light, warmup/fade, and save-state state only when the console model has the physical CGB IR port; AGB reads `$FF` | Unavailable | Enabled by the narrow profile only for `GameBoyColor`, not for AGB |
-| `PCM12` / `FF76`, `PCM34` / `FF77` | APU digital taps | Read-only channel-output nibbles before DAC | Read-only CGB-family taps | Read-only CGB-family taps |
+| `PCM12` / `FF76`, `PCM34` / `FF77` | APU digital taps | Read-only channel-output nibbles before DAC; direct-start may mask boot-owned active channels until software triggers them | Read-only CGB-family taps | Read-only CGB-family taps |
 | `FF72`-`FF75` | CGB miscellaneous system state | `FF72`-`FF74` read/write bytes; `FF75` exposes writable bits `4..=6` over forced `$8F` | Boot-HWIO-visible subset only: `FF72=$00`, `FF73=$00`, `FF75=$8F`, while `FF74` remains unavailable | Exposed by the narrow profile |
 
 ## Speed and timing contract

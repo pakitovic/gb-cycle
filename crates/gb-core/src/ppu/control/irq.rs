@@ -104,7 +104,7 @@ impl Ppu {
             && self.line_dot < mode0_start_dot
             && self.line_dot + 4 >= mode0_start_dot;
         let mode2_pretrigger_source = self.ordinary_mode2_stat_pretrigger_source();
-        let dmg_mode2_vblank_entry_source = self.dmg_mode2_vblank_entry_stat_source();
+        let mode2_vblank_entry_source = self.mode2_vblank_entry_stat_source();
         let mode_source = match self.current_stat_irq_access_mode() {
             PpuAccessMode::HBlank => stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0,
             PpuAccessMode::VBlank => stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0,
@@ -117,7 +117,7 @@ impl Ppu {
             || mode_source
             || mode0_pretrigger_source
             || mode2_pretrigger_source
-            || dmg_mode2_vblank_entry_source
+            || mode2_vblank_entry_source
     }
 
     fn current_stat_irq_access_mode(&self) -> PpuAccessMode {
@@ -260,13 +260,28 @@ impl Ppu {
             && self.line_dot + 4 == self.current_scanline_length()
     }
 
-    fn dmg_mode2_vblank_entry_stat_source(&self) -> bool {
-        self.console_model.is_dmg_family()
-            && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+    fn mode2_vblank_entry_stat_pretrigger_dots(&self) -> Option<u16> {
+        if self.console_model.is_dmg_family() {
+            return Some(DMG_MODE2_VBLANK_ENTRY_STAT_PRETRIGGER_DOTS);
+        }
+
+        if self.console_model.is_cgb_family() && self.operating_mode.uses_dmg_software_contract() {
+            return Some(CGB_COMPAT_MODE2_VBLANK_ENTRY_STAT_PRETRIGGER_DOTS);
+        }
+
+        None
+    }
+
+    fn mode2_vblank_entry_stat_source(&self) -> bool {
+        let Some(pretrigger_dots) = self.mode2_vblank_entry_stat_pretrigger_dots() else {
+            return false;
+        };
+
+        self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
             && self.is_lcd_enabled()
             && self.ly + 1 == VISIBLE_SCANLINES
             && self.current_access_mode() == PpuAccessMode::HBlank
-            && self.line_dot + 4 == self.current_scanline_length()
+            && self.line_dot + pretrigger_dots == self.current_scanline_length()
     }
 
     fn line_153_lyc0_stat_irq_pretrigger_source(&self) -> bool {
@@ -302,7 +317,7 @@ impl Ppu {
             return false;
         }
 
-        self.ordinary_mode2_stat_pretrigger_edge() || self.dmg_mode2_vblank_entry_stat_source()
+        self.ordinary_mode2_stat_pretrigger_edge() || self.mode2_vblank_entry_stat_source()
     }
 
     fn mode1_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {

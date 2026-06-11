@@ -1274,6 +1274,10 @@ fn build_skip_boot_apu_state(
         nr50: audio.nr50,
         nr51: audio.nr51,
         channel_active_mask: audio.nr52 & 0x0F,
+        startup_silent_channel_mask: cgb_family_direct_start_silent_channel_mask(
+            console_model,
+            audio,
+        ),
         div_apu: div_apu_phase_from_system_counter(system_counter),
         wave_ram_startup_policy: if matches!(
             (console_model, revision),
@@ -1285,6 +1289,17 @@ fn build_skip_boot_apu_state(
         } else {
             WaveRamStartupPolicy::DeterministicZeroed
         },
+    }
+}
+
+const fn cgb_family_direct_start_silent_channel_mask(
+    console_model: ConsoleModel,
+    audio: BootAudioSnapshot,
+) -> u8 {
+    if console_model.is_cgb_family() {
+        audio.nr52 & 0x0F
+    } else {
+        0
     }
 }
 

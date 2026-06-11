@@ -122,6 +122,29 @@ fn dmg_mode2_stat_ppu() -> Ppu {
     ppu
 }
 
+fn cgb_compat_mode2_stat_ppu() -> Ppu {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(OperatingMode::GbCompatible);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x20,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.ly = 1;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = false;
+    ppu.startup_mode_latch = None;
+    ppu.stat_state.irq_line = false;
+    ppu
+}
+
 #[test]
 fn ordinary_mode0_stat_pretrigger_is_hidden_from_same_cycle_cpu_if_reads() {
     let mut ppu = dmg_mode0_stat_ppu(0);
@@ -415,6 +438,23 @@ fn dmg_line144_mode2_stat_source_is_hidden_and_does_not_lock_oam() {
         InterruptSource::LcdStat.mask()
     );
     assert_eq!(ppu.cpu_visible_pending_interrupt_request_mask(), 0);
+}
+
+#[test]
+fn cgb_compat_line144_mode2_stat_source_is_hidden_without_dmg_service_deferral() {
+    let mut ppu = cgb_compat_mode2_stat_ppu();
+    ppu.ly = VISIBLE_SCANLINES - 1;
+    ppu.line_dot = ppu.current_scanline_length() - 4;
+    ppu.refresh_stat_irq_line(false);
+
+    assert_eq!(ppu.current_access_mode(), PpuAccessMode::HBlank);
+    assert_eq!(ppu.current_bus_access_mode(), PpuAccessMode::HBlank);
+    assert_eq!(
+        ppu.pending_interrupt_request_mask(),
+        InterruptSource::LcdStat.mask()
+    );
+    assert_eq!(ppu.cpu_visible_pending_interrupt_request_mask(), 0);
+    assert!(!ppu.dmg_mode2_vblank_entry_interrupt_service_deferred());
 }
 
 #[test]

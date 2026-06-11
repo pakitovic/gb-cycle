@@ -44,6 +44,7 @@ fn div_apu_event_fans_out_to_all_channel_length_units() {
         nr50: 0x00,
         nr51: 0x00,
         channel_active_mask: CHANNEL_ACTIVE_MASK,
+        startup_silent_channel_mask: 0x00,
         div_apu: 0,
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     });
@@ -90,6 +91,7 @@ fn powering_on_keeps_waiting_for_the_next_live_div_apu_edge() {
         nr50: 0x00,
         nr51: 0x00,
         channel_active_mask: 0x00,
+        startup_silent_channel_mask: 0x00,
         div_apu: 0x05,
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     });
@@ -173,6 +175,7 @@ fn startup_state_clears_runtime_power_on_edge_skip_and_subcycle_phase() {
         nr50: 0x00,
         nr51: 0x00,
         channel_active_mask: 0x00,
+        startup_silent_channel_mask: 0x00,
         div_apu: 0x00,
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     });
