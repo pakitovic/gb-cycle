@@ -1,0 +1,55 @@
+family = "cpu_instrs"
+suite_name = "blargg-cpu-instrs"
+report = "blargg"
+model = "dmg"
+timeout_frames = 1200
+oracle = { type = "serial-contains", expected = "Passed" }
+
+[[case]]
+id = "blargg-cpu-instrs-multi"
+rom = "cpu_instrs.gb"
+timeout_frames = 3600
+
+[[case]]
+id = "blargg-cpu-instrs-01-special"
+rom = "individual/01-special.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-02-interrupts"
+rom = "individual/02-interrupts.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-03-op-sp-hl"
+rom = "individual/03-op sp,hl.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-04-op-r-imm"
+rom = "individual/04-op r,imm.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-05-op-rp"
+rom = "individual/05-op rp.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-06-ld-r-r"
+rom = "individual/06-ld r,r.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-07-jr-jp-call-ret-rst"
+rom = "individual/07-jr,jp,call,ret,rst.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-08-misc-instrs"
+rom = "individual/08-misc instrs.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-09-op-r-r"
+rom = "individual/09-op r,r.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-10-bit-ops"
+rom = "individual/10-bit ops.gb"
+
+[[case]]
+id = "blargg-cpu-instrs-11-op-a-hl"
+rom = "individual/11-op a,(hl).gb"

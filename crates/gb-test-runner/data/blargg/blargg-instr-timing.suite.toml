@@ -1,0 +1,10 @@
+family = "instr_timing"
+suite_name = "blargg-instr-timing"
+report = "blargg"
+model = "dmg"
+timeout_frames = 1200
+oracle = { type = "serial-contains", expected = "Passed" }
+
+[[case]]
+id = "blargg-instr-timing"
+rom = "instr_timing.gb"

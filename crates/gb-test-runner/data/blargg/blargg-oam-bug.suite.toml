@@ -1,0 +1,52 @@
+family = "oam_bug"
+suite_name = "blargg-oam-bug"
+report = "blargg"
+model = "dmg"
+timeout_frames = 1200
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "blargg-oam-bug-multi"
+rom = "oam_bug.gb"
+timeout_frames = 1500
+oracle = { projection = "grayscale", compare = "grayscale-tolerance", tolerance = 2, fixture = "oam_bug-dmg.png" }
+
+[[case]]
+id = "blargg-oam-bug-1-lcd-sync"
+rom = "rom_singles/1-lcd_sync.gb"
+oracle = { fixture = "rom_singles/1-lcd_sync.png" }
+
+[[case]]
+id = "blargg-oam-bug-2-causes"
+rom = "rom_singles/2-causes.gb"
+oracle = { fixture = "rom_singles/2-causes.png" }
+
+[[case]]
+id = "blargg-oam-bug-3-non-causes"
+rom = "rom_singles/3-non_causes.gb"
+oracle = { fixture = "rom_singles/3-non_causes.png" }
+
+[[case]]
+id = "blargg-oam-bug-4-scanline-timing"
+rom = "rom_singles/4-scanline_timing.gb"
+oracle = { fixture = "rom_singles/4-scanline_timing.png" }
+
+[[case]]
+id = "blargg-oam-bug-5-timing-bug"
+rom = "rom_singles/5-timing_bug.gb"
+oracle = { fixture = "rom_singles/5-timing_bug.png" }
+
+[[case]]
+id = "blargg-oam-bug-6-timing-no-bug"
+rom = "rom_singles/6-timing_no_bug.gb"
+oracle = { fixture = "rom_singles/6-timing_no_bug.png" }
+
+[[case]]
+id = "blargg-oam-bug-7-timing-effect"
+rom = "rom_singles/7-timing_effect.gb"
+oracle = { fixture = "rom_singles/7-timing_effect.png" }
+
+[[case]]
+id = "blargg-oam-bug-8-instr-effect"
+rom = "rom_singles/8-instr_effect.gb"
+oracle = { fixture = "rom_singles/8-instr_effect.png" }

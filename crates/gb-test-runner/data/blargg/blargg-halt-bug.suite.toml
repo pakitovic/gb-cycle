@@ -1,0 +1,12 @@
+family = "halt_bug"
+suite_name = "blargg-halt-bug"
+report = "blargg"
+model = "dmg"
+timeout_frames = 1200
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "blargg-halt-bug"
+rom = "halt_bug.gb"
+execution_mode = "permissive"
+oracle = { fixture = "halt_bug.png" }

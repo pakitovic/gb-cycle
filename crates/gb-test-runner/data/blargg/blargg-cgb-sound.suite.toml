@@ -1,0 +1,72 @@
+family = "cgb_sound"
+suite_name = "blargg-cgb-sound"
+report = "blargg"
+model = "cgb"
+timeout_frames = 1200
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb" }
+
+[[case]]
+id = "blargg-cgb-sound-multi"
+rom = "cgb_sound.gb"
+timeout_frames = 2400
+oracle = { fixture = "cgb_sound-cgb.png" }
+
+[[case]]
+id = "blargg-cgb-sound-01-registers"
+rom = "rom_singles/01-registers.gb"
+oracle = { fixture = "rom_singles/01-registers.png" }
+
+[[case]]
+id = "blargg-cgb-sound-02-len-ctr"
+rom = "rom_singles/02-len ctr.gb"
+oracle = { fixture = "rom_singles/02-len ctr.png" }
+
+[[case]]
+id = "blargg-cgb-sound-03-trigger"
+rom = "rom_singles/03-trigger.gb"
+oracle = { fixture = "rom_singles/03-trigger.png" }
+
+[[case]]
+id = "blargg-cgb-sound-04-sweep"
+rom = "rom_singles/04-sweep.gb"
+oracle = { fixture = "rom_singles/04-sweep.png" }
+
+[[case]]
+id = "blargg-cgb-sound-05-sweep-details"
+rom = "rom_singles/05-sweep details.gb"
+oracle = { fixture = "rom_singles/05-sweep details.png" }
+
+[[case]]
+id = "blargg-cgb-sound-06-overflow-on-trigger"
+rom = "rom_singles/06-overflow on trigger.gb"
+oracle = { fixture = "rom_singles/06-overflow on trigger.png" }
+
+[[case]]
+id = "blargg-cgb-sound-07-len-sweep-period-sync"
+rom = "rom_singles/07-len sweep period sync.gb"
+oracle = { fixture = "rom_singles/07-len sweep period sync.png" }
+
+[[case]]
+id = "blargg-cgb-sound-08-len-ctr-during-power"
+rom = "rom_singles/08-len ctr during power.gb"
+oracle = { fixture = "rom_singles/08-len ctr during power.png" }
+
+[[case]]
+id = "blargg-cgb-sound-09-wave-read-while-on"
+rom = "rom_singles/09-wave read while on.gb"
+oracle = { fixture = "rom_singles/09-wave read while on.png" }
+
+[[case]]
+id = "blargg-cgb-sound-10-wave-trigger-while-on"
+rom = "rom_singles/10-wave trigger while on.gb"
+oracle = { fixture = "rom_singles/10-wave trigger while on.png" }
+
+[[case]]
+id = "blargg-cgb-sound-11-regs-after-power"
+rom = "rom_singles/11-regs after power.gb"
+oracle = { fixture = "rom_singles/11-regs after power.png" }
+
+[[case]]
+id = "blargg-cgb-sound-12-wave"
+rom = "rom_singles/12-wave.gb"
+oracle = { fixture = "rom_singles/12-wave.png" }

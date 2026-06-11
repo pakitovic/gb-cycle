@@ -1,0 +1,571 @@
+[[source]]
+id = "game-boy-test-roms"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
+
+[[source.family]]
+id = "cpu_instrs"
+target_root = "cpu_instrs"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/cpu_instrs.gb"
+target = "cpu_instrs.gb"
+sha256 = "8c5e12f41e0ba5bbca796944f92ffe6de28809198682c4332e38d1b3cf56fcf2"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/01-special.gb"
+target = "individual/01-special.gb"
+sha256 = "fe61349cbaee10cc384b50f356e541c90d1bc380185716706b5d8c465a03cf89"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/02-interrupts.gb"
+target = "individual/02-interrupts.gb"
+sha256 = "fb90b0d2b9501910c49709abda1d8e70f757dc12020ebf8409a7779bbfd12229"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/03-op sp,hl.gb"
+target = "individual/03-op sp,hl.gb"
+sha256 = "ca553e606d9b9c86fbd318f1b916c6f0b9df0cf1774825d4361a3fdff2e5a136"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/04-op r,imm.gb"
+target = "individual/04-op r,imm.gb"
+sha256 = "7686aa7a39ef3d2520ec1037371b5f94dc283fbbfd0f5051d1f64d987bdd6671"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/05-op rp.gb"
+target = "individual/05-op rp.gb"
+sha256 = "d504adfa0a4c4793436a154f14492f044d38b3c6db9efc44138f3c9ad138b775"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/06-ld r,r.gb"
+target = "individual/06-ld r,r.gb"
+sha256 = "17ada54b0b9c1a33cd5429fce5b765e42392189ca36da96312222ffe309e7ed1"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/07-jr,jp,call,ret,rst.gb"
+target = "individual/07-jr,jp,call,ret,rst.gb"
+sha256 = "ab31d3daaaa3a98bdbd9395b64f48c1bdaa889aba5b19dd5aaff4ec2a7d228a3"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/08-misc instrs.gb"
+target = "individual/08-misc instrs.gb"
+sha256 = "974a71fe4c67f70f5cc6e98d4dc8c096057ff8a028b7bfa9f7a4330038cf8b7e"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/09-op r,r.gb"
+target = "individual/09-op r,r.gb"
+sha256 = "b28e1be5cd95f22bd1ecacdd33c6f03e607d68870e31a47b15a0229033d5ba2a"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/10-bit ops.gb"
+target = "individual/10-bit ops.gb"
+sha256 = "7f5b8e488c6988b5aaba8c2a74529b7c180c55a58449d5ee89d606a07c53514a"
+
+[[source.family.file]]
+path = "blargg/cpu_instrs/individual/11-op a,(hl).gb"
+target = "individual/11-op a,(hl).gb"
+sha256 = "0ec0cf9fda3f00becaefa476df6fb526c434abd9d4a4beac237c2c2692dac5d3"
+
+[[source.family]]
+id = "dmg_sound"
+target_root = "dmg_sound"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/dmg_sound.gb"
+target = "dmg_sound.gb"
+sha256 = "c34e740664eb14b42c39750434e3e105fc92d774a98fb671594a48e972401630"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/dmg_sound-dmg.png"
+target = "dmg_sound-dmg.png"
+sha256 = "4b4c170c07301b95ec2eb88c4b66111376da78f28a4223369f0bcafcecf59854"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/01-registers.gb"
+target = "rom_singles/01-registers.gb"
+sha256 = "c6b9fa4b9d9d26919b33ebe78a6ef19ad2df854186cf741ca2746179cc9fc3f1"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/02-len ctr.gb"
+target = "rom_singles/02-len ctr.gb"
+sha256 = "745544125a5065729cab22494a79f65c3836e4426f89e4cc43d330afe711b413"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/03-trigger.gb"
+target = "rom_singles/03-trigger.gb"
+sha256 = "bb11e7266a7143bafb8aa2a73ca70957c6011f36cd4e0b6aaf0678378294e75c"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/04-sweep.gb"
+target = "rom_singles/04-sweep.gb"
+sha256 = "58bc14541d91bb020c7761b423825b3432cfde7ee2fa4d1116126e4cb9573c7e"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/05-sweep details.gb"
+target = "rom_singles/05-sweep details.gb"
+sha256 = "f582ca3a0b2544b9510797d7d4dd56a17f53e000511b0ae88a6353200dcd9167"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/06-overflow on trigger.gb"
+target = "rom_singles/06-overflow on trigger.gb"
+sha256 = "1a511e95e84ed6fe6077cabf451a98b4e01fdef59cadae3efbc178113eb064b1"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/07-len sweep period sync.gb"
+target = "rom_singles/07-len sweep period sync.gb"
+sha256 = "56bf5b0c18b996929c9b052ba5a02b450cb619bb6c24cc1d34ea20951c977bf7"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/08-len ctr during power.gb"
+target = "rom_singles/08-len ctr during power.gb"
+sha256 = "31cb41f7be106a708ec0bc94f2a9d0b506d247cd591e9d0a2a6a960dc3bf6595"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/09-wave read while on.gb"
+target = "rom_singles/09-wave read while on.gb"
+sha256 = "378b86f6a25daa16855260d7ef0c24e48146ba05df434a0b5413983a1447e875"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/10-wave trigger while on.gb"
+target = "rom_singles/10-wave trigger while on.gb"
+sha256 = "fa63c8ed7473411e54285d318e33bf23ff6d637ed2caa7555ddeaf80578e3279"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/11-regs after power.gb"
+target = "rom_singles/11-regs after power.gb"
+sha256 = "d27dab46e8b881028723f1975328572d38e25d295289b974cd698916a0be5dab"
+
+[[source.family.file]]
+path = "blargg/dmg_sound/rom_singles/12-wave write while on.gb"
+target = "rom_singles/12-wave write while on.gb"
+sha256 = "2efbecd2c6d40928d44f45da4f634626bcd2790165b3949aedfe377c73913774"
+
+[[source.family]]
+id = "cgb_sound"
+target_root = "cgb_sound"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/cgb_sound.gb"
+target = "cgb_sound.gb"
+sha256 = "de2101eb718a2bf5f778df76e73a63f4598d9b471559f9a85adc26efa692053b"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/cgb_sound-cgb.png"
+target = "cgb_sound-cgb.png"
+sha256 = "20c25680183a2ecda9f25ae9b7604874770edf95715d571a96bddfecd5014597"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/01-registers.gb"
+target = "rom_singles/01-registers.gb"
+sha256 = "8415d6c69f7954e9365a586bac235f5ce39270ece32c09cb8ebbbff043b9852c"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/02-len ctr.gb"
+target = "rom_singles/02-len ctr.gb"
+sha256 = "a1ccf47375a2bede3077ac85a4903cb037dd8a4c7c85fc5d0c176af52915271f"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/03-trigger.gb"
+target = "rom_singles/03-trigger.gb"
+sha256 = "70173be396d14ac955c47aededcee90ba994206cc403273d0bb49ba163ae23ef"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/04-sweep.gb"
+target = "rom_singles/04-sweep.gb"
+sha256 = "abfd1f6fa9e6701e46135ac9f5bb5b10a46cde22d0fc34922636aa09a5647483"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/05-sweep details.gb"
+target = "rom_singles/05-sweep details.gb"
+sha256 = "f51a80c5538fe4b3afbc5c9af0e689a67869b1e2bbb73d4c60a8874826d056cb"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/06-overflow on trigger.gb"
+target = "rom_singles/06-overflow on trigger.gb"
+sha256 = "5701414d13ba55d25b59d13076e2e9cb59a9da6890595b41464f957605e317c0"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/07-len sweep period sync.gb"
+target = "rom_singles/07-len sweep period sync.gb"
+sha256 = "47d57ba87c3a93050ee340cf49b9d276e62e9573542b92b1de5fa2f17e3716c1"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/08-len ctr during power.gb"
+target = "rom_singles/08-len ctr during power.gb"
+sha256 = "be7948c70946e0b81c178b8778ef1907231e734650062f8fa8cdb1ceb5ac8c65"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/09-wave read while on.gb"
+target = "rom_singles/09-wave read while on.gb"
+sha256 = "9b101c68b2de1930df74c19aaf22cce74d37dd5aade93855c805ecb2e1e83fd3"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/10-wave trigger while on.gb"
+target = "rom_singles/10-wave trigger while on.gb"
+sha256 = "cbea1771a5384f4d8f8a249056224a750ad5ee4671297836e4ba87e689af2a23"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/11-regs after power.gb"
+target = "rom_singles/11-regs after power.gb"
+sha256 = "d347dd195a78c2d0f665b94da493a857218f032b014654b84ddb01f7b8e9befc"
+
+[[source.family.file]]
+path = "blargg/cgb_sound/rom_singles/12-wave.gb"
+target = "rom_singles/12-wave.gb"
+sha256 = "7bbd2e78e159de4297f567fec7851f9b90c3076d18d1043af5f30e14bd66cd0a"
+
+[[source.family]]
+id = "halt_bug"
+target_root = "halt_bug"
+
+[[source.family.file]]
+path = "blargg/halt_bug.gb"
+target = "halt_bug.gb"
+sha256 = "ddebfb81f992132954a5580e16cfb97346a4e061c762634d7701328e23fea7c6"
+
+[[source.family]]
+id = "instr_timing"
+target_root = "instr_timing"
+
+[[source.family.file]]
+path = "blargg/instr_timing/instr_timing.gb"
+target = "instr_timing.gb"
+sha256 = "646067b3d6c79fda810e9c3f1cb7c0efd5abb0a7ac06437c54e65720c15d9925"
+
+[[source.family]]
+id = "interrupt_time"
+target_root = "interrupt_time"
+
+[[source.family.file]]
+path = "blargg/interrupt_time/interrupt_time.gb"
+target = "interrupt_time.gb"
+sha256 = "1a8f8f3bc609a92a5838214c00906c81e7cc77b3b9a63be5a1ec6d513f234929"
+
+[[source.family]]
+id = "mem_timing"
+target_root = "mem_timing"
+
+[[source.family.file]]
+path = "blargg/mem_timing/mem_timing.gb"
+target = "mem_timing.gb"
+sha256 = "791cb418fd054b482a6ada5017e2405b96c2373a0f3914c6b23afeee76fa98ce"
+
+[[source.family.file]]
+path = "blargg/mem_timing/individual/01-read_timing.gb"
+target = "individual/01-read_timing.gb"
+sha256 = "52724532c5709e38e947eb429337c124c38bc68f373874435a7460548098b617"
+
+[[source.family.file]]
+path = "blargg/mem_timing/individual/02-write_timing.gb"
+target = "individual/02-write_timing.gb"
+sha256 = "eea92d3f4e95aab5910e0f7080916a3c42a2b8deae1ee5d45d1e3751d648f3f6"
+
+[[source.family.file]]
+path = "blargg/mem_timing/individual/03-modify_timing.gb"
+target = "individual/03-modify_timing.gb"
+sha256 = "2e9067c670ff8b45916bf321677ad04a6896d06a057dbcb82ae9f208a1ae9c34"
+
+[[source.family]]
+id = "mem_timing-2"
+target_root = "mem_timing-2"
+
+[[source.family.file]]
+path = "blargg/mem_timing-2/mem_timing.gb"
+target = "mem_timing.gb"
+sha256 = "ab9daf4c51f417c468ad0a61dab66872cf8b5a50e6eb08d989b581d15f3cf461"
+
+[[source.family.file]]
+path = "blargg/mem_timing-2/mem_timing-dmg-cgb.png"
+target = "mem_timing-dmg-cgb.png"
+sha256 = "bc7b4baf58634d45544ecbdbbaf23b2828c8fbd3996a7e0920fab98ec7664d95"
+
+[[source.family.file]]
+path = "blargg/mem_timing-2/rom_singles/01-read_timing.gb"
+target = "rom_singles/01-read_timing.gb"
+sha256 = "d9c6e86b7008fdaec2d4345c59192af4cea98b812e9b7b07239d16ad6770b576"
+
+[[source.family.file]]
+path = "blargg/mem_timing-2/rom_singles/02-write_timing.gb"
+target = "rom_singles/02-write_timing.gb"
+sha256 = "9188e5d9cf9dfc9e25f7b7c5d67e5c8e36e1b25e5ef4be0089dad1ddb526706a"
+
+[[source.family.file]]
+path = "blargg/mem_timing-2/rom_singles/03-modify_timing.gb"
+target = "rom_singles/03-modify_timing.gb"
+sha256 = "818256ab477bb8fbb0709d28e3ec932a55c0ecd044292e760838efbb2b7fc09b"
+
+[[source.family]]
+id = "oam_bug"
+target_root = "oam_bug"
+
+[[source.family.file]]
+path = "blargg/oam_bug/oam_bug.gb"
+target = "oam_bug.gb"
+sha256 = "21f0e7af73e525d14ca242ba28f97d4d381a40a61b3466dd6b4cae3e502e1ea1"
+
+[[source.family.file]]
+path = "blargg/oam_bug/oam_bug-dmg.png"
+target = "oam_bug-dmg.png"
+sha256 = "c1151edeefcb6733a6fc2720f5906688ccca811237b1aeb159e996bfe35f83b8"
+
+[[source.family.file]]
+path = "blargg/oam_bug/rom_singles/1-lcd_sync.gb"
+target = "rom_singles/1-lcd_sync.gb"
+sha256 = "abc303a2c644528cbcf36e83f8020cad17fdb6abdf42940533c4f6c8830c530a"
+
+[[source.family.file]]
+path = "blargg/oam_bug/rom_singles/2-causes.gb"
+target = "rom_singles/2-causes.gb"
+sha256 = "3f9c0db75222aae7c47382fe814b3806735b9ef76c791c6c26985b55c82235b9"
+
+[[source.family.file]]
+path = "blargg/oam_bug/rom_singles/3-non_causes.gb"
+target = "rom_singles/3-non_causes.gb"
+sha256 = "33e474075def3c025ff7990af82f1effb31e83617fb88aa1ee401976c35b8978"
+
+[[source.family.file]]
+path = "blargg/oam_bug/rom_singles/4-scanline_timing.gb"
+target = "rom_singles/4-scanline_timing.gb"
+sha256 = "5527c97665c3ad5474e5bda53a7e8e629bb1d0cb8ec54e6a1b42946dc9835ec7"
+
+[[source.family.file]]
+path = "blargg/oam_bug/rom_singles/5-timing_bug.gb"
+target = "rom_singles/5-timing_bug.gb"
+sha256 = "ca3500d92e77883a09e5bc560046ed3471ab362eca550689cd38a944dc558e4f"
+
+[[source.family.file]]
+path = "blargg/oam_bug/rom_singles/6-timing_no_bug.gb"
+target = "rom_singles/6-timing_no_bug.gb"
+sha256 = "e5ea594ddc7ad9a0e3063c3d6b050a2a10239cd43a23012551d4985c3712ea70"
+
+[[source.family.file]]
+path = "blargg/oam_bug/rom_singles/7-timing_effect.gb"
+target = "rom_singles/7-timing_effect.gb"
+sha256 = "b4bb86462a5701155d92ea7dafe826cbffae6faec2c48c10feef0a5f78154d6c"
+
+[[source.family.file]]
+path = "blargg/oam_bug/rom_singles/8-instr_effect.gb"
+target = "rom_singles/8-instr_effect.gb"
+sha256 = "11b372a91f65dd3bd2570aafc6f26e201fc0f05955ba3bb57f4c17cd642f7b2d"
+
+[[source]]
+id = "gb-emulator-shootout"
+git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
+git_rev = "7c6ee9ba380fab277f30784c5de7d35b21a4b679"
+
+[[source.family]]
+id = "halt_bug"
+target_root = "halt_bug"
+sparse_paths = ["testroms/blargg"]
+
+[[source.family.file]]
+path = "testroms/blargg/halt_bug.png"
+target = "halt_bug.png"
+sha256 = "561273730808d1072e5ce62585d83c8d2a06de9114a4c73c411e41a5ba37257d"
+
+[[source.family]]
+id = "interrupt_time"
+target_root = "interrupt_time"
+sparse_paths = ["testroms/blargg"]
+
+[[source.family.file]]
+path = "testroms/blargg/interrupt_time.png"
+target = "interrupt_time.png"
+sha256 = "722f110245a51f6b363493f9d19101aea7b7cf441508ede44ae4acb90b272131"
+
+[[source.family]]
+id = "dmg_sound"
+target_root = "dmg_sound"
+sparse_paths = ["testroms/blargg"]
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/01-registers.png"
+target = "rom_singles/01-registers.png"
+sha256 = "0574a0933299759683900822f2e1b2a31e0d695d99c53d54f9e2e2c61414b71c"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/02-len_ctr.png"
+target = "rom_singles/02-len ctr.png"
+sha256 = "b57d22428a1a7973a4cf5ffe2e4702f7380bb2eb22400c4baa2e701ac1882b8c"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/03-trigger.png"
+target = "rom_singles/03-trigger.png"
+sha256 = "e5f866c0d34cb35049e177b142b96bebf1678fadf20d5343398e6b5d6a5ded20"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/04-sweep.png"
+target = "rom_singles/04-sweep.png"
+sha256 = "bf28955f3a495e8463c60193333ca7fc23a02f87c4f4d665647a8b06596737b9"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/05-sweep_details.png"
+target = "rom_singles/05-sweep details.png"
+sha256 = "9240660b73cb84351d8dd16c76172d5a4ee69eacc78a52b47dd79fdb5345ff5e"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/06-overflow_on_trigger.png"
+target = "rom_singles/06-overflow on trigger.png"
+sha256 = "35e884c5ac2ef4669d44a3c63127a72b9f2027acb210363040fb300053d36b89"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/07-len_sweep_period_sync.png"
+target = "rom_singles/07-len sweep period sync.png"
+sha256 = "d317df3b5bae30d967118265aba74be271848a05a4b8f0e850db4450c4bb360c"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/08-len_ctr_during_power.png"
+target = "rom_singles/08-len ctr during power.png"
+sha256 = "cb71ce68711637a7a29382a0c618f5c440dda1174692d79533939dca1de57239"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/09-wave_read_while_on.png"
+target = "rom_singles/09-wave read while on.png"
+sha256 = "99771f644d1d67bb5c244d52fdb92ed5e6726c1e66884a1f7809bd8fb4d275e2"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/10-wave_trigger_while_on.png"
+target = "rom_singles/10-wave trigger while on.png"
+sha256 = "d2437629ac4cc52b2a964858c2cb6a6205ac9f0f16c89c38234f7dfb68af6424"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/11-regs_after_power.png"
+target = "rom_singles/11-regs after power.png"
+sha256 = "e2e9638156a219387eacb42ab0e0ecc2057558e8b6410ce99e18b29eb2524059"
+
+[[source.family.file]]
+path = "testroms/blargg/dmg_sound/12-wave_write_while_on.png"
+target = "rom_singles/12-wave write while on.png"
+sha256 = "bc948c2ab39ad9a70bb1ad83ed6d69ecbdd60fb8701c7bcc0d7aebb839813c10"
+
+[[source.family]]
+id = "cgb_sound"
+target_root = "cgb_sound"
+sparse_paths = ["testroms/blargg"]
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/01-registers.png"
+target = "rom_singles/01-registers.png"
+sha256 = "9311987790787639a8614a4de88a37b83c9017a8dd5029b449292a97eb73e0ee"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/02-len_ctr.png"
+target = "rom_singles/02-len ctr.png"
+sha256 = "cd74c8eb23be026573abf57ca2214425869281b0c719a991abead3c3a7b79c9d"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/03-trigger.png"
+target = "rom_singles/03-trigger.png"
+sha256 = "4b25e1f22418fa22b1644ab4be6c10aa7c16fb84db369683c8609a0754982869"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/04-sweep.png"
+target = "rom_singles/04-sweep.png"
+sha256 = "395f86bafb229bc6aab8f8be04cc84c0c2a7b91fc6415be0835eb1d170446985"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/05-sweep_details.png"
+target = "rom_singles/05-sweep details.png"
+sha256 = "42c41fb66f655ce5b67cfc0c8fe71fed5411cc09e575d329682ad58489f7ee25"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/06-overflow_on_trigger.png"
+target = "rom_singles/06-overflow on trigger.png"
+sha256 = "23d8dac3e8cb3a196964add166ba80b32c9fd62316eb59a400e2a27ec48251a0"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/07-len_sweep_period_sync.png"
+target = "rom_singles/07-len sweep period sync.png"
+sha256 = "dfae1e999e92858b0dfd9c0426f5c0e2e43e3a561c8b391d57f751a37b76667b"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/08-len_ctr_during_power.png"
+target = "rom_singles/08-len ctr during power.png"
+sha256 = "660320abe85f98321f1c20600e4397160e454967dda7db2d187eb212845c2e0d"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/09-wave_read_while_on.png"
+target = "rom_singles/09-wave read while on.png"
+sha256 = "38fc5cf01a18171316cf893a5aaea842b1d8468a92281db42996565ed65b014d"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/10-wave_trigger_while_on.png"
+target = "rom_singles/10-wave trigger while on.png"
+sha256 = "fa73ef5cd16cff0e3b077b33f86981c1a15777926d3cb508154fabdc5a67f207"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/11-regs_after_power.png"
+target = "rom_singles/11-regs after power.png"
+sha256 = "b905224e5fe59db86a85e05972222ab7e618b6fe81936e705963a68b09bb3c28"
+
+[[source.family.file]]
+path = "testroms/blargg/cgb_sound/12-wave.png"
+target = "rom_singles/12-wave.png"
+sha256 = "eb9df05369029ce0f6e167f08a1001bdcde9a676e873f5be7dfcf9f118fd7937"
+
+[[source.family]]
+id = "mem_timing-2"
+target_root = "mem_timing-2"
+sparse_paths = ["testroms/blargg"]
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/01-read_timing.png"
+target = "rom_singles/01-read_timing.png"
+sha256 = "a73101c68cc0dd6f71c7947d8ce1f3fac7752ad958fb0f648d9f340930059aed"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/02-write_timing.png"
+target = "rom_singles/02-write_timing.png"
+sha256 = "0b24397e24e474f8cd026973a46d756b7e1e649dc26d11629b0ce02b45e46c40"
+
+[[source.family.file]]
+path = "testroms/blargg/mem_timing-2/03-modify_timing.png"
+target = "rom_singles/03-modify_timing.png"
+sha256 = "cd3efa7e8d68a2e6cdb5c8934627c6c3bf31237c53c5416cad5e6dcba222da46"
+
+[[source.family]]
+id = "oam_bug"
+target_root = "oam_bug"
+sparse_paths = ["testroms/blargg"]
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/1-lcd_sync.png"
+target = "rom_singles/1-lcd_sync.png"
+sha256 = "314a51c6785ba7fe59f12638f3d4f352a55cd6d1dfd884f217c0f4643c803a5b"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/2-causes.png"
+target = "rom_singles/2-causes.png"
+sha256 = "1150bd0e83cb9f30b05677627734b98d3c6c82cdf0edf8f19d868fb091b44c82"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/3-non_causes.png"
+target = "rom_singles/3-non_causes.png"
+sha256 = "e87e192eadaf62ef43908df7a38f7fd79920fba52a101bc350b0b3b8259ce98f"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/4-scanline_timing.png"
+target = "rom_singles/4-scanline_timing.png"
+sha256 = "40de444326a31e818d5ccebaa07faddcd5677264b0d6dc601551f7df7762a0ea"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/5-timing_bug.png"
+target = "rom_singles/5-timing_bug.png"
+sha256 = "460464a9bf1cb0ea1352461fc96c5e33a2a337a61bd17fbb0ebdff14210ac31a"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/6-timing_no_bug.png"
+target = "rom_singles/6-timing_no_bug.png"
+sha256 = "b826f5dfd4df4a52676502eb6bdb91faf8b0c2715e97114c7de38ad99ed4a66a"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/7-timing_effect.png"
+target = "rom_singles/7-timing_effect.png"
+sha256 = "4a17cdbaa7d108eab02da64e95bb08b350f32b290819319af9d6c611b66bb1b0"
+
+[[source.family.file]]
+path = "testroms/blargg/oam_bug/8-instr_effect.png"
+target = "rom_singles/8-instr_effect.png"
+sha256 = "09d90c01146ed634ea4841bf3854f49272ed0ea2e8cbe8515495af1844a486aa"

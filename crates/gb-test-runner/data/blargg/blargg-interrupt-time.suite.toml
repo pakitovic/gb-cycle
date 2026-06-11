@@ -1,0 +1,12 @@
+family = "interrupt_time"
+suite_name = "blargg-interrupt-time"
+report = "blargg"
+model = "cgb"
+timeout_frames = 1200
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb" }
+
+[[case]]
+id = "blargg-interrupt-time"
+rom = "interrupt_time.gb"
+execution_mode = "permissive"
+oracle = { fixture = "interrupt_time.png" }
