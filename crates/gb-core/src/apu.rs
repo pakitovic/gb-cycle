@@ -254,6 +254,8 @@ pub struct Apu {
     last_register_write: Option<ApuRegisterWriteObservation>,
     wave_ram_startup_policy: WaveRamStartupPolicy,
     #[serde(default)]
+    startup_silent_channel_mask: u8,
+    #[serde(default)]
     apu_clock: u8,
     #[serde(default)]
     t_cycle_phase: u8,
@@ -272,6 +274,8 @@ pub struct ApuSaveState {
     channels: ApuChannels,
     last_register_write: Option<ApuRegisterWriteObservation>,
     wave_ram_startup_policy: WaveRamStartupPolicy,
+    #[serde(default)]
+    startup_silent_channel_mask: u8,
     #[serde(default)]
     apu_clock: u8,
     #[serde(default)]
@@ -332,6 +336,7 @@ impl Apu {
             channels: ApuChannels::default(),
             last_register_write: None,
             wave_ram_startup_policy,
+            startup_silent_channel_mask: 0,
             apu_clock: 0,
             t_cycle_phase: 0,
             skip_next_frame_sequencer_edge: false,
@@ -349,6 +354,7 @@ impl Apu {
             channels: self.channels.clone(),
             last_register_write: self.last_register_write.clone(),
             wave_ram_startup_policy: self.wave_ram_startup_policy,
+            startup_silent_channel_mask: self.startup_silent_channel_mask,
             apu_clock: self.apu_clock,
             t_cycle_phase: self.t_cycle_phase,
             skip_next_frame_sequencer_edge: self.skip_next_frame_sequencer_edge,
@@ -365,6 +371,7 @@ impl Apu {
         self.channels = state.channels.clone();
         self.last_register_write = state.last_register_write.clone();
         self.wave_ram_startup_policy = state.wave_ram_startup_policy;
+        self.startup_silent_channel_mask = state.startup_silent_channel_mask;
         self.apu_clock = state.apu_clock;
         self.t_cycle_phase = state.t_cycle_phase;
         self.skip_next_frame_sequencer_edge = state.skip_next_frame_sequencer_edge;
@@ -578,7 +585,17 @@ impl Apu {
     }
 
     fn channel_output_state(&self) -> ChannelOutputState {
-        self.channels.output_state()
+        let mut output = self.channels.output_state();
+        let startup_silent_channel_mask = self.startup_silent_channel_mask & CHANNEL_ACTIVE_MASK;
+        if startup_silent_channel_mask != 0 {
+            for (index, channel_mask) in CHANNEL_MASKS.iter().copied().enumerate() {
+                if startup_silent_channel_mask & channel_mask != 0 {
+                    output.digital_outputs[index] = 0;
+                    output.dac_mask &= !channel_mask;
+                }
+            }
+        }
+        output
     }
 
     pub(in crate::apu) fn resolve_output_state(&self) -> ApuOutputResolution {

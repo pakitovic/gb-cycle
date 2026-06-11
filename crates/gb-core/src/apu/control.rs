@@ -28,6 +28,8 @@ pub struct ApuStartupState {
     pub nr50: u8,
     pub nr51: u8,
     pub channel_active_mask: u8,
+    #[serde(default)]
+    pub startup_silent_channel_mask: u8,
     pub div_apu: u8,
     pub wave_ram_startup_policy: WaveRamStartupPolicy,
 }
@@ -55,6 +57,11 @@ impl Apu {
     pub fn apply_startup_state(&mut self, startup_state: ApuStartupState) {
         self.last_register_write = None;
         self.wave_ram_startup_policy = startup_state.wave_ram_startup_policy;
+        self.startup_silent_channel_mask = if startup_state.powered {
+            startup_state.startup_silent_channel_mask & super::common::CHANNEL_ACTIVE_MASK
+        } else {
+            0
+        };
         self.output_path = OutputPathState::new(self.console_model);
 
         if startup_state.powered {
@@ -106,6 +113,7 @@ impl Apu {
         match (self.master.powered, next_powered) {
             (true, false) => self.power_off(),
             (false, true) => {
+                self.startup_silent_channel_mask = 0;
                 self.master.powered = true;
                 let starts_on_high_half = div_apu_signal_high && self.console_model.is_cgb_family();
                 self.frame_sequencer
@@ -122,6 +130,10 @@ impl Apu {
             }
             _ => {}
         }
+    }
+
+    pub(in crate::apu) fn clear_startup_silent_channel_mask(&mut self, channel_mask: u8) {
+        self.startup_silent_channel_mask &= !channel_mask;
     }
 
     pub(in crate::apu) fn register_write_state(&self) -> ApuRegisterWriteState {
@@ -157,6 +169,7 @@ impl Apu {
     }
 
     fn power_off(&mut self) {
+        self.startup_silent_channel_mask = 0;
         self.master.powered = false;
         self.master.nr50 = 0;
         self.master.nr51 = 0;

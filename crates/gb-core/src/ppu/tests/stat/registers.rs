@@ -183,6 +183,60 @@ fn dmg_mode2_enable_requests_lcd_stat_at_line144_pretrigger_only() {
 }
 
 #[test]
+fn cgb_compat_mode2_enable_requests_lcd_stat_at_line144_pretrigger_only() {
+    let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(OperatingMode::GbCompatible);
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x80,
+        stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 143,
+        lyc: 0x00,
+        bgp: 0x00,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    ppu.line_dot = DOTS_PER_SCANLINE - 5;
+    ppu.refresh_stat_irq_line(false);
+    assert!(!ppu.snapshot().stat_irq_line);
+    assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+
+    ppu.tick();
+
+    assert_eq!(ppu.snapshot().ly, 143);
+    assert_eq!(ppu.snapshot().line_dot, DOTS_PER_SCANLINE - 4);
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::HBlank);
+    assert!(ppu.snapshot().stat_irq_line);
+    assert_eq!(
+        drain_ppu_interrupts(&mut ppu),
+        vec![InterruptSource::LcdStat]
+    );
+
+    ppu.tick();
+
+    assert_eq!(ppu.snapshot().ly, 143);
+    assert_eq!(ppu.snapshot().line_dot, DOTS_PER_SCANLINE - 3);
+    assert!(!ppu.snapshot().stat_irq_line);
+    assert!(drain_ppu_interrupts(&mut ppu).is_empty());
+
+    for _ in 0..3 {
+        ppu.tick();
+    }
+
+    assert_eq!(ppu.snapshot().ly, 144);
+    assert_eq!(ppu.snapshot().line_dot, 0);
+    assert_eq!(ppu.snapshot().mode, PpuAccessMode::VBlank);
+    assert!(!ppu.snapshot().stat_irq_line);
+    assert_eq!(
+        drain_ppu_interrupts(&mut ppu),
+        vec![InterruptSource::VBlank]
+    );
+}
+
+#[test]
 fn mode2_enable_alone_does_not_hold_stat_high_past_vblank_entry() {
     let mut ppu = PpuTestRig::dmg();
 

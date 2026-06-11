@@ -64,6 +64,86 @@ fn cgb_pcm_registers_expose_current_channel_digital_outputs() {
 }
 
 #[test]
+fn cgb_direct_start_silent_mask_preserves_nr52_but_mutes_pcm_and_dac_until_trigger() {
+    let mut apu = Apu::new(ConsoleModel::GameBoyColor);
+
+    apu.apply_startup_state(ApuStartupState {
+        powered: true,
+        nr10: 0x00,
+        nr11: 0x80,
+        nr12: 0xF3,
+        nr13: 0x00,
+        nr14: 0x00,
+        nr21: 0x00,
+        nr22: 0x00,
+        nr23: 0x00,
+        nr24: 0x00,
+        nr30: 0x00,
+        nr31: 0x00,
+        nr32: 0x00,
+        nr33: 0x00,
+        nr34: 0x00,
+        nr41: 0x00,
+        nr42: 0x00,
+        nr43: 0x00,
+        nr44: 0x00,
+        nr50: 0x77,
+        nr51: 0xF3,
+        channel_active_mask: CHANNEL_ACTIVE_CH1,
+        startup_silent_channel_mask: CHANNEL_ACTIVE_CH1,
+        div_apu: 0,
+        wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
+    });
+
+    let snapshot = apu.snapshot();
+    assert_eq!(apu.read_register(0xFF26), 0xF1);
+    assert_eq!(snapshot.channel_active_mask, CHANNEL_ACTIVE_CH1);
+    assert_eq!(snapshot.channel_dac_mask, 0x00);
+    assert_eq!(snapshot.output.channel_digital_outputs[0], 0);
+    assert_eq!(snapshot.output.channel_dac_outputs[0], 0);
+    assert_eq!(
+        snapshot.output.mixer_output,
+        ApuStereoOutputSnapshot::default()
+    );
+    assert_eq!(
+        snapshot.output.master_output,
+        ApuStereoOutputSnapshot::default()
+    );
+    assert_eq!(
+        snapshot.output.hpf_output,
+        ApuStereoOutputSnapshot::default()
+    );
+    assert_eq!(apu.read_pcm12(), 0x00);
+    assert_eq!(
+        apu.recorded_channel_tap_pre_hpf(ApuRecordedChannel::Ch1),
+        ApuRecordedChannelMixTap::default()
+    );
+
+    apu.write_register(0xFF10, 0x00);
+    assert_eq!(apu.read_register(0xFF26), 0xF1);
+    assert_eq!(apu.snapshot().channel_dac_mask, 0x00);
+    assert_eq!(apu.read_pcm12(), 0x00);
+
+    apu.write_register(0xFF11, 0x80);
+    apu.write_register(0xFF12, 0xF0);
+    apu.write_register(0xFF13, 0xFF);
+    apu.write_register(0xFF14, CHANNEL_TRIGGER_BIT);
+    apu.channels.channel_1.pulse.suppress_initial_trigger_output = false;
+    apu.channels.channel_1.pulse.trigger_delay_t_cycles = 0;
+    apu.channels.channel_1.pulse.duty_step = 0;
+    apu.preview_output_path();
+
+    let snapshot = apu.snapshot();
+    assert_eq!(snapshot.channel_dac_mask, CHANNEL_ACTIVE_CH1);
+    assert_eq!(apu.read_pcm12(), 0x0F);
+    assert_ne!(snapshot.output.channel_dac_outputs[0], 0);
+    assert!(
+        apu.recorded_channel_tap_pre_hpf(ApuRecordedChannel::Ch1)
+            .any_output_connected
+    );
+}
+
+#[test]
 fn audio_register_readback_keeps_write_only_and_mixed_fields_explicit() {
     let mut apu = Apu::new(ConsoleModel::GameBoy);
     apu.write_register(0xFF26, 0x80);
@@ -332,6 +412,7 @@ fn startup_state_recreates_the_published_post_boot_audio_snapshot() {
         nr50: 0x77,
         nr51: 0xF3,
         channel_active_mask: CHANNEL_ACTIVE_CH1,
+        startup_silent_channel_mask: 0x00,
         div_apu: 0,
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     });
@@ -449,6 +530,7 @@ fn powered_off_startup_state_matches_the_nr52_power_off_contract() {
         nr50: 0x77,
         nr51: 0xF3,
         channel_active_mask: 0x0F,
+        startup_silent_channel_mask: 0x00,
         div_apu: 0xFF,
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     });
@@ -500,6 +582,7 @@ fn powered_off_apu_keeps_div_apu_phase_in_sync_with_shared_edges() {
         nr50: 0x00,
         nr51: 0x00,
         channel_active_mask: 0x00,
+        startup_silent_channel_mask: 0x00,
         div_apu: 0x05,
         wave_ram_startup_policy: WaveRamStartupPolicy::DeterministicZeroed,
     });

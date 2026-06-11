@@ -791,6 +791,7 @@ fn cgb_skip_and_custom_boot_share_header_derived_timer_for_native_non_nintendo_r
         assert_eq!(startup_state.timer.system_counter, 0x1E84);
         assert_eq!(startup_state.io.div, 0x1E);
         assert_eq!(startup_state.apu.div_apu, 0x00);
+        assert_eq!(startup_state.apu.startup_silent_channel_mask, 0x01);
     }
     assert_eq!(
         machine_skip_boot.startup_memory_policy,

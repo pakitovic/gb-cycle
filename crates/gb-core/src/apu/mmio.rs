@@ -1,5 +1,8 @@
 use super::Apu;
-use super::common::APU_UNMAPPED_READ_VALUE;
+use super::common::{
+    APU_UNMAPPED_READ_VALUE, CHANNEL_ACTIVE_CH1, CHANNEL_ACTIVE_CH2, CHANNEL_ACTIVE_CH3,
+    CHANNEL_ACTIVE_CH4, CHANNEL_TRIGGER_BIT,
+};
 use super::registers::{
     ApuMmioRegister, ApuRegister, ApuRegisterOwner, Channel1Register, Channel2Register,
     Channel3Register, Channel4Register, MasterRegister,
@@ -92,13 +95,29 @@ impl Apu {
     ) {
         match register.owner() {
             ApuRegisterOwner::Channel1(register) => {
-                self.write_channel_1_register(register, value, speed_mode)
+                self.write_channel_1_register(register, value, speed_mode);
+                if matches!(register, Channel1Register::Nr14) && value & CHANNEL_TRIGGER_BIT != 0 {
+                    self.clear_startup_silent_channel_mask(CHANNEL_ACTIVE_CH1);
+                }
             }
             ApuRegisterOwner::Channel2(register) => {
-                self.write_channel_2_register(register, value, speed_mode)
+                self.write_channel_2_register(register, value, speed_mode);
+                if matches!(register, Channel2Register::Nr24) && value & CHANNEL_TRIGGER_BIT != 0 {
+                    self.clear_startup_silent_channel_mask(CHANNEL_ACTIVE_CH2);
+                }
             }
-            ApuRegisterOwner::Channel3(register) => self.write_channel_3_register(register, value),
-            ApuRegisterOwner::Channel4(register) => self.write_channel_4_register(register, value),
+            ApuRegisterOwner::Channel3(register) => {
+                self.write_channel_3_register(register, value);
+                if matches!(register, Channel3Register::Nr34) && value & CHANNEL_TRIGGER_BIT != 0 {
+                    self.clear_startup_silent_channel_mask(CHANNEL_ACTIVE_CH3);
+                }
+            }
+            ApuRegisterOwner::Channel4(register) => {
+                self.write_channel_4_register(register, value);
+                if matches!(register, Channel4Register::Nr44) && value & CHANNEL_TRIGGER_BIT != 0 {
+                    self.clear_startup_silent_channel_mask(CHANNEL_ACTIVE_CH4);
+                }
+            }
             ApuRegisterOwner::Master(register) => {
                 self.write_master_register(register, value, div_apu_signal_high)
             }
