@@ -691,6 +691,7 @@ impl OamCorruptionController {
         let previous_first = read_oam_word(oam_bytes, current_row - 1, 0);
         let previous_third = read_oam_word(oam_bytes, current_row - 1, 2);
         let corrupted_first = previous_first | (current_first & previous_third);
+        write_oam_word(oam_bytes, current_row - 1, 0, corrupted_first);
         write_oam_word(oam_bytes, current_row, 0, corrupted_first);
         copy_previous_row_tail(oam_bytes, current_row);
     }

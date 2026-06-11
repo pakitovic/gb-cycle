@@ -19,6 +19,7 @@ fn route_cpu_address_event_turns_mode2_oam_reads_into_corruption_events() {
     );
 
     let expected_first = 0x1357_u16 | (0x0F0F & 0xAAAA);
+    assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 0, 0), expected_first);
     assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 0), expected_first);
     assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 1), 0x2468);
     assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 2), 0xAAAA);
@@ -44,6 +45,7 @@ fn route_cpu_address_event_uses_the_unusable_mode2_read_path_for_corruption() {
     );
 
     let expected_first = 0x1357_u16 | (0x0F0F & 0xAAAA);
+    assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 0, 0), expected_first);
     assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 0), expected_first);
     assert_eq!(read_oam_word_bytes(bus.oam.bytes(), 1, 1), 0x2468);
 }
