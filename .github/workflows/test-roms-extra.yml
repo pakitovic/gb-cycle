@@ -21,6 +21,7 @@ jobs:
           - name: magen
           - name: mealybug-tearoom-tests
           - name: gbmicrotest
+          - name: mooneye
 
     steps:
       - name: Checkout
