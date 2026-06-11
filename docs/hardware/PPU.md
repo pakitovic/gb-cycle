@@ -405,7 +405,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
 - Future `CGB`, `AGB`, `AGS`, and `GBP` support must not inherit this DMG-family bug automatically, even when running monochrome software.
 - During Mode `2`, the PPU should expose the currently scanned OAM row as explicit state. That row is an `8`-byte slice, and Mode `2` should advance through the `20` rows at one row per `4` dots (`1` M-cycle as a descriptive grouping only).
 - OAM corruption logic must therefore consume both the current live PPU mode and the current Mode `2` row instead of relying only on a coarse "OAM blocked" flag.
-- The first OAM row, `FE00-FE07` (objects `0` and `1`), should remain immune to the basic corruption patterns documented for the bug.
+- The first OAM row, `FE00-FE07` (objects `0` and `1`), should remain immune when it is the currently scanned row; the SameBoy-backed read mirror below is a separate previous-row side effect.
 
 ## OAM corruption trigger baseline
 
@@ -424,6 +424,7 @@ Use those sections first when designing or reimplementing the PPU. Consult [PPU-
   - copy the last three words of the previous row into the last three words of the current row
 - In that write pattern, `a` is the current row's first word before corruption, `b` is the previous row's first word, and `c` is the previous row's third word.
 - A read-triggered corruption should keep its own first-word formula, `b | (a & c)`, while preserving the same "copy the previous row's last three words" structure.
+- [inference] SameBoy's research-backed reference implementation also mirrors the read-corruption first-word result into the previous row's first word, but only on rows whose byte offset has bit `3` set (odd rows). Rows whose offset satisfies `& 0x18 == 0x10` or `& 0x18 == 0x00` take SameBoy's distinct secondary/tertiary read-corruption paths, which are not modeled here, so the mirror must stay gated to odd rows. Keep the mirror as a read-only refinement of the Pan Docs formula and do not apply it to write-triggered corruption.
 - `write + inc/dec` in the same effective CPU step should behave as one effective write corruption, not as two stacked write corruptions.
 - `read + inc/dec` should have its own dedicated path rather than being synthesized from "read corruption plus write corruption". That complex path should remain gated off for the first four rows and for the last row, matching the documented row exceptions.
 - In the complex `read + inc/dec` path, let `a` be the first word two rows before the current row, `b` the first word of the previous row, `c` the first word of the current row, and `d` the third word of the previous row. The first word of the previous row should first become `(b & (a | c | d)) | (a & c & d)`.

@@ -691,6 +691,9 @@ impl OamCorruptionController {
         let previous_first = read_oam_word(oam_bytes, current_row - 1, 0);
         let previous_third = read_oam_word(oam_bytes, current_row - 1, 2);
         let corrupted_first = previous_first | (current_first & previous_third);
+        if read_corruption_mirrors_previous_row(current_row) {
+            write_oam_word(oam_bytes, current_row - 1, 0, corrupted_first);
+        }
         write_oam_word(oam_bytes, current_row, 0, corrupted_first);
         copy_previous_row_tail(oam_bytes, current_row);
     }
@@ -713,6 +716,10 @@ impl OamCorruptionController {
 
         self.apply_read_corruption(current_row, oam_bytes);
     }
+}
+
+const fn read_corruption_mirrors_previous_row(current_row: u8) -> bool {
+    current_row % 2 == 1
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
