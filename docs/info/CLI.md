@@ -14,6 +14,39 @@
 
 Use `cargo run -p gb-cli -- <command> ...` during development, or `gb-cli <command> ...` when running an installed binary.
 
+## Examples
+
+```bash
+# Inspect a ROM header
+cargo run -p gb-cli -- inspect-rom path/to/rom.gb
+
+# Run headless with serial capture
+cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts/serial.bin
+
+# Force the Game Boy Color model and export the final RGB555 framebuffer as PNG
+cargo run -p gb-cli -- run path/to/rom.gbc --model CGB --frames 120 --framebuffer-out .artifacts/frame.png
+
+# Run a GBA Enhanced GB/C title on the AGB / GB ADVANCE compatibility profile
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup skip-boot
+
+# Execute the default AGB GB/C boot ROM path when private cgb_agb_boot.bin is available; native gba_bios.bin is not used
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
+
+# Select the explicit AGB0 GB/C boot ROM path when private cgb_agb0_boot.bin is available
+cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --revision cpu-agb-0 --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
+
+# Run an SGB-enhanced game and export the native 256x224 SGB host frame
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB --frames 120 --framebuffer-out .artifacts/sgb.png
+
+# Select original SGB PAL, or force LCD-only PNG output without SGB/SGB2 or handheld borrowed borders
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB --sgb-standard pal --framebuffer-out .artifacts/sgb-pal.png
+cargo run -p gb-cli -- run path/to/rom.gb --model SGB2 --border-off --framebuffer-out .artifacts/sgb2-lcd.png
+
+# Save and restore a whole-machine .gbstate
+cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --state-out .artifacts/run.gbstate
+cargo run -p gb-cli -- run path/to/rom.gb --state-in .artifacts/run.gbstate --tcycles 5000
+```
+
 ## `inspect-rom`
 
 ```bash

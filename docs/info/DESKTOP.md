@@ -13,6 +13,26 @@ Use `--release` for normal gameplay and timing-sensitive validation. `debug` bui
 
 If no ROM is provided, the app opens the in-window launcher root menu and waits for `OPEN ROM`, `OPEN RECENT`, or configuration changes before a cartridge session exists.
 
+## Examples
+
+```bash
+# Launch the SDL3 frontend in release for real-time speed
+cargo run --release -p gb-desktop -- [path/to/rom.gb]
+
+# Launch a CGB ROM with direct RGB555 presentation
+cargo run --release -p gb-desktop -- path/to/rom.gbc --model CGB
+
+# Launch the GB ADVANCE / AGB GB/C compatibility profile for GBA Enhanced detection
+cargo run --release -p gb-desktop -- path/to/gba-enhanced.gbc --model AGB
+
+# Launch an SGB/SGB2 profile; CONFIG -> SYSTEM exposes MODEL, REV, VIDEO, START, and BORDER
+cargo run --release -p gb-desktop -- path/to/sgb-enhanced.gb --model SGB
+cargo run --release -p gb-desktop -- path/to/sgb-enhanced.gb --model SGB2 --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
+
+# Launch a local DMG-04 two-player Game Link session
+cargo run --release -p gb-desktop -- path/to/p1.gb --link-rom path/to/p2.gb
+```
+
 On macOS, `CAM LIVE` needs an app bundle declaring `NSCameraUsageDescription`; direct terminal launches may leave SDL camera permission in `pending` without listing the binary under Privacy & Security. Use `scripts/run-gb-desktop-macos-app.sh -- [rom]` for Pocket Camera live-input testing. The helper builds `gb-desktop`, creates `target/macos/GB Cycle.app` from `crates/gb-desktop/macos/Info.plist`, ad-hoc signs when possible, launches through LaunchServices, and writes detached stdout/stderr logs to `target/macos/gb-desktop.stdout.log` and `target/macos/gb-desktop.stderr.log`. Set `GB_CYCLE_DESKTOP_LAUNCH_MODE=direct` only when deliberately bypassing LaunchServices for debugging.
 
 ## CLI surface

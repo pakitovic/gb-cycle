@@ -38,83 +38,19 @@ scripts/           Developer helper scripts
 
 ## Quick start
 
+Use this section to choose the entry point. Concrete command examples live in the linked docs so new examples can grow there without expanding the README.
+
 ### `gb-cli`
 
-Use `gb-cli` for headless ROM inspection, deterministic short runs, serial/framebuffer artifacts, and whole-machine `.gbstate` save/load checks.
-
-```bash
-# Inspect a ROM header
-cargo run -p gb-cli -- inspect-rom path/to/rom.gb
-
-# Run headless with serial capture
-cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --serial-out .artifacts/serial.bin
-
-# Force the Game Boy Color model and export the final RGB555 framebuffer as PNG
-cargo run -p gb-cli -- run path/to/rom.gbc --model CGB --frames 120 --framebuffer-out .artifacts/frame.png
-
-# Run a GBA Enhanced GB/C title on the AGB / GB ADVANCE compatibility profile
-cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup skip-boot
-
-# Execute the default AGB GB/C boot ROM path when private cgb_agb_boot.bin is available; native gba_bios.bin is not used
-cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
-
-# Select the explicit AGB0 GB/C boot ROM path when private cgb_agb0_boot.bin is available
-cargo run -p gb-cli -- run path/to/gba-enhanced.gbc --model AGB --revision cpu-agb-0 --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
-
-# Run an SGB-enhanced game and export the native 256x224 SGB host frame
-cargo run -p gb-cli -- run path/to/rom.gb --model SGB --frames 120 --framebuffer-out .artifacts/sgb.png
-
-# Select original SGB PAL, or force LCD-only PNG output without SGB/SGB2 or handheld borrowed borders
-cargo run -p gb-cli -- run path/to/rom.gb --model SGB --sgb-standard pal --framebuffer-out .artifacts/sgb-pal.png
-cargo run -p gb-cli -- run path/to/rom.gb --model SGB2 --border-off --framebuffer-out .artifacts/sgb2-lcd.png
-
-# Save and restore a whole-machine .gbstate
-cargo run -p gb-cli -- run path/to/rom.gb --tcycles 5000 --state-out .artifacts/run.gbstate
-cargo run -p gb-cli -- run path/to/rom.gb --state-in .artifacts/run.gbstate --tcycles 5000
-```
+Use `gb-cli` for headless ROM inspection, deterministic short runs, serial/framebuffer artifacts, and whole-machine `.gbstate` save/load checks. See [docs/info/CLI.md](docs/info/CLI.md#examples) for command examples and full usage details.
 
 ### `gb-desktop`
 
-Use `gb-desktop` for the SDL3 frontend, real-time play, menus, local link/IR sessions, SGB presentation toggles, save states, rewind, and audio/video diagnostics.
-
-```bash
-# Launch the SDL3 frontend in release for real-time speed
-cargo run --release -p gb-desktop -- [path/to/rom.gb]
-
-# Launch a CGB ROM with direct RGB555 presentation
-cargo run --release -p gb-desktop -- path/to/rom.gbc --model CGB
-
-# Launch the GB ADVANCE / AGB GB/C compatibility profile for GBA Enhanced detection
-cargo run --release -p gb-desktop -- path/to/gba-enhanced.gbc --model AGB
-
-# Launch an SGB/SGB2 profile; CONFIG -> SYSTEM exposes MODEL, REV, VIDEO, START, and BORDER
-cargo run --release -p gb-desktop -- path/to/sgb-enhanced.gb --model SGB
-cargo run --release -p gb-desktop -- path/to/sgb-enhanced.gb --model SGB2 --startup real-boot --boot-rom-dir "$HOME/emu/roms/bootrom"
-
-# Launch a local DMG-04 two-player Game Link session
-cargo run --release -p gb-desktop -- path/to/p1.gb --link-rom path/to/p2.gb
-```
+Use `gb-desktop` for the SDL3 frontend, real-time play, menus, local link/IR sessions, SGB presentation toggles, save states, rewind, and audio/video diagnostics. See [docs/info/DESKTOP.md](docs/info/DESKTOP.md#examples) for launch examples and full usage details.
 
 ### `gb-benchmark`
 
-Use the shared `gb-benchmark` TOML contract through `cargo rom-bench` for desktop-first benchmark batches, optional matching CLI artifacts, and direct frontend benchmark runs.
-
-```bash
-# Create a sample portable benchmark case
-cargo rom-bench --sample
-
-# Run every case in a directory through gb-desktop and generate test/bench/index.html
-cargo rom-bench path/to/benchmark-cases
-
-# Add matching gb-cli artifacts and columns to the same benchmark report
-cargo rom-bench path/to/benchmark-cases --gb-cli
-
-# Run one benchmark TOML directly through either frontend
-cargo run -p gb-cli -- run --benchmark path/to/game.toml
-cargo run --release -p gb-desktop -- --benchmark path/to/game.toml
-```
-
-See [docs/info/CLI.md](docs/info/CLI.md), [docs/info/DESKTOP.md](docs/info/DESKTOP.md), and [docs/info/BENCHMARK.md](docs/info/BENCHMARK.md) for full usage details.
+Use the shared `gb-benchmark` TOML contract through `cargo rom-bench` for desktop-first benchmark batches, optional matching CLI artifacts, and direct frontend benchmark runs. See [docs/info/BENCHMARK.md](docs/info/BENCHMARK.md#examples) for benchmark examples and full usage details.
 
 ## Release packages
 

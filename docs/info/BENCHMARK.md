@@ -4,6 +4,23 @@
 
 Use benchmark runs for repeatable frontend/core performance comparisons and screenshot-backed local reports. Do not treat a benchmark case as a hardware oracle; use ROM-suite validation for correctness claims and benchmark results only after the relevant behavior already has tests or oracle coverage.
 
+## Examples
+
+```bash
+# Create a sample portable benchmark case
+cargo rom-bench --sample
+
+# Run every case in a directory through gb-desktop and generate test/bench/index.html
+cargo rom-bench path/to/benchmark-cases
+
+# Add matching gb-cli artifacts and columns to the same benchmark report
+cargo rom-bench path/to/benchmark-cases --gb-cli
+
+# Run one benchmark TOML directly through either frontend
+cargo run -p gb-cli -- run --benchmark path/to/game.toml
+cargo run --release -p gb-desktop -- --benchmark path/to/game.toml
+```
+
 ## Batch workflow
 
 `cargo rom-bench` runs from the workspace and writes all batch artifacts under `test/bench/`. By default it builds and runs `gb-desktop` with `--profile release-max`; add `--gb-cli` only when you want matching headless artifacts and report columns.
