@@ -1,0 +1,26 @@
+family = "mem_timing-2"
+suite_name = "blargg-mem-timing-2"
+report = "blargg"
+model = "dmg"
+timeout_frames = 1200
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "blargg-mem-timing-2-multi"
+rom = "mem_timing.gb"
+oracle = { fixture = "mem_timing-dmg-cgb.png" }
+
+[[case]]
+id = "blargg-mem-timing-2-01-read-timing"
+rom = "rom_singles/01-read_timing.gb"
+oracle = { fixture = "rom_singles/01-read_timing.png" }
+
+[[case]]
+id = "blargg-mem-timing-2-02-write-timing"
+rom = "rom_singles/02-write_timing.gb"
+oracle = { fixture = "rom_singles/02-write_timing.png" }
+
+[[case]]
+id = "blargg-mem-timing-2-03-modify-timing"
+rom = "rom_singles/03-modify_timing.gb"
+oracle = { fixture = "rom_singles/03-modify_timing.png" }

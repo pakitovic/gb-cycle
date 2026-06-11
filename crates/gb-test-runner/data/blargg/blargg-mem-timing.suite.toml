@@ -1,0 +1,22 @@
+family = "mem_timing"
+suite_name = "blargg-mem-timing"
+report = "blargg"
+model = "dmg"
+timeout_frames = 1200
+oracle = { type = "serial-contains", expected = "Passed" }
+
+[[case]]
+id = "blargg-mem-timing-multi"
+rom = "mem_timing.gb"
+
+[[case]]
+id = "blargg-mem-timing-01-read-timing"
+rom = "individual/01-read_timing.gb"
+
+[[case]]
+id = "blargg-mem-timing-02-write-timing"
+rom = "individual/02-write_timing.gb"
+
+[[case]]
+id = "blargg-mem-timing-03-modify-timing"
+rom = "individual/03-modify_timing.gb"

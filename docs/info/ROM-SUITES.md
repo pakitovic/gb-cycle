@@ -21,11 +21,14 @@ Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`.
 | `gb-emulator-shootout` | `cargo rom-suite` | Promoted GB Emulator Shootout report used by `test-roms`. |
 | `docboy` | `cargo rom-suite`, `cargo rom-suite-link` | DocBoy single-machine suites plus DocBoy DMG linked session suite. |
 | `gbmicrotest` | `cargo rom-suite` | Flat gbmicrotest report. |
+| `blargg` | `cargo rom-suite` | Standalone exploratory Blargg channel archive-backed by c-sp `game-boy-test-roms` v7.0, with GB Emulator Shootout framebuffer fixtures where the promoted Blargg manifests already use them. |
 | `mooneye`, `ax6`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `samesuite` | `cargo rom-suite` | Standalone exploratory report channels used by `test-roms-extra`; `mooneye` is archive-backed by c-sp `game-boy-test-roms`. |
 | `wilbertpol` | `cargo rom-suite` | Archive-backed standalone Mooneye-derived Wilbertpol channel; it is intentionally not mirrored by `test-roms-extra` until it has a verified green local baseline. |
 | `linked` | `cargo rom-suite-link` | Repo-local synthetic linked-session fixtures. |
 
 Wilbertpol ROMs are related to Mooneye but are compiled and pinned as independent assets; do not deduplicate Wilbertpol rows against Mooneye by relative path or name.
+
+The standalone `blargg` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `blargg/` ROMs under one family root per original Blargg folder, plus a dedicated `halt_bug` family. It runs both multi-ROMs and individual ROMs; framebuffer fixtures come from the c-sp ZIP for aggregate screenshots and from the pinned GB Emulator Shootout source for individual screenshots already used by the promoted Blargg oracles, including `oam_bug/7-timing_effect.png`.
 
 The standalone `mooneye` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `mooneye-test-suite/` under `/test/mooneye/mooneye/`. Its upstream `utils/` directory is excluded because those ROMs are helper utilities rather than pass/fail tests.
 

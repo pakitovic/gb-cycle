@@ -35,6 +35,22 @@ store_dir = "gbmicrotest"
 sources = "gbmicrotest/sources.report.toml"
 
 [[report]]
+id = "blargg"
+store_dir = "blargg"
+sources = "blargg/sources.report.toml"
+family_order = [
+  "cgb_sound",
+  "cpu_instrs",
+  "dmg_sound",
+  "instr_timing",
+  "interrupt_time",
+  "mem_timing",
+  "mem_timing-2",
+  "oam_bug",
+  "halt_bug",
+]
+
+[[report]]
 id = "mooneye"
 store_dir = "mooneye"
 sources = "mooneye/sources.report.toml"
