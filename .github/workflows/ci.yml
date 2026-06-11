@@ -8,15 +8,27 @@ on:
 
 jobs:
   checks:
+    name: checks (${{ matrix.name }})
     runs-on: ubuntu-latest
-    env:
-      LINUX_DESKTOP_FEATURES: gb-desktop/sdl3-build-from-source
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Format
+            components: rustfmt
+          - name: Lint
+            components: clippy
+          - name: Typos
+            components: ''
+          - name: Deny
+            components: ''
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Install SDL3 build dependencies
+        if: matrix.name == 'Lint'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -46,38 +58,50 @@ jobs:
             wayland-protocols
 
       - name: Setup Rust
+        if: matrix.components != ''
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt, clippy
+          components: ${{ matrix.components }}
+
+      - name: Setup Rust
+        if: matrix.components == ''
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-deny
+        if: matrix.name == 'Deny'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny
 
       - name: Install typos-cli
+        if: matrix.name == 'Typos'
         uses: taiki-e/install-action@v2
         with:
           tool: typos-cli
 
       - name: Format
+        if: matrix.name == 'Format'
         run: cargo fmt-check
 
       - name: Lint
+        if: matrix.name == 'Lint'
+        env:
+          LINUX_DESKTOP_FEATURES: gb-desktop/sdl3-build-from-source
         run: cargo clippy --workspace --all-targets --features "${LINUX_DESKTOP_FEATURES}" -- -D warnings
 
       - name: Typos
+        if: matrix.name == 'Typos'
         run: typos
 
       - name: Deny
+        if: matrix.name == 'Deny'
         run: cargo deny-check
 
   coverage:
     name: coverage (${{ matrix.package }})
-    needs: checks
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
