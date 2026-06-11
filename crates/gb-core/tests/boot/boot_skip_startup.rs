@@ -52,6 +52,97 @@ fn skip_boot_uses_the_centralized_synthetic_startup_state() {
 }
 
 #[test]
+fn dmg0_direct_skip_and_custom_boot_share_the_verified_startup_contract() {
+    let boot = BootController::new(
+        ConsoleModel::GameBoy,
+        HardwareRevision::DmgCpu0,
+        StartupMode::SkipBoot,
+        BootRomAssets::none(),
+    );
+    let direct_boot = boot
+        .direct_boot_state(None)
+        .expect("DMG0 SkipBoot should expose a direct-boot state");
+
+    assert_eq!(direct_boot.cpu.a, 0x01);
+    assert_eq!(direct_boot.cpu.f, 0x00);
+    assert_eq!(direct_boot.cpu.b, 0xFF);
+    assert_eq!(direct_boot.cpu.c, 0x13);
+    assert_eq!(direct_boot.cpu.d, 0x00);
+    assert_eq!(direct_boot.cpu.e, 0xC1);
+    assert_eq!(direct_boot.cpu.h, 0x84);
+    assert_eq!(direct_boot.cpu.l, 0x03);
+    assert_eq!(direct_boot.cpu.sp, 0xFFFE);
+    assert_eq!(direct_boot.cpu.pc, 0x0100);
+    assert_eq!(direct_boot.io.div, 0x18);
+    assert_eq!(direct_boot.io.stat, 0x83);
+    assert_eq!(direct_boot.io.ly, 0x01);
+    assert_eq!(direct_boot.timer.system_counter, 0x182C);
+    assert_eq!(direct_boot.apu.div_apu, 0x00);
+    assert_eq!(
+        direct_boot.startup_memory_policy,
+        StartupMemoryPolicy::DmgBootLogoVram
+    );
+
+    for startup_mode in [StartupMode::SkipBoot, StartupMode::CustomBoot] {
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_revision(HardwareRevision::DmgCpu0)
+                .with_startup_mode(startup_mode),
+        );
+        let snapshot = machine.snapshot();
+
+        assert_eq!(machine.boot().revision(), HardwareRevision::DmgCpu0);
+        assert_eq!(machine.cpu().startup_state(), direct_boot.cpu);
+        assert_eq!(
+            snapshot.timer.system_counter,
+            direct_boot.timer.system_counter
+        );
+        assert_eq!(snapshot.apu.div_apu, direct_boot.apu.div_apu);
+        assert_eq!(snapshot.ppu.ly, direct_boot.ppu.ly);
+        assert_eq!(snapshot.ppu.lcdc, direct_boot.ppu.lcdc);
+        assert_eq!(
+            machine.boot().startup_memory_policy(),
+            direct_boot.startup_memory_policy
+        );
+        assert_eq!(machine.read_bus(0xFF04), direct_boot.io.div);
+        assert_eq!(machine.read_bus(0xFF41), direct_boot.io.stat);
+        assert_eq!(machine.read_bus(0xFF44), direct_boot.io.ly);
+    }
+}
+
+#[test]
+fn boot_asset_metadata_keeps_dmg0_and_sgb_profiles_distinct() {
+    assert_eq!(
+        BootRomAssetKind::from(HardwareRevision::DmgCpu0),
+        BootRomAssetKind::Dmg0
+    );
+    assert_eq!(
+        BootRomAssetKind::from(HardwareRevision::DmgCpuC),
+        BootRomAssetKind::Dmg
+    );
+    assert_eq!(
+        BootRomAssetKind::from(SgbHostProfile::SgbNtsc),
+        BootRomAssetKind::Sgb
+    );
+    assert_eq!(
+        BootRomAssetKind::from(SgbHostProfile::Sgb2Ntsc),
+        BootRomAssetKind::Sgb2
+    );
+    assert_eq!(BootRomAssetKind::Dmg0.filename(), "dmg0_boot.bin");
+    assert_eq!(BootRomAssetKind::Dmg.filename(), "dmg_boot.bin");
+    assert_eq!(BootRomAssetKind::Dmg0.expected_size(), BOOT_ROM_LEN);
+    assert_eq!(BootRomAssetKind::Dmg.expected_size(), BOOT_ROM_LEN);
+    assert_eq!(
+        BootRomAssetKind::Dmg0.expected_sha256(),
+        "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e"
+    );
+    assert_eq!(
+        BootRomAssetKind::Dmg.expected_sha256(),
+        "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7"
+    );
+}
+
+#[test]
 fn skip_boot_recomputes_the_checksum_derived_f_register_when_a_cartridge_is_loaded() {
     let mut zero_checksum_machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
