@@ -802,9 +802,14 @@ impl BootController {
             return None;
         }
 
-        let header = cartridge.and_then(CartridgeSlot::header);
-        let system_counter = direct_start_system_counter(self.console_model, self.revision, header);
-        let mut io = verified_boot_entry_io_snapshot(self.console_model, self.revision);
+        let system_counter = direct_start_system_counter_for_cartridge(
+            self.console_model,
+            self.revision,
+            self.sgb_profile,
+            cartridge,
+        );
+        let mut io =
+            verified_boot_entry_io_snapshot(self.console_model, self.revision, self.sgb_profile);
         io.div = div_from_system_counter(system_counter);
         let apu = build_verified_boot_entry_apu_state(
             self.console_model,
@@ -849,9 +854,14 @@ impl BootController {
             return None;
         }
 
-        let header = cartridge.and_then(CartridgeSlot::header);
-        let system_counter = direct_start_system_counter(self.console_model, self.revision, header);
-        let mut io = synthetic_skip_boot_io_snapshot(self.console_model, self.revision);
+        let system_counter = direct_start_system_counter_for_cartridge(
+            self.console_model,
+            self.revision,
+            self.sgb_profile,
+            cartridge,
+        );
+        let mut io =
+            synthetic_skip_boot_io_snapshot(self.console_model, self.revision, self.sgb_profile);
         io.div = div_from_system_counter(system_counter);
         let apu = build_skip_boot_apu_state(self.console_model, self.revision, system_counter, io);
 
@@ -1159,10 +1169,22 @@ const fn dmg0_synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
     }
 }
 
+const fn sgb_synthetic_skip_boot_io_snapshot() -> BootIoSnapshot {
+    let mut io = dmg_family_synthetic_skip_boot_io_snapshot();
+    io.p1 = 0xFF;
+    io.audio.nr52 = 0xF0;
+    io
+}
+
 const fn synthetic_skip_boot_io_snapshot(
     console_model: ConsoleModel,
     revision: HardwareRevision,
+    sgb_profile: Option<SgbHostProfile>,
 ) -> BootIoSnapshot {
+    if sgb_profile.is_some() {
+        return sgb_synthetic_skip_boot_io_snapshot();
+    }
+
     match console_model {
         ConsoleModel::GameBoy if matches!(revision, HardwareRevision::DmgCpu0) => {
             dmg0_synthetic_skip_boot_io_snapshot()
@@ -1182,7 +1204,12 @@ const fn synthetic_skip_boot_io_snapshot(
 const fn verified_boot_entry_io_snapshot(
     console_model: ConsoleModel,
     revision: HardwareRevision,
+    sgb_profile: Option<SgbHostProfile>,
 ) -> BootIoSnapshot {
+    if sgb_profile.is_some() {
+        return sgb_synthetic_skip_boot_io_snapshot();
+    }
+
     match console_model {
         ConsoleModel::GameBoy if matches!(revision, HardwareRevision::DmgCpu0) => {
             dmg0_synthetic_skip_boot_io_snapshot()
@@ -1212,7 +1239,7 @@ const fn verified_boot_entry_io_snapshot(
             }
         }
         ConsoleModel::GameBoyColor | ConsoleModel::GameBoyAdvance => {
-            synthetic_skip_boot_io_snapshot(console_model, revision)
+            synthetic_skip_boot_io_snapshot(console_model, revision, sgb_profile)
         }
     }
 }
@@ -1334,6 +1361,11 @@ const DMG_FAMILY_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0xC8;
 const DMG0_SKIP_BOOT_SYSTEM_COUNTER_LOW: u8 = 0x2C;
 const DMG_FAMILY_SKIP_BOOT_SERIAL_CLOCK_COUNTER: u16 = 0xABCC;
 const CGB_SKIP_BOOT_DIV: u8 = 0x26;
+const CARTRIDGE_ENTRY_HEADER_START: u16 = 0x0100;
+const CARTRIDGE_ENTRY_HEADER_END_INCLUSIVE: u16 = 0x014F;
+const SGB_DIRECT_BOOT_SET_BIT_T_CYCLES: u16 = 4;
+// SGB/SGB2 boot ROMs transfer the cartridge header to the host BIOS before handoff. The JOYP packet routine is one M-cycle faster for a set header bit than for a reset header bit, so the direct-start counter is expressed as the all-zero-header phase minus the set-bit contribution.
+const SGB_DIRECT_BOOT_ZERO_HEADER_SYSTEM_COUNTER: u16 = 0xDCA0;
 // Mooneye's `boot_div-cgb0.gb` validates the early CGB0 boot ROM handoff phase exposed by `cgb0_boot.bin`.
 const CGB0_DIRECT_BOOT_SYSTEM_COUNTER: u16 = 0x2880;
 // Mooneye's `boot_div-cgbABCDE.gb` is a DMG-compatible CGB header and owns the fallback direct-start phase.
@@ -1354,6 +1386,20 @@ const DMG_FAMILY_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
 const DMG0_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER: u16 =
     ((dmg0_synthetic_skip_boot_io_snapshot().div as u16) << 8)
         | (DMG0_SKIP_BOOT_SYSTEM_COUNTER_LOW as u16);
+
+fn direct_start_system_counter_for_cartridge(
+    console_model: ConsoleModel,
+    revision: HardwareRevision,
+    sgb_profile: Option<SgbHostProfile>,
+    cartridge: Option<&CartridgeSlot>,
+) -> u16 {
+    if sgb_profile.is_some() {
+        return sgb_direct_start_system_counter(cartridge);
+    }
+
+    let header = cartridge.and_then(CartridgeSlot::header);
+    direct_start_system_counter(console_model, revision, header)
+}
 
 fn direct_start_system_counter(
     console_model: ConsoleModel,
@@ -1378,6 +1424,16 @@ fn direct_start_system_counter(
 
 pub(crate) const fn dmg0_direct_boot_system_counter() -> u16 {
     DMG0_SYNTHETIC_SKIP_BOOT_SYSTEM_COUNTER
+}
+
+fn sgb_direct_start_system_counter(cartridge: Option<&CartridgeSlot>) -> u16 {
+    let header_set_bits = (CARTRIDGE_ENTRY_HEADER_START..=CARTRIDGE_ENTRY_HEADER_END_INCLUSIVE)
+        .map(|address| cartridge.map_or(0xFF, |cartridge| cartridge.read_rom(address)))
+        .map(|byte| byte.count_ones() as u16)
+        .sum::<u16>();
+
+    SGB_DIRECT_BOOT_ZERO_HEADER_SYSTEM_COUNTER
+        .wrapping_sub(header_set_bits.wrapping_mul(SGB_DIRECT_BOOT_SET_BIT_T_CYCLES))
 }
 
 fn cgb_direct_start_system_counter(header: Option<&CartridgeHeader>) -> u16 {
