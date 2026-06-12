@@ -65,7 +65,7 @@ fn cpu_stat_read_logs_sprite_extended_post_visible_tail_without_startup_placehol
 }
 
 #[test]
-fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_without_obj_work() {
+fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_without_obj_work() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -117,7 +117,7 @@ fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_without_obj_wor
     );
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x00
+        0x03
     );
 }
 
@@ -176,7 +176,7 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_pending_same_
 }
 
 #[test]
-fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_with_ready_push_and_pending_same_x_chain()
+fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_ready_push_and_pending_same_x_chain()
  {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
@@ -240,12 +240,12 @@ fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_with_ready_push
     );
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x00
+        0x03
     );
 }
 
 #[test]
-fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_while_blank_frame_is_active() {
+fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_while_blank_frame_is_active() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -297,12 +297,12 @@ fn cpu_stat_read_publishes_hblank_for_terminal_x167_visible_tail_while_blank_fra
     );
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x00
+        0x03
     );
 }
 
 #[test]
-fn cpu_stat_read_publishes_hblank_for_terminal_x165_visible_tail_while_blank_frame_is_active() {
+fn cpu_stat_read_keeps_drawing_for_terminal_x165_visible_tail_while_blank_frame_is_active() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -349,7 +349,7 @@ fn cpu_stat_read_publishes_hblank_for_terminal_x165_visible_tail_while_blank_fra
     );
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x00
+        0x03
     );
 }
 

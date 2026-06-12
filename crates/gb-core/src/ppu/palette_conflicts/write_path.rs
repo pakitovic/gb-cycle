@@ -967,7 +967,7 @@ impl Ppu {
         // writes: the visible onset follows the left sprite phase, not the
         // generic 4-dot CPU-commit delay.
         const EARLY_WRITE0_ONSETS: [u8; 19] =
-            [0, 0, 0, 1, 2, 1, 0, 0, 0, 1, 2, 3, 4, 5, 5, 5, 5, 5, 5];
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 5, 5, 5, 5, 5];
         const EARLY_WRITE1_ONSETS: [u8; 19] =
             [0, 8, 9, 10, 11, 12, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 9, 10];
 
@@ -1060,7 +1060,7 @@ impl Ppu {
 
         let sprite_x = self.mode2_scan_state.selected_sprite(0)?.x as usize;
         if sprite_x == 0 {
-            return Some(visible_pixels_output.saturating_sub(6));
+            return Some(visible_pixels_output.saturating_sub(4));
         }
         if self.uses_cgb_compatibility_rgb555_adapter() {
             const CGB_DMG_SOFTWARE_LATE_BLACK_PULSE_ONSETS: [u8; 18] = [

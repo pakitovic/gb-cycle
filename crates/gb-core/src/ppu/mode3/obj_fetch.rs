@@ -70,10 +70,16 @@ impl Ppu {
             selected_obj_height,
             current_obj_height,
         );
-        let match_bg_x = u16::from(self.runtime.bg_pipeline_state.current_transfer_x)
+        let match_transfer_x = self.runtime.bg_pipeline_state.current_transfer_x;
+        let match_bg_x = u16::from(match_transfer_x)
             + u16::from(self.runtime.bg_pipeline_state.initial_scx_discard);
         let match_tile = match_bg_x / 8;
-        let match_phase = (match_bg_x % 8) as u8;
+        let hidden_lane_fetch = match_transfer_x < 8;
+        let match_phase = if hidden_lane_fetch && self.console_model.is_cgb_family() {
+            match_transfer_x % 8
+        } else {
+            (match_bg_x % 8) as u8
+        };
         if self.runtime.bg_pipeline_state.obj_alignment_paid_tile != Some(match_tile) {
             self.runtime.bg_pipeline_state.obj_alignment_paid_tile = Some(match_tile);
             self.runtime

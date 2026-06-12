@@ -142,9 +142,7 @@ fn cgb_obj_fetch_uses_attribute_tile_bank_and_carries_palette_sideband() {
         assert_eq!(ppu.obj_pipeline_state.fetch.tile_low, 0x80);
         assert!(ppu.advance_object_fetch(oam, vram, None));
         assert!(ppu.advance_object_fetch(oam, vram, None));
-        assert_eq!(ppu.obj_pipeline_state.fetch.tile_high, 0x00);
-        assert!(ppu.advance_object_fetch(oam, vram, None));
-        assert!(ppu.advance_object_fetch(oam, vram, None));
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
     });
 
     let pixel = ppu

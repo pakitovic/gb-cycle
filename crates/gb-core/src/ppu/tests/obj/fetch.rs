@@ -133,6 +133,30 @@ fn overlapped_obj_fetch_uses_explicit_one_dot_stage_progression() {
         ppu.obj_pipeline_state.fetch.stage,
         PpuObjFetcherStage::Startup
     );
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.alignment_stall_remaining,
+        OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS
+    );
+
+    for stall_remaining in (0..OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS).rev() {
+        assert!(ppu.advance_object_fetch_with_ppu_video(None));
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.stage,
+            PpuObjFetcherStage::Startup
+        );
+        assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+        assert_eq!(
+            ppu.obj_pipeline_state.fetch.alignment_stall_remaining,
+            stall_remaining
+        );
+    }
+
+    assert!(ppu.advance_object_fetch_with_ppu_video(None));
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.stage,
+        PpuObjFetcherStage::Startup
+    );
     assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
 
     assert!(ppu.advance_object_fetch_with_ppu_video(None));
@@ -161,14 +185,6 @@ fn overlapped_obj_fetch_uses_explicit_one_dot_stage_progression() {
         ppu.obj_pipeline_state.fetch.stage,
         PpuObjFetcherStage::TileDataHigh
     );
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
-
-    assert!(ppu.advance_object_fetch_with_ppu_video(None));
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Push);
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
-
-    assert!(ppu.advance_object_fetch_with_ppu_video(None));
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Push);
     assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
 
     assert!(ppu.advance_object_fetch_with_ppu_video(None));

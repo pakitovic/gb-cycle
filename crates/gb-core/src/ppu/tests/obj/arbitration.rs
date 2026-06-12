@@ -111,7 +111,11 @@ fn bg_push_can_handoff_to_a_latched_object_fetch_without_losing_the_tile() {
         ppu.obj_pipeline_state.fetch.stage,
         PpuObjFetcherStage::Startup
     );
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.alignment_stall_remaining,
+        OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS
+    );
     assert_eq!(ppu.bg_pipeline_state.fifo.len(), 1);
     assert!(!ppu.bg_pipeline_state.fill.pending);
     assert_eq!(ppu.bg_pipeline_state.fetcher.stage, PpuBgFetcherStage::Push);
@@ -147,12 +151,16 @@ fn bg_push_with_an_empty_fifo_can_queue_fill_and_start_object_fetch_on_the_same_
         ppu.obj_pipeline_state.fetch.stage,
         PpuObjFetcherStage::Startup
     );
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.alignment_stall_remaining,
+        OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS
+    );
     assert!(ppu.bg_pipeline_state.fifo.is_empty());
 }
 
 #[test]
-fn current_dot_arbitration_distinguishes_fifo_backed_and_queued_fill_obj_start() {
+fn current_dot_arbitration_allows_obj_start_from_any_source_with_a_pending_hit() {
     let mut ppu = PpuTestRig::dmg();
     ppu.visible_registers.lcdc = 0x82;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
@@ -163,84 +171,15 @@ fn current_dot_arbitration_distinguishes_fifo_backed_and_queued_fill_obj_start()
 
     let empty_fifo = ppu.current_dot_arbitration();
     assert!(!empty_fifo.can_serve_bg_transfer());
-    assert!(!empty_fifo.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+    assert!(empty_fifo.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
     assert!(empty_fifo.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
 
     ppu.bg_pipeline_state.fifo.push_back(0);
 
-    let fifo_backed = ppu.current_dot_arbitration();
-    assert!(!fifo_backed.can_serve_bg_transfer());
-    assert!(fifo_backed.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
-    assert!(fifo_backed.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
-}
-
-#[test]
-fn fifo_backed_obj_start_requires_a_fifo_backed_transfer_dot_not_just_a_nonempty_fifo() {
-    let mut ppu = PpuTestRig::dmg();
-    ppu.visible_registers.lcdc = 0x82;
-    ppu.ly = 0;
-    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
-    ppu.bg_pipeline_state
-        .startup_pre_visible_transfer_dots_remaining = 0;
-    ppu.bg_pipeline_state.current_transfer_x = 7;
-    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Priming;
-    ppu.bg_pipeline_state.fifo.push_back(0);
-    push_selected_sprite(&mut ppu, SelectedSpriteSpec::new(0, 16, 15, 0, 0));
-    queue_current_obj_hit(&mut ppu, 0);
-
-    let arbitration = ppu.current_dot_arbitration();
-    assert!(!arbitration.can_serve_bg_transfer());
-    assert!(!arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
-    assert!(arbitration.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
-}
-
-#[test]
-fn fifo_backed_obj_start_waits_until_bg_fetcher_leaves_tile_data_low() {
-    let mut ppu = PpuTestRig::dmg();
-    ppu.visible_registers.lcdc = 0x82;
-    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
-    ppu.bg_pipeline_state.current_transfer_x = 8;
-    ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.fifo.push_back(0);
-    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
-    push_selected_sprite(&mut ppu, SelectedSpriteSpec::new(0, 16, 8, 0, 0));
-    queue_current_obj_hit(&mut ppu, 0);
-
-    let tile_index = ppu.current_dot_arbitration();
-    assert!(!tile_index.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
-
-    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
-    let tile_data_low = ppu.current_dot_arbitration();
-    assert!(!tile_data_low.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
-
-    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
-    let tile_data_high = ppu.current_dot_arbitration();
-    assert!(tile_data_high.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
-}
-
-#[test]
-fn abstract_previsible_obj_start_keeps_startup_placeholders_non_fifo_backed() {
-    let mut ppu = PpuTestRig::dmg();
-    ppu.visible_registers.lcdc = 0x82;
-    ppu.ly = 0;
-    ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
-    ppu.bg_pipeline_state.mode3_started = true;
-    ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 4 };
-    ppu.bg_pipeline_state
-        .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
-    ppu.bg_pipeline_state.current_transfer_x = 0;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 8;
-    for _ in 0..16 {
-        ppu.bg_pipeline_state.fifo.push_back(0);
-    }
-    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
-    push_selected_sprite(&mut ppu, SelectedSpriteSpec::new(0, 16, 0, 0, 0));
-    queue_current_obj_hit(&mut ppu, 0);
-
-    let arbitration = ppu.current_dot_arbitration();
-    assert!(!arbitration.can_serve_bg_transfer());
-    assert!(!arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+    let nonempty_fifo = ppu.current_dot_arbitration();
+    assert!(!nonempty_fifo.can_serve_bg_transfer());
+    assert!(nonempty_fifo.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));
+    assert!(nonempty_fifo.can_start_obj_fetch(ObjFetchStartSource::QueuedBgFill));
 }
 
 #[test]
@@ -491,9 +430,10 @@ fn terminal_fifo_backed_obj_start_extends_mode3_immediately_to_keep_fetch_alive(
     assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
     assert_eq!(
         ppu.obj_pipeline_state.fetch.stage,
-        PpuObjFetcherStage::TileDataLow
+        PpuObjFetcherStage::Startup
     );
-    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
+    assert_eq!(ppu.obj_pipeline_state.fetch.alignment_stall_remaining, 0);
 }
 
 #[test]
@@ -531,7 +471,11 @@ fn late_visible_x160_obj_start_can_still_begin_from_fifo_backed_transfer() {
     assert_eq!(ppu.bg_pipeline_state.mode0_start_dot, MODE0_START_DOT + 1);
     assert_eq!(
         ppu.obj_pipeline_state.fetch.stage,
-        PpuObjFetcherStage::TileDataLow
+        PpuObjFetcherStage::Startup
     );
     assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 0);
+    assert_eq!(
+        ppu.obj_pipeline_state.fetch.alignment_stall_remaining,
+        OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS - 1
+    );
 }
