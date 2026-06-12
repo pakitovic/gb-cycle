@@ -1497,6 +1497,15 @@ impl Ppu {
         self.current_access_mode()
     }
 
+    pub fn cpu_visible_stat_mode(&self) -> PpuAccessMode {
+        if !self.is_lcd_enabled() {
+            return PpuAccessMode::HBlank;
+        }
+
+        self.dmg_boot_power_on_stat_access_mode()
+            .unwrap_or_else(|| self.current_published_stat_access_mode())
+    }
+
     pub fn mode_dot(&self) -> u16 {
         self.current_raster_state().mode_dot()
     }
