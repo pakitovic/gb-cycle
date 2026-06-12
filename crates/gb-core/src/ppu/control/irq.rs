@@ -28,11 +28,19 @@ impl Ppu {
 
     pub(in crate::ppu) fn live_ly_for_lyc_compare(&self) -> Option<u8> {
         if self.console_model.is_cgb_family() && self.ly == TOTAL_SCANLINES - 1 {
-            return Some(if self.line_dot >= CGB_LINE_153_LY_READ_ZERO_DOT {
-                0
-            } else {
-                self.ly
-            });
+            return match self.line_dot {
+                CGB_LINE_153_LYC153_COMPARE_START_DOT..CGB_LINE_153_LYC153_COMPARE_END_DOT => {
+                    Some(TOTAL_SCANLINES - 1)
+                }
+                CGB_LINE_153_LYC0_COMPARE_START_DOT.. => {
+                    if self.lyc_compare_blanked_at_line_end() {
+                        None
+                    } else {
+                        Some(0)
+                    }
+                }
+                _ => None,
+            };
         }
 
         if self.ly == TOTAL_SCANLINES - 1 {
@@ -45,14 +53,51 @@ impl Ppu {
             };
         }
 
+        if self.lyc_compare_blanked_at_line_end() {
+            return None;
+        }
+
+        if self.ly == 0 {
+            return Some(0);
+        }
+
+        if self.line_dot == 0 {
+            return None;
+        }
+
         Some(self.ly)
     }
 
-    pub(in crate::ppu) fn effective_lyc_coincidence(&self) -> bool {
-        if self.is_lcd_enabled() {
-            self.live_lyc_coincidence()
-        } else {
-            self.runtime.stat_state.lcd_disabled_lyc_coincidence
+    fn lyc_compare_blanked_at_line_end(&self) -> bool {
+        self.console_model.is_cgb_family()
+            && self.line_dot + CGB_LINE_END_LYC_COMPARE_BLANK_DOTS >= self.current_scanline_length()
+    }
+
+    pub(in crate::ppu) fn update_lyc_compare_latch(&mut self) {
+        if let Some(compare_ly) = self.live_ly_for_lyc_compare() {
+            self.runtime.stat_state.lyc_compare_latch = compare_ly == self.lyc;
+        }
+    }
+
+    pub(in crate::ppu) fn lyc_coincidence_for_irq_line(&self) -> bool {
+        if !self.is_lcd_enabled() {
+            return self.runtime.stat_state.lcd_disabled_lyc_coincidence;
+        }
+
+        match self.live_ly_for_lyc_compare() {
+            Some(compare_ly) => compare_ly == self.lyc,
+            None => self.runtime.stat_state.lyc_compare_latch,
+        }
+    }
+
+    pub(in crate::ppu) fn lyc_coincidence_for_readback(&self) -> bool {
+        if !self.is_lcd_enabled() {
+            return self.runtime.stat_state.lcd_disabled_lyc_coincidence;
+        }
+
+        match self.live_ly_for_lyc_compare() {
+            Some(compare_ly) => compare_ly == self.lyc,
+            None => self.console_model.is_cgb_family() && self.runtime.stat_state.lyc_compare_latch,
         }
     }
 
@@ -70,7 +115,7 @@ impl Ppu {
         }
 
         let coincidence_source = stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
-            && self.effective_lyc_coincidence()
+            && self.lyc_coincidence_for_irq_line()
             && !self.dmg_stat_write_quirk_blocks_line153_lyc0_stat_source();
         let line_153_lyc0_pretrigger_source = self.line_153_lyc0_stat_irq_pretrigger_source();
 
@@ -342,18 +387,13 @@ impl Ppu {
             return false;
         }
 
-        if self.ly == TOTAL_SCANLINES - 1 {
-            if self.console_model.is_cgb_family() {
-                return (self.lyc == TOTAL_SCANLINES - 1 && self.line_dot == 0)
-                    || (self.lyc == 0 && self.line_dot == CGB_LINE_153_LY_READ_ZERO_DOT);
-            }
-
+        if self.ly == TOTAL_SCANLINES - 1 && !self.console_model.is_cgb_family() {
             return (self.lyc == TOTAL_SCANLINES - 1
                 && self.line_dot == LINE_153_LYC153_COMPARE_START_DOT)
                 || (self.lyc == 0 && self.line_dot == LINE_153_LYC0_COMPARE_START_DOT);
         }
 
-        self.line_dot == 0
+        false
     }
 
     pub(in crate::ppu) fn mode2_stat_write_irq_source(&self) -> bool {
@@ -380,7 +420,7 @@ impl Ppu {
     pub(in crate::ppu) fn lyc_stat_write_irq_source(&self) -> bool {
         self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && self.is_lcd_enabled()
-            && self.effective_lyc_coincidence()
+            && self.lyc_coincidence_for_irq_line()
             && !self.dmg_stat_write_quirk_blocks_line153_lyc0_stat_source()
     }
 
@@ -499,7 +539,7 @@ impl Ppu {
             return false;
         }
 
-        if self.stat_write_quirk_vblank_window_active() || self.live_lyc_coincidence() {
+        if self.stat_write_quirk_vblank_window_active() || self.lyc_coincidence_for_irq_line() {
             return true;
         }
 
@@ -551,10 +591,11 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn enter_lcd_disabled_state(&mut self) {
+        let retained_lyc_coincidence = self.lyc_coincidence_for_irq_line();
         self.lcd_state = PpuLcdState::Disabled;
         self.lcd_enable_pending_delay_tcycles = 0;
         self.runtime.blank_frame_active = false;
-        self.runtime.stat_state.lcd_disabled_lyc_coincidence = self.live_lyc_coincidence();
+        self.runtime.stat_state.lcd_disabled_lyc_coincidence = retained_lyc_coincidence;
         self.ly = 0;
         self.line_dot = 0;
         self.lcd_restart_phase = PpuLcdRestartPhase::Inactive;

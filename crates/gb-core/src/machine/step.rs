@@ -39,6 +39,7 @@ const SGB_HOST_FRAME_T_CYCLES: u64 = 456 * 154;
 pub(super) struct PendingPpuMmioWrite {
     pub(super) address: u16,
     pub(super) value: u8,
+    pub(super) commit_delay_t_cycles: u8,
 }
 
 pub(super) struct RealBootHandoffParts<'a> {
@@ -787,7 +788,16 @@ impl MachinePhaseRunner<'_> {
                 }
                 CpuExternalOperation::Bus(CpuBusOperation::Write { address, value }) => {
                     if cpu_write_targets_ppu_mmio(bus, address) {
-                        *pending_ppu_mmio_write = Some(PendingPpuMmioWrite { address, value });
+                        let commit_delay_t_cycles = u8::from(
+                            address == 0xFF45
+                                && ppu.console_model().is_cgb_family()
+                                && speed.current_speed() == CgbSpeedMode::Normal,
+                        );
+                        *pending_ppu_mmio_write = Some(PendingPpuMmioWrite {
+                            address,
+                            value,
+                            commit_delay_t_cycles,
+                        });
                         context.queue_side_effect(SchedulerSideEffect::CommitMmioWrite);
                     } else {
                         let write_arbitration_state =
@@ -884,6 +894,16 @@ impl MachinePhaseRunner<'_> {
         O: MachineStepObserver,
     {
         if self.pending_ppu_mmio_write.is_none() {
+            tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
+                self.boot.scheduler_trace_message(context)
+            });
+            return;
+        }
+
+        if let Some(write) = self.pending_ppu_mmio_write.as_mut()
+            && write.commit_delay_t_cycles > 0
+        {
+            write.commit_delay_t_cycles -= 1;
             tracer.emit_with(TraceSubsystem::Boot, TraceLevel::Trace, || {
                 self.boot.scheduler_trace_message(context)
             });

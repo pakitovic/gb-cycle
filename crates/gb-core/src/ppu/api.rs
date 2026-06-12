@@ -803,6 +803,7 @@ impl Ppu {
             PpuRegister::Lyc => {
                 self.lyc = value;
                 if self.is_lcd_enabled() {
+                    self.update_lyc_compare_latch();
                     self.refresh_stat_irq_line(false);
                     self.cancel_obsolete_line_153_lyc0_stat_irq_pretrigger();
                 }
@@ -989,6 +990,7 @@ impl Ppu {
             None
         };
         self.stat_state.lcd_disabled_lyc_coincidence = startup_state.ly == startup_state.lyc;
+        self.stat_state.lyc_compare_latch = startup_state.ly == startup_state.lyc;
         self.stat_state.suppress_mode0_pretrigger_until_vblank = false;
         self.stat_state.startup_mode0_irq_phase_active = false;
         self.stat_state
@@ -1262,16 +1264,14 @@ impl Ppu {
             || self.current_access_mode(),
         );
         if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
-            self.queue_interrupt_request_with_cpu_if_visibility(
-                InterruptSource::VBlank,
-                !self.console_model.is_dmg_family(),
-            );
+            self.queue_interrupt_request_with_cpu_if_visibility(InterruptSource::VBlank, false);
         }
         observe_ppu_step_region_when(
             observer,
             records_ppu_regions,
             PpuStepRegion::StatIrq,
             || {
+                self.update_lyc_compare_latch();
                 self.refresh_stat_irq_line(false);
             },
         );
@@ -1317,7 +1317,7 @@ impl Ppu {
             status: self.status,
             lcdc: self.lcdc,
             stat_interrupt_enable: self.stat_interrupt_enable,
-            lyc_coincidence: self.effective_lyc_coincidence(),
+            lyc_coincidence: self.lyc_coincidence_for_readback(),
             stat_irq_line: self.stat_state.irq_line,
             blank_frame_active: self.blank_frame_active,
             lcd_state: self.lcd_state,
@@ -1788,7 +1788,7 @@ impl Ppu {
             self.visible_output,
             self.ly,
             self.lyc,
-            self.effective_lyc_coincidence(),
+            self.lyc_coincidence_for_readback(),
             self.line_dot,
             self.current_access_mode(),
             self.stat_state.irq_line,

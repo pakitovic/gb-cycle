@@ -66,6 +66,7 @@ fn stat_keeps_live_mode_and_coincidence_bits_outside_the_writable_mask() {
         wx: 0x00,
         obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     });
+    ppu.line_dot = 4;
 
     ppu.write_register(0xFF41, 0xFF);
 
@@ -87,6 +88,7 @@ fn lyc_writes_reevaluate_coincidence_immediately_and_can_raise_lcd_stat() {
         wx: 0x00,
         obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     });
+    ppu.line_dot = 4;
 
     assert!(!ppu.snapshot().lyc_coincidence);
     assert!(!ppu.snapshot().stat_irq_line);
@@ -118,6 +120,7 @@ fn stat_line_blocks_new_requests_while_an_enabled_source_keeps_it_high() {
         wx: 0x00,
         obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     });
+    ppu.line_dot = 4;
 
     assert!(ppu.snapshot().stat_irq_line);
     assert!(drain_ppu_interrupts(&mut ppu).is_empty());
@@ -417,7 +420,7 @@ fn dmg_lcd_restart_nonzero_stat_write_does_not_spuriously_request_before_lyc1() 
     assert!(drain_ppu_interrupts(&mut ppu).is_empty());
 
     ppu.ly = 1;
-    ppu.line_dot = 0;
+    ppu.line_dot = 1;
     ppu.refresh_stat_irq_line(false);
 
     assert!(ppu.snapshot().lyc_coincidence);
@@ -506,7 +509,7 @@ fn dmg_lcd_restart_line1_cpu_stat_read_delays_lyc_coincidence_publication() {
     ppu.lcd_restart_phase = PpuLcdRestartPhase::first_line_after_enable();
     ppu.blank_frame_active = true;
     ppu.startup_mode_latch = None;
-    ppu.line_dot = 0;
+    ppu.line_dot = 1;
 
     assert!(ppu.snapshot().lyc_coincidence);
     assert_eq!(
@@ -698,6 +701,9 @@ fn lyc_coincidence_tracks_vblank_lines_and_the_line_153_ly0_window() {
 
     ppu.advance_until_line_start(144);
     assert_eq!(ppu.snapshot().ly, 144);
+    assert!(!ppu.snapshot().lyc_coincidence);
+
+    ppu.tick();
     assert!(ppu.snapshot().lyc_coincidence);
 
     ppu.write_register(0xFF45, 153);
@@ -760,6 +766,11 @@ fn cgb_lyc_zero_coincidence_rises_during_the_line_153_ly0_window() {
     ppu.tick();
 
     assert_eq!(ppu.snapshot().ly, 153);
+    assert_eq!(ppu.read_register(0xFF44), 0);
+    assert!(!ppu.snapshot().lyc_coincidence);
+
+    ppu.tick();
+
     assert_eq!(ppu.read_register(0xFF44), 0);
     assert!(ppu.snapshot().lyc_coincidence);
 }

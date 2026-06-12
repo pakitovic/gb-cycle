@@ -144,7 +144,7 @@ impl Ppu {
             return false;
         }
 
-        self.effective_lyc_coincidence()
+        self.lyc_coincidence_for_readback()
     }
 
     fn dmg_lcd_restart_line1_lyc_readback_delay_active(&self) -> bool {

@@ -34,7 +34,10 @@ impl Ppu {
     }
 
     fn published_stat_mode_at_line_start(&self) -> PpuAccessMode {
-        if self.ly > VISIBLE_SCANLINES {
+        if self.ly > VISIBLE_SCANLINES
+            || (self.console_model.is_cgb_family()
+                && self.vblank_wrap_line0_stat_readback_delay_active())
+        {
             PpuAccessMode::VBlank
         } else {
             PpuAccessMode::HBlank

@@ -2716,6 +2716,7 @@ fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
     let mut pending = Some(PendingPpuMmioWrite {
         address: 0xFF42,
         value: 0x12,
+        commit_delay_t_cycles: 0,
     });
 
     assert_eq!(ppu.read_register(0xFF42), 0x00);
