@@ -1234,14 +1234,24 @@ impl DmgWindowRestartState {
 pub(super) struct BgStartupScyTiledataLatch {
     lcdc: u8,
     tile_data_row: u16,
+    tile_map_row_address: Option<u16>,
 }
 
 impl BgStartupScyTiledataLatch {
-    pub(super) const fn new(lcdc: u8, tile_data_row: u16) -> Self {
+    pub(super) const fn new(
+        lcdc: u8,
+        tile_data_row: u16,
+        tile_map_row_address: Option<u16>,
+    ) -> Self {
         Self {
             lcdc,
             tile_data_row,
+            tile_map_row_address,
         }
+    }
+
+    pub(super) const fn tile_map_row_address(self) -> Option<u16> {
+        self.tile_map_row_address
     }
 }
 
@@ -2173,8 +2183,31 @@ impl BgPipelineState {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
         ly: u8,
+        seed_pending_tracks_live_tiledata_row: bool,
     ) {
         if !write_context.bg_scy_tile_data_row_changed(ly) {
+            return;
+        }
+
+        if seed_pending_tracks_live_tiledata_row
+            && matches!(
+                self.startup_fetch_seam,
+                BgStartupFetchSeamState::AlignmentSeedPending
+            )
+        {
+            let tile_map_row_address = if write_context.bg_scy_tilemap_row_changed(ly)
+                && matches!(self.fetcher.stage, PpuBgFetcherStage::TileIndex)
+            {
+                Some(write_context.current_bg_tile_index_address(self.fetcher.fetch_x, ly))
+            } else {
+                self.startup_scy_tiledata_latch
+                    .and_then(BgStartupScyTiledataLatch::tile_map_row_address)
+            };
+            self.startup_scy_tiledata_latch = Some(BgStartupScyTiledataLatch::new(
+                write_context.current_lcdc(),
+                write_context.current_scy_tile_data_row(ly),
+                tile_map_row_address,
+            ));
             return;
         }
 
@@ -2215,6 +2248,7 @@ impl BgPipelineState {
         self.startup_scy_tiledata_latch = Some(BgStartupScyTiledataLatch::new(
             write_context.current_lcdc(),
             write_context.current_scy_tile_data_row(ly),
+            None,
         ));
     }
 
@@ -2441,6 +2475,10 @@ fn apply_startup_scy_tiledata_latch_to_cached(
     cached.tile_low_address = tile_data_base + latch.tile_data_row * TILE_ROW_BYTES;
     cached.tile_high_address = tile_data_base + latch.tile_data_row * TILE_ROW_BYTES + 1;
     cached.needs_live_tile_data_refetch = true;
+    if let Some(tile_map_row_address) = latch.tile_map_row_address {
+        cached.tile_map_address = tile_map_row_address;
+        cached.needs_live_tilemap_refetch = true;
+    }
 }
 
 fn apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(

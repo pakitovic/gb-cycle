@@ -1053,7 +1053,7 @@ fn cached_background_push_accepts_same_tcycle_tilemap_refetch_after_entry_delay_
 }
 
 #[test]
-fn cached_background_push_recomputes_tilemap_when_scx_tile_column_changes() {
+fn cached_background_push_keeps_committed_tile_when_scx_tile_column_changes() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.write_bg_tilemap_entry(1, 0, 0);
     ppu.write_bg_tilemap_entry(2, 0, 1);
@@ -1096,16 +1096,17 @@ fn cached_background_push_recomputes_tilemap_when_scx_tile_column_changes() {
             .same_cycle_live_tilemap_refetch_window_open
     );
     ppu.write_register(0xFF43, 0x08);
-    assert!(ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
+    assert!(!ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
+    assert!(
+        !ppu.bg_pipeline_state
+            .push
+            .cached
+            .needs_live_tilemap_full_refetch
+    );
 
     assert!(!ppu.advance_bg_fetcher_with_ppu_vram());
-    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0xAB);
-    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0xCD);
-    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_map_address, 0x1802);
-    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_index, 1);
-    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_data_address, 0x0011);
-    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_low, 0xAB);
-    assert_eq!(ppu.bg_pipeline_state.fetcher.tile_high, 0xCD);
+    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_low, 0x12);
+    assert_eq!(ppu.bg_pipeline_state.fill.cached.tile_high, 0x34);
 }
 
 #[test]
@@ -1228,7 +1229,7 @@ fn third_startup_continuation_fetcher_carries_live_tilemap_refetch_on_lcdc3_writ
 }
 
 #[test]
-fn third_startup_continuation_fetcher_carries_full_tilemap_refetch_on_scx_tile_column_change() {
+fn third_startup_continuation_fetcher_keeps_committed_tile_on_late_scx_tile_column_change() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.bg_pipeline_state.mode3_started = true;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
@@ -1262,9 +1263,9 @@ fn third_startup_continuation_fetcher_carries_full_tilemap_refetch_on_scx_tile_c
         ppu.bg_pipeline_state.push.cached.origin,
         ppu.bg_pipeline_state.fetcher.cached_origin
     );
-    assert!(ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
+    assert!(!ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
     assert!(
-        ppu.bg_pipeline_state
+        !ppu.bg_pipeline_state
             .push
             .cached
             .needs_live_tilemap_full_refetch
@@ -2236,7 +2237,7 @@ fn startup_scy_visible_tile2_previous_row_override_requires_a_live_scy_latch() {
     );
 
     ppu.bg_pipeline_state.startup_scy_tiledata_latch =
-        Some(BgStartupScyTiledataLatch::new(0x91, 2));
+        Some(BgStartupScyTiledataLatch::new(0x91, 2, None));
 
     assert_eq!(
         ppu.with_ppu_vram(|ppu, vram| {
@@ -2254,7 +2255,7 @@ fn startup_scy_visible_tile3_previous_row_override_uses_the_latched_scy_class() 
     push_selected_sprite_x(&mut ppu, 16);
     ppu.bg_pipeline_state.current_transfer_x = 16;
     ppu.bg_pipeline_state.startup_scy_tiledata_latch =
-        Some(BgStartupScyTiledataLatch::new(0x91, 3));
+        Some(BgStartupScyTiledataLatch::new(0x91, 3, None));
     ppu.write_bg_tile_row(3, 3, 0x04, 0x00);
 
     let cached = BgCachedSlice {
@@ -2284,7 +2285,7 @@ fn startup_scy_visible_tile2_placeholder_reads_the_previous_tilemap_row() {
     push_selected_sprite_x(&mut ppu, 16);
     ppu.bg_pipeline_state.current_transfer_x = 16;
     ppu.bg_pipeline_state.startup_scy_tiledata_latch =
-        Some(BgStartupScyTiledataLatch::new(0x91, 7));
+        Some(BgStartupScyTiledataLatch::new(0x91, 7, None));
     ppu.write_bg_tilemap_entry(2, 0, 4);
     ppu.write_bg_tile_row(4, 7, 0x80, 0x00);
 
@@ -2312,7 +2313,7 @@ fn startup_scy_visible_tile2_placeholder_preserves_obj_mixing_priority() {
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
     ppu.bg_pipeline_state.fifo.push_back(0);
     ppu.bg_pipeline_state.startup_scy_tiledata_latch =
-        Some(BgStartupScyTiledataLatch::new(0x91, 7));
+        Some(BgStartupScyTiledataLatch::new(0x91, 7, None));
     push_selected_sprite_x(&mut ppu, 16);
     ppu.write_bg_tilemap_entry(2, 0, 4);
     ppu.write_bg_tile_row(4, 7, 0x80, 0x00);
@@ -2343,7 +2344,7 @@ fn startup_scy_visible_tile2_tilemap_retarget_can_read_a_neighbor_row() {
     push_selected_sprite_x(&mut ppu, 9);
     ppu.bg_pipeline_state.current_transfer_x = 9;
     ppu.bg_pipeline_state.startup_scy_tiledata_latch =
-        Some(BgStartupScyTiledataLatch::new(0x91, 2));
+        Some(BgStartupScyTiledataLatch::new(0x91, 2, None));
     ppu.write_bg_tilemap_entry(0, 1, 1);
     ppu.write_bg_tile_row(1, 2, 0x08, 0x00);
 
@@ -2498,7 +2499,7 @@ fn visible_tile3_scx_low_band_shift_can_use_cached_or_next_tile_pixels() {
 }
 
 #[test]
-fn ordinary_background_fetcher_carries_full_tilemap_refetch_on_scx_tile_column_change() {
+fn ordinary_background_fetcher_keeps_committed_tile_on_late_scx_tile_column_change() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.bg_pipeline_state.mode3_started = true;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
@@ -2523,9 +2524,9 @@ fn ordinary_background_fetcher_carries_full_tilemap_refetch_on_scx_tile_column_c
         ppu.bg_pipeline_state.push.cached.origin,
         BgCachedSliceOrigin::Ordinary
     );
-    assert!(ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
+    assert!(!ppu.bg_pipeline_state.push.cached.needs_live_tilemap_refetch);
     assert!(
-        ppu.bg_pipeline_state
+        !ppu.bg_pipeline_state
             .push
             .cached
             .needs_live_tilemap_full_refetch
@@ -3902,7 +3903,7 @@ fn startup_scy_latch_marks_alignment_fifo_push_and_fill_cached_slices() {
     ppu.bg_pipeline_state.push_cached_slice_fifo_pixels(cached);
 
     ppu.bg_pipeline_state
-        .mark_live_scy_write_while_startup_alignment_fifo_visible(write_context, 0);
+        .mark_live_scy_write_while_startup_alignment_fifo_visible(write_context, 0, false);
 
     let fifo_cached = ppu
         .bg_pipeline_state
@@ -3932,7 +3933,7 @@ fn startup_scy_latch_marks_alignment_fifo_push_and_fill_cached_slices() {
 fn startup_scy_latch_can_be_applied_to_a_later_fill_slice() {
     let mut ppu = dmg_fetch_startup_rig(0x91);
     ppu.bg_pipeline_state.startup_scy_tiledata_latch =
-        Some(BgStartupScyTiledataLatch::new(0x91, 3));
+        Some(BgStartupScyTiledataLatch::new(0x91, 3, None));
     ppu.bg_pipeline_state.fill.cached = BgCachedSlice {
         source: PpuBgFetcherSource::Background,
         origin: BgCachedSliceOrigin::StartupAlignmentFill,

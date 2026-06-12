@@ -425,10 +425,14 @@ impl Ppu {
             return;
         }
 
+        let seed_pending_tracks_live_tiledata_row = self.scy_obj_phase_policy().is_some_and(
+            PpuMode3ScyObjPhasePolicy::startup_alignment_seed_pending_tracks_live_tiledata_row,
+        );
         self.bg_pipeline_state
             .mark_live_scy_write_while_startup_alignment_fifo_visible(
                 route.write_context,
                 route.ly,
+                seed_pending_tracks_live_tiledata_row,
             );
     }
 
