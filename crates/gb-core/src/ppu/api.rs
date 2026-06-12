@@ -37,8 +37,16 @@ impl Ppu {
             lcd_restart_phase: PpuLcdRestartPhase::Inactive,
             lyc: 0,
             bgp: 0,
-            obp0: None,
-            obp1: None,
+            obp0: if console_model.is_cgb_family() {
+                Some(0x00)
+            } else {
+                None
+            },
+            obp1: if console_model.is_cgb_family() {
+                Some(0x00)
+            } else {
+                None
+            },
             wy: 0,
             wx: 0,
             cgb_palettes: CgbPaletteState::default(),
@@ -795,6 +803,10 @@ impl Ppu {
             PpuRegister::Lyc => {
                 self.lyc = value;
                 if self.is_lcd_enabled() {
+                    self.update_lyc_compare_latch();
+                    if self.cancel_obsolete_dot0_lyc_stat_irq_edge() {
+                        self.runtime.stat_state.irq_line = false;
+                    }
                     self.refresh_stat_irq_line(false);
                     self.cancel_obsolete_line_153_lyc0_stat_irq_pretrigger();
                 }
@@ -961,8 +973,13 @@ impl Ppu {
         self.bgp = startup_state.bgp;
         self.wy = startup_state.wy;
         self.wx = startup_state.wx;
-        self.obp0 = None;
-        self.obp1 = None;
+        let initial_obp = if self.console_model.is_cgb_family() {
+            Some(0x00)
+        } else {
+            None
+        };
+        self.obp0 = initial_obp;
+        self.obp1 = initial_obp;
         self.cgb_palettes.reset();
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
         self.runtime.reset_for_startup(startup_state.bgp);
@@ -976,6 +993,7 @@ impl Ppu {
             None
         };
         self.stat_state.lcd_disabled_lyc_coincidence = startup_state.ly == startup_state.lyc;
+        self.stat_state.lyc_compare_latch = startup_state.ly == startup_state.lyc;
         self.stat_state.suppress_mode0_pretrigger_until_vblank = false;
         self.stat_state.startup_mode0_irq_phase_active = false;
         self.stat_state
@@ -1249,16 +1267,14 @@ impl Ppu {
             || self.current_access_mode(),
         );
         if previous_mode != PpuAccessMode::VBlank && current_mode == PpuAccessMode::VBlank {
-            self.queue_interrupt_request_with_cpu_if_visibility(
-                InterruptSource::VBlank,
-                !self.console_model.is_dmg_family(),
-            );
+            self.queue_interrupt_request_with_cpu_if_visibility(InterruptSource::VBlank, false);
         }
         observe_ppu_step_region_when(
             observer,
             records_ppu_regions,
             PpuStepRegion::StatIrq,
             || {
+                self.update_lyc_compare_latch();
                 self.refresh_stat_irq_line(false);
             },
         );
@@ -1304,7 +1320,7 @@ impl Ppu {
             status: self.status,
             lcdc: self.lcdc,
             stat_interrupt_enable: self.stat_interrupt_enable,
-            lyc_coincidence: self.effective_lyc_coincidence(),
+            lyc_coincidence: self.lyc_coincidence_for_readback(),
             stat_irq_line: self.stat_state.irq_line,
             blank_frame_active: self.blank_frame_active,
             lcd_state: self.lcd_state,
@@ -1775,7 +1791,7 @@ impl Ppu {
             self.visible_output,
             self.ly,
             self.lyc,
-            self.effective_lyc_coincidence(),
+            self.lyc_coincidence_for_readback(),
             self.line_dot,
             self.current_access_mode(),
             self.stat_state.irq_line,
@@ -1847,6 +1863,7 @@ impl Ppu {
         self.pending_interrupts = 0;
         self.pending_interrupts_hidden_from_cpu_if = 0;
         self.stat_state.line_153_lyc0_stat_irq_pretrigger_pending = false;
+        self.stat_state.dot0_lyc_stat_irq_edge_pending = false;
         requests
     }
 

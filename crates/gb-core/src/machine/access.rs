@@ -67,7 +67,11 @@ impl<S: TraceSink> Machine<S> {
         let sgb_joyp_write = address == 0xFF00;
 
         if cpu_write_targets_ppu_mmio(&self.bus, address) {
-            let mut pending = Some(PendingPpuMmioWrite { address, value });
+            let mut pending = Some(PendingPpuMmioWrite {
+                address,
+                value,
+                commit_delay_t_cycles: 0,
+            });
 
             self.bus.route_cpu_address_event(
                 CpuAddressEvent {

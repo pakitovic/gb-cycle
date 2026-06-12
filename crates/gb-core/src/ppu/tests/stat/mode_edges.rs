@@ -223,7 +223,7 @@ fn ordinary_mode2_stat_pretrigger_is_hidden_from_same_cycle_cpu_if_reads() {
 }
 
 #[test]
-fn ordinary_lyc_stat_edge_is_hidden_from_same_cycle_cpu_if_reads() {
+fn ordinary_lyc_stat_edge_rises_at_dot0_hidden_from_same_cycle_cpu_if_reads() {
     let mut ppu = PpuTestRig::dmg();
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -246,12 +246,19 @@ fn ordinary_lyc_stat_edge_is_hidden_from_same_cycle_cpu_if_reads() {
 
     assert_eq!(ppu.snapshot().ly, 1);
     assert_eq!(ppu.snapshot().line_dot, 0);
-    assert!(ppu.snapshot().lyc_coincidence);
+    assert!(!ppu.snapshot().lyc_coincidence);
+    assert!(ppu.snapshot().stat_irq_line);
     assert_eq!(
         ppu.pending_interrupt_request_mask(),
         InterruptSource::LcdStat.mask()
     );
     assert_eq!(ppu.cpu_visible_pending_interrupt_request_mask(), 0);
+
+    ppu.tick();
+
+    assert_eq!(ppu.snapshot().line_dot, 1);
+    assert!(ppu.snapshot().lyc_coincidence);
+    assert!(ppu.snapshot().stat_irq_line);
 }
 
 #[test]
@@ -367,7 +374,7 @@ fn dmg_line153_lyc0_stat_pretrigger_bridges_to_visible_coincidence_without_retri
 }
 
 #[test]
-fn cgb_line153_lyc_edges_keep_the_cgb_ly0_window() {
+fn cgb_line153_lyc_edges_follow_the_cgb_compare_schedule() {
     let mut lyc153 = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
     lyc153.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -390,12 +397,24 @@ fn cgb_line153_lyc_edges_keep_the_cgb_ly0_window() {
 
     assert_eq!(lyc153.snapshot().ly, TOTAL_SCANLINES - 1);
     assert_eq!(lyc153.snapshot().line_dot, 0);
+    assert!(!lyc153.snapshot().lyc_coincidence);
+    assert_eq!(
+        lyc153.pending_interrupt_request_mask() & InterruptSource::LcdStat.mask(),
+        0
+    );
+
+    lyc153.tick();
+
+    assert_eq!(
+        lyc153.snapshot().line_dot,
+        CGB_LINE_153_LYC153_COMPARE_START_DOT
+    );
     assert!(lyc153.snapshot().lyc_coincidence);
     assert_ne!(
         lyc153.pending_interrupt_request_mask() & InterruptSource::LcdStat.mask(),
         0
     );
-    assert_eq!(
+    assert_ne!(
         lyc153.cpu_visible_pending_interrupt_request_mask() & InterruptSource::LcdStat.mask(),
         0
     );
@@ -422,12 +441,28 @@ fn cgb_line153_lyc_edges_keep_the_cgb_ly0_window() {
     lyc0.tick();
 
     assert_eq!(lyc0.snapshot().line_dot, CGB_LINE_153_LY_READ_ZERO_DOT);
+    assert_eq!(
+        lyc0.snapshot().line_dot,
+        CGB_LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
+    );
+    assert_eq!(lyc0.read_register(0xFF44), 0);
+    assert!(!lyc0.snapshot().lyc_coincidence);
+    assert_eq!(
+        lyc0.pending_interrupt_request_mask(),
+        InterruptSource::LcdStat.mask()
+    );
+
+    lyc0.tick();
+
+    assert_eq!(
+        lyc0.snapshot().line_dot,
+        CGB_LINE_153_LYC0_COMPARE_START_DOT
+    );
     assert!(lyc0.snapshot().lyc_coincidence);
     assert_eq!(
         lyc0.pending_interrupt_request_mask(),
         InterruptSource::LcdStat.mask()
     );
-    assert_eq!(lyc0.cpu_visible_pending_interrupt_request_mask(), 0);
 }
 
 #[test]
@@ -657,7 +692,7 @@ fn cpu_stat_read_switches_to_hblank_one_dot_before_mode0_start_for_offscreen_rig
 }
 
 #[test]
-fn cpu_stat_read_keeps_lyc_coincidence_on_the_first_dot_of_a_new_line() {
+fn cpu_stat_read_drops_lyc_coincidence_on_the_first_dot_of_a_new_line() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -680,7 +715,7 @@ fn cpu_stat_read_keeps_lyc_coincidence_on_the_first_dot_of_a_new_line() {
 
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x07,
-        0x04
+        0x00
     );
 
     ppu.line_dot = 4;

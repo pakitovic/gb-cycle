@@ -2,8 +2,8 @@ family = "wilbertpol"
 suite_name = "wilbertpol-logic-analysis"
 report = "wilbertpol"
 model = "dmg"
-timeout_frames = 180
-oracle = { type = "fibonacci-result", legacy = true }
+timeout_frames = 10
+oracle = { type = "trace" }
 
 [[case]]
 id = "wilbertpol-logic-analysis-external-bus-read-timing-read-timing"

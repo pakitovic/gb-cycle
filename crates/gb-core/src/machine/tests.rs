@@ -2716,6 +2716,7 @@ fn staged_ppu_mmio_write_leaves_ppu_storage_unchanged_until_commit_phase() {
     let mut pending = Some(PendingPpuMmioWrite {
         address: 0xFF42,
         value: 0x12,
+        commit_delay_t_cycles: 0,
     });
 
     assert_eq!(ppu.read_register(0xFF42), 0x00);
@@ -2782,6 +2783,27 @@ fn cpu_ppu_mmio_writes_commit_during_phase_7_of_the_same_t_cycle() {
             .contains(&SchedulerSideEffect::CommitMmioWrite)
     );
     assert_eq!(machine.ppu().snapshot().lcd_state, PpuLcdState::Disabled);
+}
+
+#[test]
+fn cgb_delayed_lyc_write_survives_a_back_to_back_ppu_mmio_write() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom(&[
+            0x31, 0x46, 0xFF, // ld sp,$FF46
+            0x01, 0x00, 0x77, // ld bc,$7700
+            0xC5, // push bc -> writes $77 to $FF45, then $00 to $FF44
+            0x18, 0xFE, // jr .
+        ]))
+        .expect("NoMBC test ROM should load");
+
+    for _ in 0..128 {
+        machine.step_t_cycle();
+    }
+
+    assert_eq!(machine.read_bus(0xFF45), 0x77);
 }
 
 #[test]
