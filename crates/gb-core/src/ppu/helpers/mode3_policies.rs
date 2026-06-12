@@ -1251,7 +1251,7 @@ impl PpuMode3ObservedLcdc3PhaseTable {
     ) -> Option<PpuMode3Lcdc3LiveWriteDecision> {
         let clear_visible_tile2_live_refetch = matches!(
             (write_index, self.sprite_x),
-            (0, 4..=17) | (1, 16..=u8::MAX)
+            (0, 3..=17) | (1, 16..=u8::MAX)
         );
 
         let tilemap_override = match write_index {
