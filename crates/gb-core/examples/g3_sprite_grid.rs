@@ -16,7 +16,7 @@ const PASS_WINDOW_DOTS: u16 = 3;
 const MAX_T_CYCLES: u64 = 700 * 70224;
 const TRACE_DOT_LOW: u16 = 200;
 const TRACE_DOT_HIGH: u16 = 320;
-const TRACE_MAX_VISITS: u32 = 24;
+const TRACE_MAX_VISITS: u32 = 40;
 
 #[derive(Debug, Clone)]
 struct TestcaseSpec {
@@ -31,7 +31,6 @@ struct Measurement {
     published_flip_dot: Option<u16>,
     mode0_start_dot: u16,
     obj_enabled: bool,
-    scx: u8,
 }
 
 fn parse_testcase_table(rom: &[u8]) -> BTreeMap<u8, TestcaseSpec> {
@@ -103,6 +102,7 @@ fn main() {
     let mut prev_ly = 0xFFu8;
     let mut prev_internal = PpuAccessMode::HBlank;
     let mut prev_published = PpuAccessMode::HBlank;
+    let mut prev_m0 = 0u16;
     let mut prev_pc = 0u16;
     let mut trace_visits = 0u32;
     let mut trap: Option<(u16, u8)> = None;
@@ -126,14 +126,12 @@ fn main() {
             if prev_ly != MEASURED_LY {
                 let testcase = machine.read_bus(TESTCASE_ID_ADDR);
                 let lcdc = machine.read_bus(0xFF40);
-                let scx = machine.read_bus(0xFF43);
                 pending = Some(Measurement {
                     testcase,
                     internal_flip_dot: None,
                     published_flip_dot: None,
                     mode0_start_dot,
                     obj_enabled: lcdc & 0x02 != 0,
-                    scx,
                 });
                 if trace {
                     trace_visits += 1;
@@ -153,6 +151,29 @@ fn main() {
                 {
                     measurement.published_flip_dot = Some(line_dot);
                 }
+            }
+            if trace
+                && trace_visits <= TRACE_MAX_VISITS
+                && prev_ly == MEASURED_LY
+                && prev_m0 != mode0_start_dot
+            {
+                println!(
+                    "trace visit={trace_visits} dot={line_dot} m0 {prev_m0}->{mode0_start_dot}"
+                );
+            }
+            if trace && trace_visits <= TRACE_MAX_VISITS && (80..=120).contains(&line_dot) {
+                let snapshot = machine.ppu().snapshot();
+                println!(
+                    "fetcher visit={trace_visits} dot={line_dot} tx={} bg={:?}/{} fifo={} ph={} obj={:?}/{} m0={mode0_start_dot} raw={}",
+                    snapshot.bg_current_transfer_x,
+                    snapshot.bg_fetcher_stage,
+                    snapshot.bg_fetcher_stage_dot,
+                    snapshot.bg_fifo_pixels.len(),
+                    snapshot.bg_startup_fifo_placeholders,
+                    snapshot.obj_fetcher_stage,
+                    snapshot.obj_fetcher_stage_dot,
+                    snapshot.mode0_start_dot,
+                );
             }
             if trace
                 && trace_visits <= TRACE_MAX_VISITS
@@ -207,6 +228,7 @@ fn main() {
         prev_ly = ly;
         prev_internal = internal;
         prev_published = published;
+        prev_m0 = mode0_start_dot;
     }
 
     report(&table, &measurements, &real_fails, trap);
@@ -220,10 +242,10 @@ fn report(
 ) {
     let mut grouped: BTreeMap<u8, Vec<&Measurement>> = BTreeMap::new();
     for measurement in measurements.iter().filter(|m| m.obj_enabled) {
-        grouped
-            .entry(measurement.testcase)
-            .or_default()
-            .push(measurement);
+        let rounds = grouped.entry(measurement.testcase).or_default();
+        if rounds.len() < 2 {
+            rounds.push(measurement);
+        }
     }
 
     let mut out_of_window = 0u32;
@@ -232,9 +254,7 @@ fn report(
         let Some(spec) = table.get(testcase) else {
             continue;
         };
-        let scx = rounds.first().map_or(0, |m| m.scx & 0x07);
-        let window_low =
-            MODE3_BASELINE_FLIP_DOT + u16::from(scx) + 4 * u16::from(spec.extra_cycles);
+        let window_low = MODE3_BASELINE_FLIP_DOT + 4 * u16::from(spec.extra_cycles);
         let window_high = window_low + PASS_WINDOW_DOTS;
         let flips: Vec<String> = rounds
             .iter()

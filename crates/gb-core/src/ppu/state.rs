@@ -1700,7 +1700,7 @@ impl BgPipelineState {
 
         self.initial_scx_capture_pending = false;
         self.initial_scx_discard = scx & 0x07;
-        self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
+        self.mode0_start_dot += u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
     }
 
