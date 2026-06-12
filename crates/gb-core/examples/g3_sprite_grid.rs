@@ -194,10 +194,23 @@ fn main() {
                     activity.kind, activity.value
                 );
             }
-        } else if prev_ly == MEASURED_LY
-            && let Some(measurement) = pending.take()
-        {
-            measurements.push(measurement);
+        } else {
+            if prev_ly == MEASURED_LY
+                && let Some(measurement) = pending.take()
+            {
+                measurements.push(measurement);
+            }
+            if trace
+                && lcd_enabled
+                && let Some(activity) = machine.cpu().snapshot().last_bus_activity
+                && activity.address == 0xFF41
+                && activity.kind == gb_core::CpuBusAccessKind::DataRead
+            {
+                println!(
+                    "ff41read ly={ly} dot={line_dot} value={:#04X} m0={mode0_start_dot}",
+                    activity.value
+                );
+            }
         }
 
         let cpu = machine.cpu().snapshot();

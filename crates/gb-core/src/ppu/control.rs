@@ -17,7 +17,6 @@ struct DmgPanelRepaintContext {
 struct PpuPublishedStatModeContext {
     published_mode: PpuAccessMode,
     current_mode: PpuAccessMode,
-    sprite_extended_mode3: bool,
 }
 
 mod irq;

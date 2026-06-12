@@ -15,7 +15,6 @@ impl Ppu {
         Some(PpuPublishedStatModeContext {
             published_mode: self.access_mode_for_line_dot(published_line_dot),
             current_mode: self.access_mode_for_line_dot(self.line_dot),
-            sprite_extended_mode3: self.current_mode0_start_dot() > self.baseline_mode0_start_dot(),
         })
     }
 
@@ -52,15 +51,24 @@ impl Ppu {
             return PpuAccessMode::Drawing;
         }
 
-        if self.published_stat_early_hblank_override_applies(context) {
+        if self.published_stat_steady_frame_mode0_boundary_override_applies(context) {
             return PpuAccessMode::HBlank;
         }
 
-        if let Some(mode) = self.published_stat_terminal_boundary_override(context) {
-            return mode;
-        }
-
         context.published_mode
+    }
+
+    fn published_stat_steady_frame_mode0_boundary_override_applies(
+        &self,
+        context: PpuPublishedStatModeContext,
+    ) -> bool {
+        context.published_mode == PpuAccessMode::Drawing
+            && context.current_mode == PpuAccessMode::HBlank
+            && !self.vblank_wrap_line0_stat_readback_delay_active()
+            && !self.runtime.blank_frame_active
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot == self.current_mode0_start_dot()
+            && (self.scx == 0 || self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0)
     }
 
     fn published_stat_mode2_to_mode3_override_applies(
@@ -73,85 +81,6 @@ impl Ppu {
             && !self.runtime.blank_frame_active
             && self.ly < VISIBLE_SCANLINES
             && self.line_dot == MODE2_DOTS
-    }
-
-    fn published_stat_early_hblank_override_applies(
-        &self,
-        context: PpuPublishedStatModeContext,
-    ) -> bool {
-        if context.published_mode != PpuAccessMode::Drawing {
-            return false;
-        }
-
-        self.terminal_visible_tail_should_publish_hblank_early()
-    }
-
-    fn no_unfetched_sprite_can_still_match(&self) -> bool {
-        if !self.obj_enabled() {
-            return true;
-        }
-
-        let current_transfer_x = self.runtime.bg_pipeline_state.current_transfer_x;
-        (0..self.runtime.mode2_scan_state.selected_sprite_count()).all(|slot| {
-            if self.runtime.obj_pipeline_state.has_fetched(slot) {
-                return true;
-            }
-            let Some(sprite) = self.runtime.mode2_scan_state.selected_sprite(slot) else {
-                return true;
-            };
-            match sprite_trigger_x(sprite) {
-                Some(trigger_x) => trigger_x < current_transfer_x,
-                None => true,
-            }
-        })
-    }
-
-    pub(in crate::ppu) fn terminal_visible_tail_should_publish_hblank_early(&self) -> bool {
-        if self.dmg_wx0_scx3_window_tail_should_keep_published_drawing() {
-            return false;
-        }
-
-        let early_dots: u16 = if self.scx & 0x07 == 0 { 3 } else { 1 };
-        self.ly < VISIBLE_SCANLINES
-            && self.runtime.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
-            && self.runtime.obj_pipeline_state.pending_match_x.is_none()
-            && self
-                .runtime
-                .obj_pipeline_state
-                .pending_sprite_slots
-                .is_empty()
-            && self.no_unfetched_sprite_can_still_match()
-            && self.line_dot + early_dots >= self.current_mode0_start_dot()
-    }
-
-    fn published_stat_terminal_boundary_override(
-        &self,
-        context: PpuPublishedStatModeContext,
-    ) -> Option<PpuAccessMode> {
-        if context.published_mode == PpuAccessMode::Drawing
-            && context.current_mode == PpuAccessMode::HBlank
-            && !self.vblank_wrap_line0_stat_readback_delay_active()
-            && self.ly < VISIBLE_SCANLINES
-            && self.line_dot == self.current_mode0_start_dot()
-        {
-            return Some(PpuAccessMode::HBlank);
-        }
-
-        None
-    }
-
-    fn dmg_wx0_scx3_window_tail_should_keep_published_drawing(&self) -> bool {
-        let visible_registers = self.mode3_register_latches().visible();
-
-        self.console_model.is_dmg_family()
-            && self.ly < VISIBLE_SCANLINES
-            && self.line_dot + 1 == self.current_mode0_start_dot()
-            && self.runtime.mode2_scan_state.selected_sprite_count() == 0
-            && self.runtime.bg_pipeline_state.window_started_this_line
-            && self.runtime.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Window
-            && visible_registers.window_enabled()
-            && visible_registers.wx == 0
-            && visible_registers.scx & 0x07 == 3
     }
 
     pub(in crate::ppu) fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
