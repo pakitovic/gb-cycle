@@ -858,7 +858,11 @@ impl BootController {
                 real_boot_power_on_serial_clock_counter(self.console_model, self.revision),
             ),
             dma: DmaStartupState {
-                source_page_latch: 0xFF,
+                source_page_latch: if self.console_model.is_cgb_family() {
+                    0x00
+                } else {
+                    0xFF
+                },
             },
             joypad: real_boot_power_on_joypad_state(self.console_model),
         })
@@ -1214,6 +1218,7 @@ const fn synthetic_skip_boot_io_snapshot(
             let mut io = dmg_family_synthetic_skip_boot_io_snapshot();
             io.p1 = 0xFF;
             io.div = CGB_SKIP_BOOT_DIV;
+            io.dma = 0x00;
             io
         }
     }

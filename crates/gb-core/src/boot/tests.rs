@@ -515,6 +515,7 @@ fn real_boot_power_on_state_seeds_model_specific_hidden_clock_phases() {
     assert_eq!(cgb_startup_state.timer.tima, 0x00);
     assert_eq!(cgb_startup_state.timer.tma, 0x00);
     assert_eq!(cgb_startup_state.timer.tac, 0x00);
+    assert_eq!(cgb_startup_state.dma.source_page_latch, 0x00);
 
     let skip_boot = boot(ConsoleModel::GameBoy, StartupMode::SkipBoot, empty_assets());
     assert!(skip_boot.real_boot_power_on_state().is_none());
@@ -554,6 +555,8 @@ fn cgb_skip_boot_cpu_state_matches_boot_regs_cgb_entry_contract() {
         assert_eq!(startup_state.joypad.selection_bits, 0x30);
         assert_eq!(startup_state.io.div, 0x26);
         assert_eq!(startup_state.timer.system_counter, 0x2674);
+        assert_eq!(startup_state.io.dma, 0x00);
+        assert_eq!(startup_state.dma.source_page_latch, 0x00);
     }
 }
 

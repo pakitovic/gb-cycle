@@ -938,3 +938,27 @@ fn ly_is_read_only_and_obj_palettes_keep_an_explicit_uninitialized_policy() {
     assert_eq!(ppu.read_register(0xFF48), 0xFF);
     assert_eq!(ppu.read_register(0xFF49), 0xFF);
 }
+
+#[test]
+fn cgb_obj_palettes_read_back_zero_before_any_write() {
+    let mut ppu = PpuTestRig::with_model(ConsoleModel::GameBoyColor);
+
+    assert_eq!(ppu.read_register(0xFF48), 0x00);
+    assert_eq!(ppu.read_register(0xFF49), 0x00);
+
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x08,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0x22,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    assert_eq!(ppu.read_register(0xFF48), 0x00);
+    assert_eq!(ppu.read_register(0xFF49), 0x00);
+}

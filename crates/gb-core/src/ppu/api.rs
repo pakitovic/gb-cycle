@@ -37,8 +37,16 @@ impl Ppu {
             lcd_restart_phase: PpuLcdRestartPhase::Inactive,
             lyc: 0,
             bgp: 0,
-            obp0: None,
-            obp1: None,
+            obp0: if console_model.is_cgb_family() {
+                Some(0x00)
+            } else {
+                None
+            },
+            obp1: if console_model.is_cgb_family() {
+                Some(0x00)
+            } else {
+                None
+            },
             wy: 0,
             wx: 0,
             cgb_palettes: CgbPaletteState::default(),
@@ -961,8 +969,13 @@ impl Ppu {
         self.bgp = startup_state.bgp;
         self.wy = startup_state.wy;
         self.wx = startup_state.wx;
-        self.obp0 = None;
-        self.obp1 = None;
+        let initial_obp = if self.console_model.is_cgb_family() {
+            Some(0x00)
+        } else {
+            None
+        };
+        self.obp0 = initial_obp;
+        self.obp1 = initial_obp;
         self.cgb_palettes.reset();
         self.obj_palette_read_policy = startup_state.obj_palette_read_policy;
         self.runtime.reset_for_startup(startup_state.bgp);
