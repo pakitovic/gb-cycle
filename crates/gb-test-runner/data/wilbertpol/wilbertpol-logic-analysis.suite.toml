@@ -8,11 +8,17 @@ oracle = { type = "trace" }
 [[case]]
 id = "wilbertpol-logic-analysis-external-bus-read-timing-read-timing"
 rom = "logic-analysis/external-bus/read_timing/read_timing.gb"
+disabled = true
+comment = "Logic-analyzer stimulus ROM with no software pass/fail: it drives external-bus reads and parks in an eternal HALT (IE=0/IME=0). Its real pass criterion is matching the upstream .vcd analyzer capture, which gb-cycle neither downloads nor can compare against, so running it yields no signal."
 
 [[case]]
 id = "wilbertpol-logic-analysis-external-bus-write-timing-write-timing"
 rom = "logic-analysis/external-bus/write_timing/write_timing.gb"
+disabled = true
+comment = "Logic-analyzer stimulus ROM with no software pass/fail: it drives external-bus writes and parks in an eternal HALT (IE=0/IME=0). Its real pass criterion is matching the upstream .vcd analyzer capture, which gb-cycle neither downloads nor can compare against, so running it yields no signal."
 
 [[case]]
 id = "wilbertpol-logic-analysis-ppu-simple-scx-simple-scx"
 rom = "logic-analysis/ppu/simple_scx/simple_scx.gb"
+disabled = true
+comment = "Logic-analyzer stimulus ROM with no software pass/fail: it exercises PPU SCX timing in an endless halt / ldh (FF41),a loop. Its real pass criterion is matching the upstream .vcd analyzer capture, which gb-cycle neither downloads nor can compare against, so running it yields no signal."
