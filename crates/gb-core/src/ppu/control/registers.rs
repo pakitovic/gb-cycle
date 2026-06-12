@@ -160,7 +160,7 @@ impl Ppu {
         if self.cancel_obsolete_line_153_lyc0_stat_irq_pretrigger() {
             self.runtime.stat_state.irq_line = false;
         }
-        let quirk_active = self.stat_write_quirk_active_for_write(value);
+        let quirk_active = self.stat_write_quirk_active_for_write();
         self.runtime
             .stat_state
             .dmg_stat_write_quirk_blocks_line153_lyc0 = false;
@@ -175,7 +175,10 @@ impl Ppu {
         let ordinary_line = self.ordinary_stat_irq_line();
         let new_line = ordinary_line || quirk_active;
         let write_requests_ordinary_edge = ordinary_line
-            && (self.mode1_stat_write_irq_source() || self.mode2_stat_write_irq_source());
+            && (self.mode0_stat_write_irq_source()
+                || self.mode1_stat_write_irq_source()
+                || self.mode2_stat_write_irq_source()
+                || self.lyc_stat_write_irq_source());
         if !self.runtime.stat_state.irq_line && (quirk_active || write_requests_ordinary_edge) {
             self.queue_interrupt_request_with_cpu_if_visibility(
                 InterruptSource::LcdStat,

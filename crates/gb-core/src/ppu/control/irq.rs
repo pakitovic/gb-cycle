@@ -370,6 +370,20 @@ impl Ppu {
             && self.current_access_mode() == PpuAccessMode::VBlank
     }
 
+    pub(in crate::ppu) fn mode0_stat_write_irq_source(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly < VISIBLE_SCANLINES
+            && self.current_stat_irq_access_mode() == PpuAccessMode::HBlank
+    }
+
+    pub(in crate::ppu) fn lyc_stat_write_irq_source(&self) -> bool {
+        self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.effective_lyc_coincidence()
+            && !self.dmg_stat_write_quirk_blocks_line153_lyc0_stat_source()
+    }
+
     pub(crate) fn dmg_mode2_oam_halt_wake_deferred(&self) -> bool {
         self.console_model.is_dmg_family()
             && self.runtime.blank_frame_active
@@ -480,7 +494,7 @@ impl Ppu {
             || self.lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if()
     }
 
-    pub(in crate::ppu) fn stat_write_quirk_active_for_write(&self, value: u8) -> bool {
+    pub(in crate::ppu) fn stat_write_quirk_active_for_write(&self) -> bool {
         if !self.console_model.is_dmg_family() || !self.is_lcd_enabled() {
             return false;
         }
@@ -489,12 +503,13 @@ impl Ppu {
             return true;
         }
 
-        if value & STAT_WRITABLE_ENABLE_MASK != 0 {
-            return false;
-        }
+        let lcd_restart_first_line = self
+            .lcd_restart_phase
+            .is_first_line_after_enable_active(self.ly);
 
-        self.stat_write_quirk_line0_oam_window_active()
-            || self.stat_write_quirk_oam_start_window_active()
+        (!lcd_restart_first_line
+            && (self.stat_write_quirk_line0_oam_window_active()
+                || self.stat_write_quirk_oam_start_window_active()))
             || self.stat_write_quirk_hblank_window_active()
     }
 
