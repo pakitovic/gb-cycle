@@ -163,8 +163,6 @@ pub(in crate::ppu) struct PpuMode3LineTimingPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(in crate::ppu) struct PpuMode3LineTimingContext {
     pub(in crate::ppu) line_dot: u16,
-    pub(in crate::ppu) selected_sprite_count: u8,
-    pub(in crate::ppu) all_selected_sprites_offscreen_right: bool,
     pub(in crate::ppu) obj_fetch_active: bool,
     pub(in crate::ppu) pending_obj_hit_owns_current_transfer_x: bool,
     pub(in crate::ppu) live_transfer_still_owned_by_mode3: bool,
@@ -190,13 +188,7 @@ impl PpuMode3LineTimingPolicy {
 
     pub(in crate::ppu) fn current_mode0_start_dot(self, context: PpuMode3LineTimingContext) -> u16 {
         let mut mode0_start_dot = if self.mode3_started {
-            let shortens_for_all_offscreen_right_sprites = self.mode0_start_dot
-                == self.baseline_mode0_start_dot()
-                && self.visible_registers.obj_enabled()
-                && context.selected_sprite_count > 0
-                && context.all_selected_sprites_offscreen_right;
             self.mode0_start_dot
-                .saturating_sub(u16::from(shortens_for_all_offscreen_right_sprites))
         } else {
             self.baseline_mode0_start_dot()
         };

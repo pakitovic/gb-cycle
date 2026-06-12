@@ -876,10 +876,6 @@ impl Ppu {
         self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::Cgb
     }
 
-    pub(super) fn is_cgb_compatibility_mode(&self) -> bool {
-        self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::GbCompatible
-    }
-
     pub(super) fn is_cgb_dmg_ext_mode(&self) -> bool {
         self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::CgbDmgExt
     }

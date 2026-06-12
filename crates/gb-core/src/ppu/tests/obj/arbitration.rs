@@ -60,12 +60,7 @@ fn trying_to_start_object_fetch_without_pending_hits_returns_false() {
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
     ppu.bg_pipeline_state.fifo.push_back(0);
 
-    assert!(
-        !ppu.try_start_object_fetch_from_current_dot(
-            ObjFetchStartSource::FifoBackedTransfer,
-            false,
-        )
-    );
+    assert!(!ppu.try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer));
     assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
 }
 
@@ -81,12 +76,7 @@ fn trying_to_start_object_fetch_with_a_missing_selected_sprite_returns_false() {
     ppu.mode2_scan_state.selected_sprite_count = 1;
     queue_current_obj_hit(&mut ppu, 0);
 
-    assert!(
-        !ppu.try_start_object_fetch_from_current_dot(
-            ObjFetchStartSource::FifoBackedTransfer,
-            false,
-        )
-    );
+    assert!(!ppu.try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer));
     assert_eq!(ppu.obj_pipeline_state.fetch.stage, PpuObjFetcherStage::Idle);
 }
 
@@ -533,9 +523,6 @@ fn late_visible_x160_obj_start_can_still_begin_from_fifo_backed_transfer() {
         .current_transfer()
         .expect("late visible x160 should still have a transfer");
     assert_eq!(transfer.context.lane, Mode3TransferLane::Visible);
-    assert!(transfer.can_start_obj_fetch_from_fifo_backed_transfer(
-        ppu.bg_pipeline_state.fifo_contains_real_pixels()
-    ));
 
     let arbitration = ppu.current_dot_arbitration();
     assert!(arbitration.can_start_obj_fetch(ObjFetchStartSource::FifoBackedTransfer));

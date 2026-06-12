@@ -128,9 +128,7 @@ fn overlapped_obj_fetch_uses_explicit_one_dot_stage_progression() {
     push_selected_sprite(&mut ppu, SelectedSpriteSpec::new(0, 16, 8, 0, 0));
     queue_current_obj_hit(&mut ppu, 0);
 
-    assert!(
-        ppu.try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer, true,)
-    );
+    assert!(ppu.try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer));
     assert_eq!(
         ppu.obj_pipeline_state.fetch.stage,
         PpuObjFetcherStage::Startup
@@ -192,15 +190,4 @@ fn startup_stage_dot_zero_advances_to_dot_one_before_resolving_metadata() {
         PpuObjFetcherStage::Startup
     );
     assert_eq!(ppu.obj_pipeline_state.fetch.stage_dot, 1);
-}
-
-#[test]
-fn startup_ready_without_a_latched_sprite_falls_back_to_fifo_readiness() {
-    let mut ppu = PpuTestRig::dmg();
-
-    assert!(!ppu.obj_fetch_startup_ready());
-
-    ppu.bg_pipeline_state.fifo.push_back(0);
-
-    assert!(ppu.obj_fetch_startup_ready());
 }
