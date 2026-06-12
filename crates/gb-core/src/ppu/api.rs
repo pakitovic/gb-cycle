@@ -804,6 +804,9 @@ impl Ppu {
                 self.lyc = value;
                 if self.is_lcd_enabled() {
                     self.update_lyc_compare_latch();
+                    if self.cancel_obsolete_dot0_lyc_stat_irq_edge() {
+                        self.runtime.stat_state.irq_line = false;
+                    }
                     self.refresh_stat_irq_line(false);
                     self.cancel_obsolete_line_153_lyc0_stat_irq_pretrigger();
                 }
@@ -1860,6 +1863,7 @@ impl Ppu {
         self.pending_interrupts = 0;
         self.pending_interrupts_hidden_from_cpu_if = 0;
         self.stat_state.line_153_lyc0_stat_irq_pretrigger_pending = false;
+        self.stat_state.dot0_lyc_stat_irq_edge_pending = false;
         requests
     }
 

@@ -86,8 +86,18 @@ impl Ppu {
 
         match self.live_ly_for_lyc_compare() {
             Some(compare_ly) => compare_ly == self.lyc,
-            None => self.runtime.stat_state.lyc_compare_latch,
+            None => {
+                if self.regular_line_dot0_compare_window() {
+                    self.ly == self.lyc
+                } else {
+                    self.runtime.stat_state.lyc_compare_latch
+                }
+            }
         }
+    }
+
+    fn regular_line_dot0_compare_window(&self) -> bool {
+        self.line_dot == 0 && self.ly != TOTAL_SCANLINES - 1
     }
 
     pub(in crate::ppu) fn lyc_coincidence_for_readback(&self) -> bool {
@@ -330,12 +340,21 @@ impl Ppu {
     }
 
     fn line_153_lyc0_stat_irq_pretrigger_source(&self) -> bool {
-        self.console_model.is_dmg_family()
-            && self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
-            && self.is_lcd_enabled()
-            && !self.dmg_stat_write_quirk_blocks_line153_lyc0()
-            && self.ly == TOTAL_SCANLINES - 1
-            && self.lyc == 0
+        if self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT == 0
+            || !self.is_lcd_enabled()
+            || self.ly != TOTAL_SCANLINES - 1
+            || self.lyc != 0
+        {
+            return false;
+        }
+
+        if self.console_model.is_cgb_family() {
+            return (CGB_LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
+                ..CGB_LINE_153_LYC0_COMPARE_START_DOT)
+                .contains(&self.line_dot);
+        }
+
+        !self.dmg_stat_write_quirk_blocks_line153_lyc0()
             && (LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT..LINE_153_LYC0_COMPARE_START_DOT)
                 .contains(&self.line_dot)
     }
@@ -383,6 +402,10 @@ impl Ppu {
             return true;
         }
 
+        if self.regular_line_dot0_compare_window() && self.ly == self.lyc {
+            return true;
+        }
+
         if !self.live_lyc_coincidence() {
             return false;
         }
@@ -420,6 +443,7 @@ impl Ppu {
     pub(in crate::ppu) fn lyc_stat_write_irq_source(&self) -> bool {
         self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
             && self.is_lcd_enabled()
+            && !self.regular_line_dot0_compare_window()
             && self.lyc_coincidence_for_irq_line()
             && !self.dmg_stat_write_quirk_blocks_line153_lyc0_stat_source()
     }
@@ -467,6 +491,9 @@ impl Ppu {
         }
 
         let new_line = self.compute_stat_irq_line(quirk_active);
+        if self.line_dot != 0 {
+            self.runtime.stat_state.dot0_lyc_stat_irq_edge_pending = false;
+        }
         let line_153_lyc0_pretrigger_request = !self.runtime.stat_state.irq_line
             && new_line
             && self.line_153_lyc0_stat_irq_pretrigger_source();
@@ -475,6 +502,9 @@ impl Ppu {
                 InterruptSource::LcdStat,
                 !self.stat_request_hidden_from_same_cycle_cpu_if(),
             );
+            if self.dot0_lyc_stat_irq_edge_is_cancellable() {
+                self.runtime.stat_state.dot0_lyc_stat_irq_edge_pending = true;
+            }
         }
         if line_153_lyc0_pretrigger_request {
             self.runtime
@@ -482,6 +512,25 @@ impl Ppu {
                 .line_153_lyc0_stat_irq_pretrigger_pending = true;
         }
         self.runtime.stat_state.irq_line = new_line;
+    }
+
+    fn dot0_lyc_stat_irq_edge_is_cancellable(&self) -> bool {
+        self.regular_line_dot0_compare_window()
+            && self.ly == self.lyc
+            && self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
+    }
+
+    pub(in crate::ppu) fn cancel_obsolete_dot0_lyc_stat_irq_edge(&mut self) -> bool {
+        if !self.runtime.stat_state.dot0_lyc_stat_irq_edge_pending
+            || self.lyc_coincidence_for_irq_line()
+        {
+            return false;
+        }
+
+        self.runtime.pending_interrupts &= !PPU_PENDING_LCD_STAT_INTERRUPT_BIT;
+        self.runtime.pending_interrupts_hidden_from_cpu_if &= !PPU_PENDING_LCD_STAT_INTERRUPT_BIT;
+        self.runtime.stat_state.dot0_lyc_stat_irq_edge_pending = false;
+        true
     }
 
     pub(in crate::ppu) fn cancel_obsolete_line_153_lyc0_stat_irq_pretrigger(&mut self) -> bool {

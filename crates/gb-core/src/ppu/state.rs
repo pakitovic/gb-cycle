@@ -3601,6 +3601,8 @@ pub(super) struct StatState {
     #[serde(default)]
     pub(super) line_153_lyc0_stat_irq_pretrigger_pending: bool,
     #[serde(default)]
+    pub(super) dot0_lyc_stat_irq_edge_pending: bool,
+    #[serde(default)]
     pub(super) dmg_stat_write_quirk_blocks_line153_lyc0: bool,
     #[serde(default)]
     pub(super) lyc_compare_latch: bool,
