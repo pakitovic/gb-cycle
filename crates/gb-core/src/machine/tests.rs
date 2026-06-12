@@ -2786,6 +2786,27 @@ fn cpu_ppu_mmio_writes_commit_during_phase_7_of_the_same_t_cycle() {
 }
 
 #[test]
+fn cgb_delayed_lyc_write_survives_a_back_to_back_ppu_mmio_write() {
+    let mut machine = Machine::new(
+        MachineConfig::new(ConsoleModel::GameBoyColor).with_startup_mode(StartupMode::SkipBoot),
+    );
+    machine
+        .load_cartridge(build_test_rom(&[
+            0x31, 0x46, 0xFF, // ld sp,$FF46
+            0x01, 0x00, 0x77, // ld bc,$7700
+            0xC5, // push bc -> writes $77 to $FF45, then $00 to $FF44
+            0x18, 0xFE, // jr .
+        ]))
+        .expect("NoMBC test ROM should load");
+
+    for _ in 0..128 {
+        machine.step_t_cycle();
+    }
+
+    assert_eq!(machine.read_bus(0xFF45), 0x77);
+}
+
+#[test]
 fn joypad_host_input_is_ingested_during_external_event_ingress() {
     let mut machine = Machine::new(
         MachineConfig::new(ConsoleModel::GameBoy).with_startup_mode(StartupMode::SkipBoot),
