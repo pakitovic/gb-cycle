@@ -2990,9 +2990,9 @@ fn cpu_mmio_bgp_late_black_pulse_with_sprite_x0_tracks_the_late_visible_position
             .copied(),
         Some(PpuDmgBgpCpuCommitWrite {
             effect_kind: PpuDmgBgpCpuCommitEffectKind::RetroactivePanel,
-            transient_visible_x: 146,
+            transient_visible_x: 148,
             transient_palette: 0xFF,
-            repaint_visible_x: 147,
+            repaint_visible_x: 149,
             transfer_lead_pixels: 0,
             value: 0xFF,
         })
@@ -4380,7 +4380,7 @@ fn dmg_bgp_write_in_early_hblank_recolors_only_last_three_visible_bg_pixels() {
 }
 
 #[test]
-fn dmg_obp0_write_before_visible_x10_does_not_retroactively_recolor_obj_pixels() {
+fn dmg_obp0_write_before_visible_x10_recolors_recent_obj_pixels() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x82,
@@ -4402,7 +4402,7 @@ fn dmg_obp0_write_before_visible_x10_does_not_retroactively_recolor_obj_pixels()
 
     ppu.write_register(0xFF48, 0x04);
 
-    assert_eq!(&ppu.framebuffer()[3..8], &[3, 3, 3, 3, 3]);
+    assert_eq!(&ppu.framebuffer()[3..8], &[3, 1, 1, 1, 1]);
 }
 
 #[test]

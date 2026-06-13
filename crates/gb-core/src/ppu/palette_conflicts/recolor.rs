@@ -15,9 +15,7 @@ impl Ppu {
 
         let mut transient_palette_pending = matches!(register, PpuPaletteRegister::Bgp);
         let row_start = self.ly as usize * SCREEN_WIDTH;
-        if !self.dmg_panel_live_write_state.recent_panel_dots.is_empty()
-            && !self.use_scanline_palette_conflict_positions(register)
-        {
+        if !self.dmg_panel_live_write_state.recent_panel_dots.is_empty() {
             let recent_dots = self.recent_palette_conflict_panel_dots(register, retroactive_pixels);
             for dot in recent_dots.iter().rev() {
                 if register == PpuPaletteRegister::Bgp && dot.dmg_bg_forced_white {
@@ -159,13 +157,6 @@ impl Ppu {
         positions
     }
 
-    fn use_scanline_palette_conflict_positions(&self, register: PpuPaletteRegister) -> bool {
-        matches!(
-            register,
-            PpuPaletteRegister::Obp0 | PpuPaletteRegister::Obp1
-        ) && self.bg_pipeline_state.visible_pixels_output >= 10
-    }
-
     pub(in crate::ppu) fn record_dmg_recent_panel_dot(
         &mut self,
         visible_x: u8,
@@ -228,21 +219,13 @@ impl Ppu {
 
     pub(in crate::ppu) fn dmg_palette_conflict_retroactive_pixels(
         &self,
-        register: PpuPaletteRegister,
+        _register: PpuPaletteRegister,
     ) -> Option<usize> {
         if !self.uses_dmg_palette_live_write_model() || self.ly >= VISIBLE_SCANLINES {
             return None;
         }
 
-        let retroactive_pixels = match register {
-            PpuPaletteRegister::Bgp => DMG_PALETTE_RETROACTIVE_PIXELS,
-            PpuPaletteRegister::Obp0 | PpuPaletteRegister::Obp1 => {
-                if self.bg_pipeline_state.visible_pixels_output < 10 {
-                    return None;
-                }
-                DMG_PALETTE_RETROACTIVE_PIXELS
-            }
-        };
+        let retroactive_pixels = DMG_PALETTE_RETROACTIVE_PIXELS;
 
         match self.current_raster_state() {
             PpuRasterState::Active {

@@ -89,7 +89,14 @@ impl Ppu {
             observer,
             records_ppu_regions,
             PpuStepRegion::Mode3ObjFetch,
-            || self.advance_object_fetch(oam, vram, dma_oam_conflict),
+            || {
+                let in_alignment_stall = self.object_fetch_in_alignment_stall();
+                let handled = self.advance_object_fetch(oam, vram, dma_oam_conflict);
+                if handled && in_alignment_stall {
+                    let _ = self.advance_bg_fetcher(vram);
+                }
+                handled
+            },
         ) {
             return;
         }
@@ -142,11 +149,8 @@ impl Ppu {
     pub(in crate::ppu) fn advance_mode3_object_edge(&mut self) {
         self.sync_pending_obj_hit_ownership();
         self.latch_object_fetch_hits();
-        let started = self
-            .try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer, true);
-        if started && self.terminal_mode3_dot_started_shared_obj_fetch() {
-            self.runtime.bg_pipeline_state.extend_mode3_by_one_dot();
-        }
+        let _ =
+            self.try_start_object_fetch_from_current_dot(ObjFetchStartSource::FifoBackedTransfer);
     }
 
     #[cfg(test)]
@@ -245,61 +249,12 @@ impl Ppu {
             == PpuObjFetcherStage::Idle
             && self.obj_enabled()
             && has_pending_obj_hit;
-        let current_transfer_is_fifo_backed = self.current_transfer().is_some_and(|transfer| {
-            (transfer.can_start_obj_fetch_from_fifo_backed_transfer(
-                self.runtime.bg_pipeline_state.fifo_contains_real_pixels(),
-            ) || self.previsible_same_x_chain_can_start_obj_fetch(transfer))
-                && self.bg_fetcher_ready_for_fifo_backed_obj_start()
-        });
 
         Mode3DotArbitration {
             bg_transfer_can_advance: !has_pending_obj_hit,
-            obj_fetch_can_start_from_fifo_backed_transfer: obj_fetch_can_start
-                && current_transfer_is_fifo_backed,
+            obj_fetch_can_start_from_fifo_backed_transfer: obj_fetch_can_start,
             obj_fetch_can_start_from_queued_bg_fill: obj_fetch_can_start,
         }
-    }
-
-    pub(in crate::ppu) fn previsible_same_x_chain_can_start_obj_fetch(
-        &self,
-        transfer: Mode3CurrentTransfer,
-    ) -> bool {
-        matches!(
-            (transfer.context.lane, transfer.readiness),
-            (
-                Mode3TransferLane::PreVisible,
-                Mode3TransferReadiness::Ready(Mode3TransferServicePlan {
-                    execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
-                    ..
-                }),
-            )
-        ) && !self.runtime.bg_pipeline_state.effective_fifo_is_empty()
-            && self.runtime.obj_pipeline_state.pending_match_x
-                == Some(self.runtime.bg_pipeline_state.current_transfer_x)
-            && !self
-                .runtime
-                .obj_pipeline_state
-                .pending_sprite_slots
-                .is_empty()
-            && match transfer.context.source_window {
-                Mode3TransferSourceWindow::AbstractStartup => {
-                    self.fetched_same_x_obj_sprite_count_for_pending_match_x() > 0
-                }
-                Mode3TransferSourceWindow::FifoBacked => {
-                    self.previsible_fifo_backed_same_x_chain_can_start_obj_fetch()
-                }
-            }
-    }
-
-    pub(in crate::ppu) fn previsible_fifo_backed_same_x_chain_can_start_obj_fetch(&self) -> bool {
-        if !self.current_transfer_x_supports_early_same_x_obj_start() {
-            return false;
-        }
-
-        let fetched_same_x_count = self.fetched_same_x_obj_sprite_count_for_pending_match_x();
-        matches!(fetched_same_x_count, 1 | 3)
-            || (fetched_same_x_count >= 2 && fetched_same_x_count.is_multiple_of(2))
-            || self.terminal_previsible_same_x_chain_can_start_obj_fetch()
     }
 
     #[cfg(test)]

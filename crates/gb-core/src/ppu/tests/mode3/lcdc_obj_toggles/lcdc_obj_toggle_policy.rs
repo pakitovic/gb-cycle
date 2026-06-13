@@ -61,7 +61,23 @@ fn observed_lcdc2_obj_size_plane_selection_matches_the_curated_residual_seams() 
             Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
         ),
         (0, 32, 0, 10, None, None),
-        (0, 32, 1, 2, None, None),
+        (
+            0,
+            32,
+            1,
+            2,
+            None,
+            Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
+        ),
+        (
+            0,
+            32,
+            2,
+            10,
+            None,
+            Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
+        ),
+        (0, 32, 3, 2, None, None),
         (
             0,
             32,
@@ -79,10 +95,34 @@ fn observed_lcdc2_obj_size_plane_selection_matches_the_curated_residual_seams() 
             Some(25),
             Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High),
         ),
+        (
+            2,
+            32,
+            0,
+            2,
+            Some(23),
+            Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
+        ),
         (2, 12, 3, 8, None, None),
         (2, 12, 4, 8, None, None),
         (0, 17, 0, 0, None, None),
-        (2, 34, 0, 0, None, None),
+        (
+            2,
+            34,
+            0,
+            0,
+            None,
+            Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+        ),
+        (
+            2,
+            39,
+            0,
+            12,
+            None,
+            Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+        ),
+        (2, 34, 1, 0, None, None),
     ];
 
     for (write_index, sprite_x, scx, raw_row, active_write_visible_x, expected) in cases {
@@ -227,7 +267,14 @@ fn observed_cgb_dmg_software_lcdc2_obj_size_plane_selection_tracks_cgb_residual_
             Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8LowLineStart16High),
         ),
         (0, 32, 0, 10, None, None),
-        (0, 32, 1, 2, None, None),
+        (
+            0,
+            32,
+            1,
+            2,
+            None,
+            Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16),
+        ),
         (2, 12, 4, 8, None, None),
     ];
 

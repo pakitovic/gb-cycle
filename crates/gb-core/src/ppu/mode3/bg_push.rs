@@ -72,15 +72,6 @@ impl Ppu {
             BgPushDotOwnership::EntryDelay => {
                 debug_assert!(self.runtime.bg_pipeline_state.push.entry_delay_remaining > 0);
                 self.runtime.bg_pipeline_state.push.entry_delay_remaining -= 1;
-                if self.runtime.bg_pipeline_state.push.entry_delay_remaining == 0
-                    && self
-                        .saturated_placeholder_backed_terminal_bg_tail_can_hold_one_post_push_dot()
-                {
-                    self.runtime
-                        .bg_pipeline_state
-                        .push
-                        .terminal_placeholder_tail_extra_hold_remaining = 2;
-                }
                 self.runtime
                     .bg_pipeline_state
                     .push
@@ -123,7 +114,6 @@ impl Ppu {
                     .same_cycle_live_tilemap_refetch_window_open = false;
                 let started = self.try_start_object_fetch_from_current_dot(
                     ObjFetchStartSource::PushCachedBgFetch,
-                    true,
                 );
                 debug_assert!(
                     started,
@@ -134,10 +124,8 @@ impl Ppu {
             BgPushDotOwnership::QueueFill | BgPushDotOwnership::QueueFillThenObjectFetch => {
                 self.queue_bg_fill_from_push();
                 if matches!(ownership, BgPushDotOwnership::QueueFillThenObjectFetch) {
-                    let started = self.try_start_object_fetch_from_current_dot(
-                        ObjFetchStartSource::QueuedBgFill,
-                        true,
-                    );
+                    let started = self
+                        .try_start_object_fetch_from_current_dot(ObjFetchStartSource::QueuedBgFill);
                     debug_assert!(
                         started,
                         "queued-fill push ownership must only be selected when OBJ fetch can start"

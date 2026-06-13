@@ -13,13 +13,10 @@ struct DmgPanelRepaintContext {
     historical_bgp: u8,
 }
 
-type PpuPublishedStatPredicate = fn(&Ppu) -> bool;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct PpuPublishedStatModeContext {
     published_mode: PpuAccessMode,
     current_mode: PpuAccessMode,
-    sprite_extended_mode3: bool,
 }
 
 mod irq;

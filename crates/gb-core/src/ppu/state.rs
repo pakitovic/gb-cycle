@@ -509,34 +509,12 @@ impl Mode3CurrentTransfer {
             }
         }
     }
-
-    pub(super) const fn can_start_obj_fetch_from_fifo_backed_transfer(
-        self,
-        real_bg_fifo_pixel_ready: bool,
-    ) -> bool {
-        self.readiness
-            .can_start_obj_fetch_from_fifo_backed_transfer(real_bg_fifo_pixel_ready)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Mode3TransferReadiness {
     WaitingForFifo(Mode3TransferServicePlan),
     Ready(Mode3TransferServicePlan),
-}
-
-impl Mode3TransferReadiness {
-    pub(super) const fn can_start_obj_fetch_from_fifo_backed_transfer(
-        self,
-        real_bg_fifo_pixel_ready: bool,
-    ) -> bool {
-        match self {
-            Self::Ready(plan) => {
-                plan.can_start_obj_fetch_from_fifo_backed_transfer(real_bg_fifo_pixel_ready)
-            }
-            Self::WaitingForFifo(_) => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -548,13 +526,6 @@ pub(super) enum Mode3TransferServiceExecution {
 }
 
 impl Mode3TransferServiceExecution {
-    pub(super) const fn can_start_obj_fetch_from_fifo_backed_transfer(self) -> bool {
-        matches!(
-            self,
-            Self::AdvanceHiddenWithBgAndObjPop | Self::EmitVisiblePixel
-        )
-    }
-
     pub(super) const fn requires_effective_bg_fifo_pixel(self) -> bool {
         matches!(
             self,
@@ -588,17 +559,6 @@ impl Mode3TransferServicePlan {
                     Mode3TransferServiceExecution::ConsumeScxDiscard
                         | Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop
                 ))
-    }
-
-    pub(super) const fn can_start_obj_fetch_from_fifo_backed_transfer(
-        self,
-        real_bg_fifo_pixel_ready: bool,
-    ) -> bool {
-        matches!(self.backing, Mode3TransferBacking::FifoBacked)
-            && real_bg_fifo_pixel_ready
-            && self
-                .execution
-                .can_start_obj_fetch_from_fifo_backed_transfer()
     }
 }
 
@@ -867,6 +827,8 @@ pub(super) struct BgPipelineState {
     pub(super) current_transfer_x: u8,
     pub(super) visible_pixels_output: u8,
     pub(super) saw_right_edge_visible_same_x_cluster_this_line: bool,
+    #[serde(default)]
+    pub(super) obj_alignment_paid_tile: Option<u16>,
     pub(super) window_wy_latch: bool,
     pub(super) window_lcdc5_latch: bool,
     pub(super) window_force_x0_this_line: bool,
@@ -1272,14 +1234,24 @@ impl DmgWindowRestartState {
 pub(super) struct BgStartupScyTiledataLatch {
     lcdc: u8,
     tile_data_row: u16,
+    tile_map_row_address: Option<u16>,
 }
 
 impl BgStartupScyTiledataLatch {
-    pub(super) const fn new(lcdc: u8, tile_data_row: u16) -> Self {
+    pub(super) const fn new(
+        lcdc: u8,
+        tile_data_row: u16,
+        tile_map_row_address: Option<u16>,
+    ) -> Self {
         Self {
             lcdc,
             tile_data_row,
+            tile_map_row_address,
         }
+    }
+
+    pub(super) const fn tile_map_row_address(self) -> Option<u16> {
+        self.tile_map_row_address
     }
 }
 
@@ -1685,6 +1657,7 @@ impl BgPipelineState {
         self.current_transfer_x = 0;
         self.visible_pixels_output = 0;
         self.saw_right_edge_visible_same_x_cluster_this_line = false;
+        self.obj_alignment_paid_tile = None;
         self.window_wy_latch = false;
         self.window_lcdc5_latch = false;
         self.window_force_x0_this_line = false;
@@ -1724,6 +1697,7 @@ impl BgPipelineState {
         self.transfer_phase = Mode3TransferPhase::Priming;
         self.current_transfer_x = 0;
         self.saw_right_edge_visible_same_x_cluster_this_line = false;
+        self.obj_alignment_paid_tile = None;
         self.push.reset();
         self.fill.reset();
         self.fetcher.start_background();
@@ -1736,7 +1710,7 @@ impl BgPipelineState {
 
         self.initial_scx_capture_pending = false;
         self.initial_scx_discard = scx & 0x07;
-        self.mode0_start_dot = MODE0_START_DOT + u16::from(self.initial_scx_discard);
+        self.mode0_start_dot += u16::from(self.initial_scx_discard);
         self.scx_discard_remaining = self.initial_scx_discard;
     }
 
@@ -2209,8 +2183,31 @@ impl BgPipelineState {
         &mut self,
         write_context: PpuMode3LiveRegisterWriteContext,
         ly: u8,
+        seed_pending_tracks_live_tiledata_row: bool,
     ) {
         if !write_context.bg_scy_tile_data_row_changed(ly) {
+            return;
+        }
+
+        if seed_pending_tracks_live_tiledata_row
+            && matches!(
+                self.startup_fetch_seam,
+                BgStartupFetchSeamState::AlignmentSeedPending
+            )
+        {
+            let tile_map_row_address = if write_context.bg_scy_tilemap_row_changed(ly)
+                && matches!(self.fetcher.stage, PpuBgFetcherStage::TileIndex)
+            {
+                Some(write_context.current_bg_tile_index_address(self.fetcher.fetch_x, ly))
+            } else {
+                self.startup_scy_tiledata_latch
+                    .and_then(BgStartupScyTiledataLatch::tile_map_row_address)
+            };
+            self.startup_scy_tiledata_latch = Some(BgStartupScyTiledataLatch::new(
+                write_context.current_lcdc(),
+                write_context.current_scy_tile_data_row(ly),
+                tile_map_row_address,
+            ));
             return;
         }
 
@@ -2251,6 +2248,7 @@ impl BgPipelineState {
         self.startup_scy_tiledata_latch = Some(BgStartupScyTiledataLatch::new(
             write_context.current_lcdc(),
             write_context.current_scy_tile_data_row(ly),
+            None,
         ));
     }
 
@@ -2477,6 +2475,10 @@ fn apply_startup_scy_tiledata_latch_to_cached(
     cached.tile_low_address = tile_data_base + latch.tile_data_row * TILE_ROW_BYTES;
     cached.tile_high_address = tile_data_base + latch.tile_data_row * TILE_ROW_BYTES + 1;
     cached.needs_live_tile_data_refetch = true;
+    if let Some(tile_map_row_address) = latch.tile_map_row_address {
+        cached.tile_map_address = tile_map_row_address;
+        cached.needs_live_tilemap_refetch = true;
+    }
 }
 
 fn apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
@@ -2506,6 +2508,7 @@ impl Default for BgPipelineState {
             current_transfer_x: 0,
             visible_pixels_output: 0,
             saw_right_edge_visible_same_x_cluster_this_line: false,
+            obj_alignment_paid_tile: None,
             window_wy_latch: false,
             window_lcdc5_latch: false,
             window_force_x0_this_line: false,
@@ -3654,6 +3657,7 @@ impl ObjPipelineState {
     ) {
         self.fetch.stage = PpuObjFetcherStage::Startup;
         self.fetch.stage_dot = 0;
+        self.fetch.alignment_stall_remaining = 0;
         self.fetch.sprite_slot = sprite_slot;
         self.fetch.sprite = Some(sprite);
         self.fetch.resolved_sprite = None;
@@ -3747,6 +3751,8 @@ pub(super) enum ObjHitPhase {
 pub(super) struct ObjFetchState {
     pub(super) stage: PpuObjFetcherStage,
     pub(super) stage_dot: u8,
+    #[serde(default)]
+    pub(super) alignment_stall_remaining: u8,
     pub(super) sprite_slot: u8,
     pub(super) sprite: Option<PpuSelectedSprite>,
     pub(super) resolved_sprite: Option<PpuSelectedSprite>,

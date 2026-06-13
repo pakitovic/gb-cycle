@@ -147,7 +147,7 @@ fn mode0_start_dot_fast_path_tracks_live_mode3_mutations() {
         attributes: 0,
     });
     ppu.bg_pipeline_state.mode0_start_dot = ppu.baseline_mode0_start_dot();
-    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT - 1);
+    assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT);
 }
 
 #[test]

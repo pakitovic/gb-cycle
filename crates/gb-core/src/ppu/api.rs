@@ -425,10 +425,14 @@ impl Ppu {
             return;
         }
 
+        let seed_pending_tracks_live_tiledata_row = self.scy_obj_phase_policy().is_some_and(
+            PpuMode3ScyObjPhasePolicy::startup_alignment_seed_pending_tracks_live_tiledata_row,
+        );
         self.bg_pipeline_state
             .mark_live_scy_write_while_startup_alignment_fifo_visible(
                 route.write_context,
                 route.ly,
+                seed_pending_tracks_live_tiledata_row,
             );
     }
 
@@ -657,10 +661,13 @@ impl Ppu {
                 BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
             )
             && self.bg_pipeline_state.fetcher.fetch_x == BG_TILE_WIDTH as u16 * 2
-            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::TileDataLow
-            && self.bg_pipeline_state.fetcher.stage_dot == 1
-            && self.bg_pipeline_state.current_transfer_x == 15
-            && self.bg_pipeline_state.visible_pixels_output == 7
+            && matches!(
+                (
+                    self.bg_pipeline_state.fetcher.stage,
+                    self.bg_pipeline_state.fetcher.stage_dot
+                ),
+                (PpuBgFetcherStage::TileDataLow, 1) | (PpuBgFetcherStage::TileDataHigh, 0)
+            )
     }
 
     fn cgb_dmg_software_scx_write_preserves_pending_visible_tile3_push(&self) -> bool {
@@ -700,6 +707,8 @@ impl Ppu {
                 .scy_startup_visible_tile2_refetch_prefers_tilemap_row(register),
             startup_visible_tile2_phase6_tilemap_row_refetch: self
                 .scy_startup_visible_tile2_phase6_refetch_prefers_tilemap_row(register),
+            defers_current_tile_data_fetch_to_next: false,
+            defers_current_tile_tilemap_row_to_next: false,
         }
     }
 
@@ -874,10 +883,6 @@ impl Ppu {
 
     pub(super) fn is_cgb_native_mode(&self) -> bool {
         self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::Cgb
-    }
-
-    pub(super) fn is_cgb_compatibility_mode(&self) -> bool {
-        self.console_model.is_cgb_family() && self.operating_mode == OperatingMode::GbCompatible
     }
 
     pub(super) fn is_cgb_dmg_ext_mode(&self) -> bool {
@@ -1499,6 +1504,15 @@ impl Ppu {
 
     pub fn access_mode(&self) -> PpuAccessMode {
         self.current_access_mode()
+    }
+
+    pub fn cpu_visible_stat_mode(&self) -> PpuAccessMode {
+        if !self.is_lcd_enabled() {
+            return PpuAccessMode::HBlank;
+        }
+
+        self.dmg_boot_power_on_stat_access_mode()
+            .unwrap_or_else(|| self.current_published_stat_access_mode())
     }
 
     pub fn mode_dot(&self) -> u16 {

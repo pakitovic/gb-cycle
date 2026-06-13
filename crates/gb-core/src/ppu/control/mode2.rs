@@ -81,27 +81,7 @@ impl Ppu {
 
         let line_timing_policy = self.mode3_line_timing_policy();
         let selected_sprite_count = self.runtime.mode2_scan_state.selected_sprite_count();
-        let baseline_mode0_start_dot = line_timing_policy.baseline_mode0_start_dot();
-        let all_selected_sprites_offscreen_right = self.runtime.bg_pipeline_state.mode0_start_dot
-            == baseline_mode0_start_dot
-            && self.obj_enabled()
-            && selected_sprite_count > 0
-            && (0..selected_sprite_count).all(|slot| {
-                self.runtime
-                    .mode2_scan_state
-                    .selected_sprite(slot)
-                    .is_some_and(|sprite| sprite.x >= 168)
-            });
-        let base_mode0_start_dot = self
-            .runtime
-            .bg_pipeline_state
-            .mode0_start_dot
-            .saturating_sub(u16::from(
-                self.runtime.bg_pipeline_state.mode0_start_dot == baseline_mode0_start_dot
-                    && self.obj_enabled()
-                    && selected_sprite_count > 0
-                    && all_selected_sprites_offscreen_right,
-            ));
+        let base_mode0_start_dot = self.runtime.bg_pipeline_state.mode0_start_dot;
         if self.line_dot.saturating_add(1) < base_mode0_start_dot {
             return base_mode0_start_dot;
         }
@@ -130,10 +110,9 @@ impl Ppu {
         } else {
             self.saturated_placeholder_backed_terminal_bg_tail_still_owned_by_mode3()
         };
+        let _ = selected_sprite_count;
         line_timing_policy.current_mode0_start_dot(PpuMode3LineTimingContext {
             line_dot: self.line_dot,
-            selected_sprite_count,
-            all_selected_sprites_offscreen_right,
             obj_fetch_active,
             pending_obj_hit_owns_current_transfer_x,
             live_transfer_still_owned_by_mode3,

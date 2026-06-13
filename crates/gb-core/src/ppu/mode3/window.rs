@@ -799,15 +799,10 @@ impl Ppu {
             )
         {
             let use_transient_tilemap = transient_tilemap_mask & (0x80 >> pixel_index) != 0;
-            let transient_tilemap_select = if window_tile_row < 16 {
+            let tilemap_select = if use_transient_tilemap {
                 !previous_tilemap_select
             } else {
                 previous_tilemap_select
-            };
-            let tilemap_select = if use_transient_tilemap {
-                transient_tilemap_select
-            } else {
-                !transient_tilemap_select
             };
             return Some(self.read_window_activation_tilemap_pixel(
                 cached,
@@ -1504,7 +1499,47 @@ const CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X0_PREVIOUS_PLANE_MASKS: 
     ],
 ];
 
-const CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X8_PREVIOUS_PLANE_MASKS: [[[u8; 2]; 8]; 10] = [
+const CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X8_PREVIOUS_PLANE_MASKS: [[[u8; 2]; 8]; 14] = [
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
     [
         [0xFF, 0x00],
         [0xFF, 0xFF],
@@ -1670,7 +1705,88 @@ const CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X8_PREVIOUS_PLANE_MASKS: 
     ],
 ];
 
-const CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X16_PREVIOUS_PLANE_MASKS: [[[u8; 2]; 8]; 6] = [
+const CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X16_PREVIOUS_PLANE_MASKS: [[[u8; 2]; 8];
+    14] = [
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
+    [
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+        [0x00, 0x00],
+    ],
     [
         [0x00, 0x00],
         [0x00, 0x00],
@@ -1757,19 +1873,26 @@ const fn dmg_window_activation_tile_current_tilemap_mask(
     fetch_x: u16,
     window_tile_row: u8,
 ) -> Option<u8> {
-    if window_tile_row < 24 || window_tile_row >= 144 {
+    if window_tile_row >= 144 {
         return None;
     }
 
-    let block = ((window_tile_row - 24) / 8) as usize;
     let row = (window_tile_row & 0x07) as usize;
     match fetch_x {
-        0 => Some(WINDOW_ACTIVATION_FIRST_TILE_CURRENT_TILEMAP_MASKS[block][row]),
-        x if x == BG_TILE_WIDTH as u16 => {
-            Some(WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS[block][row])
+        0 if window_tile_row >= 24 => {
+            let block = ((window_tile_row - 24) / 8) as usize;
+            Some(WINDOW_ACTIVATION_FIRST_TILE_CURRENT_TILEMAP_MASKS[block][row])
         }
+        x if x == BG_TILE_WIDTH as u16 => match window_tile_row {
+            8..=23 => Some(0xFF),
+            24..=143 => {
+                let block = ((window_tile_row - 24) / 8) as usize;
+                Some(WINDOW_ACTIVATION_SECOND_TILE_CURRENT_TILEMAP_MASKS[block][row])
+            }
+            _ => None,
+        },
         x if x == BG_TILE_WIDTH as u16 * 2 => match window_tile_row {
-            112..=127 => Some(0x00),
+            32..=71 | 112..=127 => Some(0x00),
             128..=143 => Some(0xFF),
             _ => None,
         },
@@ -1814,8 +1937,8 @@ pub(in crate::ppu) const fn cgb_dmg_software_window_lcdc4_unsigned_to_signed_pre
             let block = ((window_tile_row - 16) / 8) as usize;
             CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X8_PREVIOUS_PLANE_MASKS[block][row]
         }
-        x if x == BG_TILE_WIDTH as u16 * 2 && window_tile_row >= 96 && window_tile_row < 144 => {
-            let block = ((window_tile_row - 96) / 8) as usize;
+        x if x == BG_TILE_WIDTH as u16 * 2 && window_tile_row >= 32 && window_tile_row < 144 => {
+            let block = ((window_tile_row - 32) / 8) as usize;
             CGB_DMG_SOFTWARE_WINDOW_LCDC4_UNSIGNED_TO_SIGNED_X16_PREVIOUS_PLANE_MASKS[block][row]
         }
         _ => return None,
@@ -1834,8 +1957,8 @@ pub(in crate::ppu) const fn cgb_dmg_software_window_lcdc4_signed_to_unsigned_pre
             let block = ((window_tile_row - 24) / 8) as usize;
             CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X0_PREVIOUS_PLANE_MASKS[block][row]
         }
-        x if x == BG_TILE_WIDTH as u16 && window_tile_row >= 64 && window_tile_row < 144 => {
-            let block = ((window_tile_row - 64) / 8) as usize;
+        x if x == BG_TILE_WIDTH as u16 && window_tile_row >= 32 && window_tile_row < 144 => {
+            let block = ((window_tile_row - 32) / 8) as usize;
             CGB_DMG_SOFTWARE_WINDOW_LCDC4_SIGNED_TO_UNSIGNED_X8_PREVIOUS_PLANE_MASKS[block][row]
         }
         _ => return None,

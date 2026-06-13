@@ -509,15 +509,32 @@ impl MachinePhaseRunner<'_> {
                 } else {
                     (DmaBusState::unrestricted(), None, None, None)
                 };
-            let dma_oam_conflict =
-                dma_transfer_work
-                    .zip(dma_transfer_byte)
-                    .and_then(|(transfer_work, value)| {
-                        let destination_address = transfer_work.destination_address();
-                        address_hits_cpu_oam_window(destination_address)
-                            .then_some(PpuDmaOamConflict::new(destination_address, value))
-                    });
             let dma_oam_active = dma_bus_state.active_region() == Some(DmaMemoryRegionImpact::Oam);
+            let dma_oam_conflict = dma_transfer_work
+                .zip(dma_transfer_byte)
+                .and_then(|(transfer_work, value)| {
+                    let destination_address = transfer_work.destination_address();
+                    address_hits_cpu_oam_window(destination_address)
+                        .then_some(PpuDmaOamConflict::new(destination_address, value))
+                })
+                .or_else(|| {
+                    if !dma_oam_active {
+                        return None;
+                    }
+                    let progress = self.dma.transfer_progress()?;
+                    let completed_bytes = progress.completed_bytes();
+                    if completed_bytes == 0 {
+                        return None;
+                    }
+                    let address = progress
+                        .transfer()
+                        .destination_address_for_byte(completed_bytes - 1);
+                    address_hits_cpu_oam_window(address).then(|| {
+                        let value = self.bus.debug_oam_bytes()
+                            [usize::from(address - CPU_OAM_ADDRESS_START)];
+                        PpuDmaOamConflict::new(address, value)
+                    })
+                });
 
             if self
                 .speed
