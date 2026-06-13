@@ -431,6 +431,8 @@ pub(in crate::ppu) struct PpuMode3LiveScyWriteRouting {
     pub(in crate::ppu) pending_tilemap_row_refetch: bool,
     pub(in crate::ppu) startup_visible_tile2_tilemap_row_refetch: bool,
     pub(in crate::ppu) startup_visible_tile2_phase6_tilemap_row_refetch: bool,
+    pub(in crate::ppu) defers_current_tile_data_fetch_to_next: bool,
+    pub(in crate::ppu) defers_current_tile_tilemap_row_to_next: bool,
 }
 
 #[derive(
@@ -701,11 +703,28 @@ impl PpuMode3LiveBackgroundWriteEffects {
             == PpuBgFetcherSource::Background
             && (fetcher.stage == PpuBgFetcherStage::TileDataLow
                 || fetcher.stage == PpuBgFetcherStage::TileDataHigh && fetcher.stage_dot == 0);
+        let background_tile_low_plane_committed = fetcher.source == PpuBgFetcherSource::Background
+            && (fetcher.stage == PpuBgFetcherStage::TileDataLow && fetcher.stage_dot >= 1
+                || fetcher.stage == PpuBgFetcherStage::TileDataHigh);
+        let scy_current_tile_defers = background_tile_low_plane_committed
+            && matches!(
+                fetcher.cached_origin,
+                BgCachedSliceOrigin::Ordinary
+                    | BgCachedSliceOrigin::StartupContinuation(
+                        BgStartupContinuationSlice::VisibleTile3
+                    )
+            );
+        let scy_defers_current_tile_data =
+            scy_current_tile_defers && scy_routing.defers_current_tile_data_fetch_to_next;
+        let scy_defers_current_tile_tilemap_row =
+            scy_current_tile_defers && scy_routing.defers_current_tile_tilemap_row_to_next;
         let scy_tilemap_row_changed = matches!(register, PpuMode3LiveBackgroundRegister::Scy)
             && background_coordinate_fetch
+            && !scy_defers_current_tile_tilemap_row
             && write_context.bg_scy_tilemap_row_changed(ly);
         let scy_tile_data_row_changed = matches!(register, PpuMode3LiveBackgroundRegister::Scy)
             && background_tile_data_fetch
+            && !scy_defers_current_tile_data
             && write_context.bg_scy_tile_data_row_changed(ly);
         let window_tile_data_fetch = fetcher.source == PpuBgFetcherSource::Window
             && matches!(
@@ -939,21 +958,24 @@ impl PpuMode3ObservedScyObjPhaseTable {
             pending_tilemap_row_refetch: true,
             startup_visible_tile2_tilemap_row_refetch: false,
             startup_visible_tile2_phase6_tilemap_row_refetch: false,
+            defers_current_tile_data_fetch_to_next: true,
+            defers_current_tile_tilemap_row_to_next: true,
         };
         let no_special_routing = PpuMode3LiveScyWriteRouting {
             pending_high_plane_only: false,
             pending_tilemap_row_refetch: false,
             startup_visible_tile2_tilemap_row_refetch: false,
             startup_visible_tile2_phase6_tilemap_row_refetch: false,
+            defers_current_tile_data_fetch_to_next: false,
+            defers_current_tile_tilemap_row_to_next: false,
         };
 
         match self.obj_match_x() {
-            0 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, true, tilemap_row_routing),
+            0 | 8 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, true, tilemap_row_routing),
             1 | 4..=7 | 10..=16 => {
                 PpuMode3CgbDmgLiveScyWriteRoute::new(false, false, true, tilemap_row_routing)
             }
             2 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, false, no_special_routing),
-            8 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, false, tilemap_row_routing),
             _ => PpuMode3CgbDmgLiveScyWriteRoute::new(false, false, false, no_special_routing),
         }
     }
@@ -968,7 +990,7 @@ impl PpuMode3ObservedScyObjPhaseTable {
             match (self.obj_match_x(), ly_phase, pixel_index) {
                 (2, 6, 7) | (2, 7, 6) => (0, 0),
                 (2, _, _) => (0, -1),
-                (3, _, _) => (0, 2),
+                (3, _, _) => (0, 1),
                 (8, 5, 6 | 7) => (0, -1),
                 (8, _, _) => (0, -2),
                 (9, 7, 4..=7) => (0, 0),
@@ -995,7 +1017,7 @@ impl PpuMode3ObservedScyObjPhaseTable {
 
         Some(PpuMode3ScyTilemapRetarget {
             tilemap_row_delta: 0,
-            tiledata_row_delta: -2,
+            tiledata_row_delta: 0,
         })
     }
 }

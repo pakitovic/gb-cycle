@@ -105,7 +105,7 @@ fn observed_scy_obj_phase_table_tracks_cgb_dmg_software_route_classes() {
         (1, false, false, true, true),
         (2, true, false, false, false),
         (3, false, false, false, false),
-        (8, true, false, false, true),
+        (8, true, false, true, true),
         (16, false, false, true, true),
         (17, false, false, false, false),
     ];
@@ -174,7 +174,7 @@ fn observed_scy_obj_phase_table_tracks_cgb_dmg_software_startup_tile_retargets()
             .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(0, 0),
         Some(PpuMode3ScyTilemapRetarget {
             tilemap_row_delta: 0,
-            tiledata_row_delta: 2,
+            tiledata_row_delta: 1,
         })
     );
     assert_eq!(
@@ -198,7 +198,7 @@ fn observed_scy_obj_phase_table_tracks_cgb_dmg_software_startup_tile_retargets()
             .cgb_dmg_software_startup_visible_tile3_tilemap_retarget(0, 0),
         Some(PpuMode3ScyTilemapRetarget {
             tilemap_row_delta: 0,
-            tiledata_row_delta: -2,
+            tiledata_row_delta: 0,
         })
     );
     assert_eq!(

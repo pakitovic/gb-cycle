@@ -661,10 +661,13 @@ impl Ppu {
                 BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
             )
             && self.bg_pipeline_state.fetcher.fetch_x == BG_TILE_WIDTH as u16 * 2
-            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::TileDataLow
-            && self.bg_pipeline_state.fetcher.stage_dot == 1
-            && self.bg_pipeline_state.current_transfer_x == 15
-            && self.bg_pipeline_state.visible_pixels_output == 7
+            && matches!(
+                (
+                    self.bg_pipeline_state.fetcher.stage,
+                    self.bg_pipeline_state.fetcher.stage_dot
+                ),
+                (PpuBgFetcherStage::TileDataLow, 1) | (PpuBgFetcherStage::TileDataHigh, 0)
+            )
     }
 
     fn cgb_dmg_software_scx_write_preserves_pending_visible_tile3_push(&self) -> bool {
@@ -704,6 +707,8 @@ impl Ppu {
                 .scy_startup_visible_tile2_refetch_prefers_tilemap_row(register),
             startup_visible_tile2_phase6_tilemap_row_refetch: self
                 .scy_startup_visible_tile2_phase6_refetch_prefers_tilemap_row(register),
+            defers_current_tile_data_fetch_to_next: false,
+            defers_current_tile_tilemap_row_to_next: false,
         }
     }
 
