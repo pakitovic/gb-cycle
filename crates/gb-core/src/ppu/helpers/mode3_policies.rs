@@ -1429,7 +1429,7 @@ impl PpuMode3ObservedLcdc4PhaseTable {
                     Some(BgTileDataSelect::Signed8800),
                 ),
             ),
-            (BgTileDataSelect::Signed8800, 2 | 3 | 8..=11) => (
+            (BgTileDataSelect::Signed8800, 1..=3 | 8..=11) => (
                 BgVisibleStartupSlice::VisibleTile3,
                 PerPlane::new(
                     Some(BgTileDataSelect::Signed8800),

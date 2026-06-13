@@ -418,6 +418,18 @@ fn observed_cgb_dmg_software_lcdc4_phase_table_returns_typed_startup_overrides()
         ),
         (
             BgTileDataSelect::Signed8800,
+            1,
+            0,
+            Some(PpuMode3Lcdc4StartupOverride {
+                slice: BgVisibleStartupSlice::VisibleTile3,
+                override_select: PerPlane::new(
+                    Some(BgTileDataSelect::Signed8800),
+                    Some(BgTileDataSelect::Signed8800),
+                ),
+            }),
+        ),
+        (
+            BgTileDataSelect::Signed8800,
             3,
             0,
             Some(PpuMode3Lcdc4StartupOverride {
@@ -1973,7 +1985,7 @@ fn cgb_dmg_software_first_window_tile_uses_previous_map_after_first_lead_in_tile
 fn cgb_dmg_software_first_window_tile_uses_sparse_transient_map_masks_in_lead_in_lines() {
     let cases = [
         (10, false, vec![3, 0, 0, 0, 0, 0, 0, 0]),
-        (18, true, vec![0, 3, 0, 0, 0, 0, 0, 0]),
+        (18, true, vec![3, 0, 3, 3, 3, 3, 3, 3]),
     ];
 
     for (window_line_counter, previous_tilemap_select, expected) in cases {
@@ -3057,6 +3069,12 @@ fn cgb_dmg_software_window_lcdc4_previous_plane_masks_match_paired_write_phases(
         crate::ppu::mode3::cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks(
             8, 63,
         ),
+        Some(PerPlane::new(0x00, 0x00))
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_signed_to_unsigned_previous_plane_masks(
+            8, 31,
+        ),
         None
     );
     assert_eq!(
@@ -3086,6 +3104,12 @@ fn cgb_dmg_software_window_lcdc4_previous_plane_masks_match_paired_write_phases(
     assert_eq!(
         crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
             16, 95,
+        ),
+        Some(PerPlane::new(0x00, 0x00))
+    );
+    assert_eq!(
+        crate::ppu::mode3::cgb_dmg_software_window_lcdc4_unsigned_to_signed_previous_plane_masks(
+            16, 31,
         ),
         None
     );
