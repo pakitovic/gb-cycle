@@ -22,6 +22,7 @@ jobs:
           - name: mealybug-tearoom-tests
           - name: gbmicrotest
           - name: mooneye
+          - name: wilbertpol
           - name: blargg
 
     steps:
