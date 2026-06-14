@@ -125,11 +125,11 @@ cargo rom-report gb-emulator-shootout
 cargo rom-report gb-emulator-shootout --html
 ```
 
-`cargo rom-report <report>` clears the report-local single-machine `.status` and `.artifacts` directories, runs `cargo rom-suite <report>`, and renders the fresh status files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
+`cargo rom-report <report>` validates that the report has single-machine suite manifests, clears the report-local single-machine `.status` and `.artifacts` directories, runs `cargo rom-suite <report>`, and renders the fresh status files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
 
 Fetchable report rows are sorted by `family_order`, then by each family's pinned `sources.report.toml` ROM order, then by same-ROM model variant order, then by suite/case order and lexical fallback for rows not present in the source manifest.
 
-Suite failures during the `cargo rom-report <report>` regeneration still produce a rendered report when status exists, so use the report rows rather than the command exit as the compatibility signal.
+Reports that only contain linked-session manifests are rejected before cleanup because `cargo rom-report` is a single-machine report renderer; use `cargo rom-suite-link` and linked status/artifacts directly for those reports. Suite failures during the `cargo rom-report <report>` regeneration still produce a rendered report when status exists, so use the report rows rather than the command exit as the compatibility signal.
 
 Pass `--html` to also write `test/<report-store>/test-report.html` from the same status model. The command is local but destructive for stale single-machine runtime data; publishing the HTML requires a separate operator or GitHub Actions workflow. The manual `rom-reports-pages.yml` workflow publishes the curated HTML report set to GitHub Pages, and a successful non-dry-run `release.yml` dispatches that workflow from the new release tag.
 

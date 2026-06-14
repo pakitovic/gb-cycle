@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::default_workspace_root;
 
@@ -25,8 +25,8 @@ pub fn report_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin report -- <report-id> [--html]\n",
         "\n",
-        "Clears test/<report>/.status and test/<report>/.artifacts, runs cargo rom-suite <report-id>,\n",
-        "and renders the fresh report-local status snapshot into test/<report>/test-report.md.\n",
+        "Validates that <report-id> has single-machine suites, clears test/<report>/.status and test/<report>/.artifacts,\n",
+        "runs cargo rom-suite <report-id>, and renders the fresh report-local status snapshot into test/<report>/test-report.md.\n",
     )
 }
 
@@ -93,6 +93,7 @@ fn run_options<W: Write>(
         return Err(missing_report_error(&reports));
     };
     let report = report_for_id(&report_id, &reports)?;
+    ensure_single_machine_suite_manifests(workspace_root, report)?;
     crate::runtime::clean_report_runtime_dirs(
         workspace_root,
         &report.store_dir,
@@ -183,6 +184,53 @@ fn write_report_files<W: Write>(
     }
 
     Ok(())
+}
+
+fn ensure_single_machine_suite_manifests(
+    workspace_root: &Path,
+    report: &Report,
+) -> Result<(), String> {
+    let report_data_dir = report_data_dir(workspace_root, report);
+    let entries = fs::read_dir(&report_data_dir).map_err(|error| {
+        format!(
+            "failed to read suite manifest directory {}: {error}",
+            report_data_dir.display()
+        )
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to read suite manifest directory {}: {error}",
+                report_data_dir.display()
+            )
+        })?;
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|file_name| file_name.to_str()) else {
+            continue;
+        };
+        if is_single_machine_suite_manifest(file_name) {
+            return Ok(());
+        }
+    }
+    Err(format!(
+        "report {:?} does not contain single-machine suite manifests",
+        report.id
+    ))
+}
+
+fn report_data_dir(workspace_root: &Path, report: &Report) -> PathBuf {
+    let source_parent = report
+        .sources
+        .as_deref()
+        .and_then(Path::parent)
+        .unwrap_or(&report.store_dir);
+    workspace_root
+        .join(super::model::DATA_DIR)
+        .join(source_parent)
+}
+
+fn is_single_machine_suite_manifest(file_name: &str) -> bool {
+    file_name.ends_with(".suite.toml") && !file_name.ends_with(".link.suite.toml")
 }
 
 fn report_for_id<'a>(report_id: &str, reports: &'a [Report]) -> Result<&'a Report, String> {

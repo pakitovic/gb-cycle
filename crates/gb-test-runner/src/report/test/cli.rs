@@ -128,6 +128,62 @@ status = "PASS"
 }
 
 #[test]
+fn report_command_rejects_link_only_report_before_cleanup() {
+    let workspace = unique_temp_dir("report-linked-preserves-runtime");
+    write_reports(
+        &workspace,
+        r#"status_dir = ".status"
+artifact_dir = ".artifacts"
+report_file = "test-report.md"
+
+[[report]]
+id = "linked"
+local = true
+store_dir = "linked"
+"#,
+    );
+    let linked_data_dir = workspace.join("crates/gb-test-runner/data/linked");
+    fs::create_dir_all(&linked_data_dir).expect("linked data dir should be created");
+    fs::write(
+        linked_data_dir.join("dmg04.link.suite.toml"),
+        "this is intentionally not a single-machine suite manifest",
+    )
+    .expect("link manifest should be writable");
+    write_status(
+        &workspace,
+        "linked",
+        "dmg04",
+        r#"suite_name = "dmg04"
+family = "linked"
+
+[[cases]]
+id = "linked-case"
+status = "PASS"
+"#,
+    );
+    let stale_status = workspace.join("test/linked/.status/dmg04.toml");
+    let stale_artifact = workspace.join("test/linked/.artifacts/dmg04/linked-case/old.txt");
+    fs::create_dir_all(
+        stale_artifact
+            .parent()
+            .expect("artifact should have parent"),
+    )
+    .expect("stale artifact parent should be creatable");
+    fs::write(&stale_artifact, "stale").expect("stale artifact should be writable");
+    let mut output = Vec::new();
+
+    let error = run_report_command_with_workspace_for_test(["linked"], &workspace, &mut output)
+        .expect_err("link-only report should fail before cleanup");
+
+    assert!(output.is_empty());
+    assert!(error.contains("does not contain single-machine suite manifests"));
+    assert!(stale_status.is_file());
+    assert!(stale_artifact.is_file());
+    assert!(!workspace.join("test/linked/test-report.md").exists());
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn report_document_uses_source_order_before_suite_order() {
     let workspace = unique_temp_dir("source-order");
     write_basic_reports_with_sources(&workspace);
