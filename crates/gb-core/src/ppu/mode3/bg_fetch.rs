@@ -166,6 +166,10 @@ impl Ppu {
                 .bg_pipeline_state
                 .fetcher
                 .cgb_dmg_scy_high_plane_uses_low_row = false;
+            self.runtime
+                .bg_pipeline_state
+                .fetcher
+                .cgb_startup_seed_get_tile_scy_row = None;
         }
 
         let tile_map_address =
@@ -227,6 +231,21 @@ impl Ppu {
             );
         }
         self.maybe_apply_bgwin_tilemap_selector_glitch(vram, fetcher.source);
+        if self.console_model.is_cgb_family()
+            && fetcher.source == PpuBgFetcherSource::Background
+            && matches!(
+                self.runtime.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::AlignmentSeedPending
+            )
+        {
+            self.runtime
+                .bg_pipeline_state
+                .fetcher
+                .cgb_startup_seed_get_tile_scy_row = Some(
+                self.background_fetch_context(fetcher.fetch_x)
+                    .tile_data_row(),
+            );
+        }
         self.runtime.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
         self.runtime.bg_pipeline_state.fetcher.stage_dot = 0;
     }

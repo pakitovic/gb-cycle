@@ -2599,6 +2599,7 @@ pub(super) struct BgFetcherState {
     pub(super) needs_live_tile_low_current_row_refetch_on_push: bool,
     pub(super) needs_live_tile_high_current_row_refetch_on_push: bool,
     pub(super) cgb_dmg_scy_high_plane_uses_low_row: bool,
+    pub(super) cgb_startup_seed_get_tile_scy_row: Option<u16>,
     pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
     pub(super) startup_visible_tile3_scx_boundary_previous_scx: Option<u8>,
     pub(super) startup_visible_tile3_scx_boundary_old_tail_start_pixel: u8,
@@ -2995,6 +2996,8 @@ pub(super) struct BgCachedSlice {
     pub(super) needs_live_tile_data_unsigned_reuse: bool,
     #[serde(default)]
     pub(super) cgb_lcdc4_same_cycle_tile_high_override: Option<u8>,
+    #[serde(default)]
+    pub(super) cgb_startup_frozen_tile_row: Option<u16>,
     pub(super) tile_map_address: u16,
     pub(super) tile_data_address: u16,
     pub(super) tile_low_address: u16,
@@ -3038,6 +3041,7 @@ impl BgCachedSlice {
                 .needs_live_tile_high_current_row_refetch_on_push,
             needs_live_tile_data_unsigned_reuse: false,
             cgb_lcdc4_same_cycle_tile_high_override: None,
+            cgb_startup_frozen_tile_row: fetcher.cgb_startup_seed_get_tile_scy_row,
             tile_map_address: fetcher.tile_map_address,
             tile_data_address: fetcher.tile_data_address,
             tile_low_address: fetcher.tile_low_address,
@@ -3421,7 +3425,9 @@ pub(super) fn recompute_live_background_cached_slice(
     let cached_tile_low_address = cached_tile_low_address(cached);
     let cached_tile_high_address = cached_tile_high_address(cached);
     let current_tile_row = match cached.source {
-        PpuBgFetcherSource::Background => context.current_scanline_tile_row(),
+        PpuBgFetcherSource::Background => cached
+            .cgb_startup_frozen_tile_row
+            .unwrap_or_else(|| context.current_scanline_tile_row()),
         PpuBgFetcherSource::Window => context.current_window_tile_row(),
     };
     let tile_low_row = if cached.needs_live_tile_data_current_row_refetch
