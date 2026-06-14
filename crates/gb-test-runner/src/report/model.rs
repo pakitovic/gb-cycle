@@ -15,6 +15,7 @@ pub(super) struct Report {
     pub(super) store_dir: PathBuf,
     pub(super) sources: Option<PathBuf>,
     pub(super) status_dir: PathBuf,
+    pub(super) artifact_dir: PathBuf,
     pub(super) report_file: PathBuf,
     pub(super) family_order: Option<Vec<String>>,
 }

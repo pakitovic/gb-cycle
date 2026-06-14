@@ -19,7 +19,8 @@ jobs:
           - name: samesuite
           - name: little-things-gb
           - name: magen
-          - name: mealybug-tearoom-tests
+          # Temporarily disabled while the c-sp v7 Mealybug inventory is validated manually.
+          # - name: mealybug-tearoom-tests
           - name: gbmicrotest
           - name: mooneye
           - name: wilbertpol

@@ -44,6 +44,7 @@ struct SuiteCaseDefaultsFile {
     execution_mode: Option<String>,
     timeout_frames: Option<u32>,
     report_model_suffix: Option<bool>,
+    report_revision_suffix: Option<bool>,
     oracle: Option<OracleConfig>,
 }
 
@@ -79,6 +80,7 @@ struct SuiteCaseFile {
     disabled: bool,
     comment: Option<String>,
     report_model_suffix: Option<bool>,
+    report_revision_suffix: Option<bool>,
     oracle: Option<OracleConfig>,
 }
 
@@ -414,6 +416,7 @@ fn validate_suite_manifest_keys(path: &Path, text: &str) -> Result<(), String> {
             "execution_mode",
             "timeout_frames",
             "report_model_suffix",
+            "report_revision_suffix",
             "oracle",
             "case",
         ],
@@ -448,6 +451,7 @@ fn validate_suite_manifest_keys(path: &Path, text: &str) -> Result<(), String> {
                 "disabled",
                 "comment",
                 "report_model_suffix",
+                "report_revision_suffix",
                 "oracle",
             ],
         )?;
@@ -605,6 +609,10 @@ fn parse_case(
         report_model_suffix: case
             .report_model_suffix
             .or(defaults.report_model_suffix)
+            .unwrap_or(false),
+        report_revision_suffix: case
+            .report_revision_suffix
+            .or(defaults.report_revision_suffix)
             .unwrap_or(false),
         console_model: model_profile.console_model,
         hardware_revision,

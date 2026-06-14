@@ -88,6 +88,80 @@ fn command_runs_serial_suite_and_writes_status() {
 }
 
 #[test]
+fn command_clears_report_status_and_artifacts_before_running() {
+    let workspace = unique_temp_dir("clean-report-runtime");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/blargg-cpu-instrs.suite.toml",
+        &basic_manifest(
+            "sample-report",
+            "blargg-cpu-instrs",
+            "blargg",
+            "blargg-cpu-instrs-01-special",
+            "cpu_instrs/01-special.gb",
+        ),
+    );
+    let rom_path = workspace.join("test/sample-report/blargg/cpu_instrs/01-special.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_serial_text_rom("Passed")).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
+    let stale_status = workspace.join("test/sample-report/.status/stale-suite.toml");
+    fs::create_dir_all(stale_status.parent().expect("status should have parent"))
+        .expect("stale status parent should be creatable");
+    fs::write(
+        &stale_status,
+        r#"suite_name = "stale-suite"
+family = "stale"
+
+[[cases]]
+rom = "stale.gb"
+status = "PASS"
+"#,
+    )
+    .expect("stale status should be writable");
+    let stale_artifact =
+        workspace.join("test/sample-report/.artifacts/stale-suite/stale-case/old.txt");
+    fs::create_dir_all(
+        stale_artifact
+            .parent()
+            .expect("artifact should have parent"),
+    )
+    .expect("stale artifact parent should be creatable");
+    fs::write(&stale_artifact, "stale").expect("stale artifact should be writable");
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        ["sample-report", "--suite", "blargg-cpu-instrs"],
+        &workspace,
+        &mut output,
+    )
+    .expect("suite should pass after clearing stale runtime dirs");
+
+    assert!(!stale_status.exists());
+    assert!(!stale_artifact.exists());
+    assert!(
+        workspace
+            .join("test/sample-report/.status/blargg-cpu-instrs.toml")
+            .is_file()
+    );
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("suite blargg-cpu-instrs: 1/1 passed"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn command_local_report_ignores_link_suite_manifests_without_fetching() {
     let workspace = unique_temp_dir("local-report-link-manifests");
     write_local_report(&workspace, "linked");

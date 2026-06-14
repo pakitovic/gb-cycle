@@ -1,0 +1,11 @@
+family = "mealybug-tearoom-tests"
+suite_name = "mealybug-tearoom-tests-mbc"
+report = "mealybug-tearoom-tests"
+model = "cgb"
+revision = "cpu-cgb-c"
+timeout_frames = 600
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "mealybug-mbc-mbc3-rtc"
+rom = "mbc/mbc3_rtc.gb"

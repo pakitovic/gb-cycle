@@ -25,8 +25,8 @@ pub fn report_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin report -- <report-id> [--html]\n",
         "\n",
-        "Renders a report-local test ROM status snapshot into test/<report>/test-report.md.\n",
-        "If test/<report>/.status is missing or empty, this command first runs cargo rom-suite <report-id>.\n",
+        "Clears test/<report>/.status and test/<report>/.artifacts, runs cargo rom-suite <report-id>,\n",
+        "and renders the fresh report-local status snapshot into test/<report>/test-report.md.\n",
     )
 }
 
@@ -93,25 +93,26 @@ fn run_options<W: Write>(
         return Err(missing_report_error(&reports));
     };
     let report = report_for_id(&report_id, &reports)?;
-    let statuses = load_or_create_statuses(workspace_root, report, output)?;
+    crate::runtime::clean_report_runtime_dirs(
+        workspace_root,
+        &report.store_dir,
+        &report.status_dir,
+        &report.artifact_dir,
+    )?;
+    let statuses = run_suite_and_load_statuses(workspace_root, report, output)?;
     let document = build_report_document(workspace_root, report, statuses)?;
     write_report_files(workspace_root, report, &document, options.html, output)
 }
 
-fn load_or_create_statuses<W: Write>(
+fn run_suite_and_load_statuses<W: Write>(
     workspace_root: &Path,
     report: &Report,
     output: &mut W,
 ) -> Result<Vec<PersistedSuiteStatus>, String> {
-    let mut statuses = load_statuses(workspace_root, report)?;
-    if !statuses.is_empty() {
-        return Ok(statuses);
-    }
-
     writeln_checked(
         output,
         &format!(
-            "rom-report: no status files found for {}; running cargo rom-suite {}",
+            "rom-report: cleared previous status and artifacts for {}; running cargo rom-suite {}",
             report.id, report.id
         ),
     )?;
@@ -130,7 +131,7 @@ fn load_or_create_statuses<W: Write>(
         )?;
     }
 
-    statuses = load_statuses(workspace_root, report)?;
+    let statuses = load_statuses(workspace_root, report)?;
     if statuses.is_empty() {
         return match suite_result {
             Ok(()) => Err(format!(

@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::report_label::REPORT_REVISION_SUFFIXES;
+
 use super::model::{
     DATA_DIR, PersistedSuiteStatus, Report, ReportDocument, ReportRow, TEST_ROM_STORE_DIR,
     is_non_failing_status, report_status_display,
@@ -231,19 +233,49 @@ fn compare_report_model_variant(left: &ReportRow, right: &ReportRow) -> Ordering
 }
 
 fn report_rom_key(rom: &str) -> &str {
+    let mut base = rom;
+    while let Some(stripped) = strip_report_suffix(base) {
+        base = stripped;
+    }
+    base
+}
+
+fn strip_report_suffix(rom: &str) -> Option<&str> {
     for (suffix, _) in REPORT_MODEL_SUFFIXES {
         if let Some(base) = rom.strip_suffix(suffix) {
-            return base;
+            return Some(base.strip_suffix(' ').unwrap_or(base));
         }
     }
-    rom
+    for suffix in REPORT_REVISION_SUFFIXES {
+        if let Some(base) = rom.strip_suffix(suffix) {
+            return Some(base.strip_suffix(' ').unwrap_or(base));
+        }
+    }
+    None
 }
 
 fn report_model_variant_rank(rom: &str) -> usize {
+    let rom = strip_report_revision_suffixes(rom);
     REPORT_MODEL_SUFFIXES
         .iter()
         .find_map(|(suffix, rank)| rom.ends_with(suffix).then_some(*rank))
         .unwrap_or(usize::MAX)
+}
+
+fn strip_report_revision_suffixes(mut rom: &str) -> &str {
+    while let Some(stripped) = strip_report_revision_suffix(rom) {
+        rom = stripped;
+    }
+    rom
+}
+
+fn strip_report_revision_suffix(rom: &str) -> Option<&str> {
+    for suffix in REPORT_REVISION_SUFFIXES {
+        if let Some(base) = rom.strip_suffix(suffix) {
+            return Some(base.strip_suffix(' ').unwrap_or(base));
+        }
+    }
+    None
 }
 
 fn is_rom_source_target(path: &Path) -> bool {
