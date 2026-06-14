@@ -236,6 +236,40 @@ status = "PASS"
 }
 
 #[test]
+fn command_rejects_unsafe_report_runtime_paths_before_cleanup() {
+    let workspace = unique_temp_dir("unsafe-runtime-paths-preserve-store");
+    let reports_path = workspace.join("crates/gb-test-runner/data/reports.toml");
+    fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+        .expect("reports parent should be creatable");
+    fs::write(
+        &reports_path,
+        r#"status_dir = ""
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+"#,
+    )
+    .expect("reports should be writable");
+    let materialized_rom = workspace.join("test/sample-report/blargg/cpu_instrs/01-special.gb");
+    fs::create_dir_all(materialized_rom.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&materialized_rom, build_serial_text_rom("Passed")).expect("rom should be writable");
+
+    let mut output = Vec::new();
+    let error =
+        run_suite_command_with_workspace_for_test(["sample-report"], &workspace, &mut output)
+            .expect_err("unsafe report runtime path should fail before cleanup");
+
+    assert!(error.contains("report default status_dir must not be empty"));
+    assert!(materialized_rom.is_file());
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn command_local_report_ignores_link_suite_manifests_without_fetching() {
     let workspace = unique_temp_dir("local-report-link-manifests");
     write_local_report(&workspace, "linked");

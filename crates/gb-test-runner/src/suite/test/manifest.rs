@@ -56,6 +56,82 @@ artifact_dir = ".custom-artifacts"
 }
 
 #[test]
+fn reports_manifest_rejects_unsafe_runtime_paths() {
+    let cases = [
+        (
+            "suite-report-empty-default-status",
+            r#"
+status_dir = ""
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+"#,
+            "report default status_dir must not be empty",
+        ),
+        (
+            "suite-report-parent-store",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "../sample-report"
+sources = "sample-report/sources.report.toml"
+"#,
+            "report store_dir ../sample-report must not contain parent components",
+        ),
+        (
+            "suite-report-parent-artifacts",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+artifact_dir = "../artifacts"
+"#,
+            "report artifact_dir ../artifacts must not contain parent components",
+        ),
+        (
+            "suite-report-current-status",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+status_dir = "."
+"#,
+            "report status_dir . must not contain current-directory components",
+        ),
+    ];
+
+    for (workspace_name, reports_toml, expected_error) in cases {
+        let workspace = unique_temp_dir(workspace_name);
+        let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+        fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+            .expect("reports parent should be creatable");
+        fs::write(&reports_path, reports_toml).expect("reports should be writable");
+
+        assert!(
+            load_reports(&workspace)
+                .expect_err("unsafe runtime path should fail")
+                .contains(expected_error)
+        );
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
+    }
+}
+
+#[test]
 fn reports_manifest_loads_local_report_without_sources() {
     let workspace = unique_temp_dir("suite-local-report");
     let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);

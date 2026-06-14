@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -108,8 +108,15 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
     let default_artifact_dir = manifest
         .artifact_dir
         .unwrap_or_else(|| PathBuf::from(".artifacts"));
+    validate_relative_path(&default_status_dir, "report default status_dir", false)?;
+    validate_relative_path(&default_artifact_dir, "report default artifact_dir", false)?;
+
     let mut reports = Vec::with_capacity(manifest.reports.len());
     for report in manifest.reports {
+        validate_relative_path(&report.store_dir, "report store_dir", true)?;
+        if let Some(sources) = &report.sources {
+            validate_relative_path(sources, "report sources", false)?;
+        }
         match (report.local, &report.sources) {
             (true, Some(_)) => {
                 return Err(format!(
@@ -126,20 +133,57 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
                 ));
             }
         }
+        let status_dir = report
+            .status_dir
+            .unwrap_or_else(|| default_status_dir.clone());
+        let artifact_dir = report
+            .artifact_dir
+            .unwrap_or_else(|| default_artifact_dir.clone());
+        validate_relative_path(&status_dir, "report status_dir", false)?;
+        validate_relative_path(&artifact_dir, "report artifact_dir", false)?;
         reports.push(Report {
             id: report.id,
             local: report.local,
             store_dir: report.store_dir,
             sources: report.sources,
-            status_dir: report
-                .status_dir
-                .unwrap_or_else(|| default_status_dir.clone()),
-            artifact_dir: report
-                .artifact_dir
-                .unwrap_or_else(|| default_artifact_dir.clone()),
+            status_dir,
+            artifact_dir,
         });
     }
     Ok(reports)
+}
+
+fn validate_relative_path(path: &Path, field: &str, allow_empty: bool) -> Result<(), String> {
+    if path.as_os_str().is_empty() {
+        if allow_empty {
+            return Ok(());
+        }
+        return Err(format!("{field} must not be empty"));
+    }
+    if path.is_absolute() {
+        return Err(format!("{field} {} must be relative", path.display()));
+    }
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => {}
+            Component::ParentDir => {
+                return Err(format!(
+                    "{field} {} must not contain parent components",
+                    path.display()
+                ));
+            }
+            Component::CurDir => {
+                return Err(format!(
+                    "{field} {} must not contain current-directory components",
+                    path.display()
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("{field} {} must be relative", path.display()));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn load_selected_suites(

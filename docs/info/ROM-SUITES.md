@@ -74,6 +74,7 @@ Rendered report files are derived from fresh `.status`; regenerate them with `ca
 - `disabled = true` requires a non-empty `comment = "..."`.
 - Use `report_model_suffix = true` in the header or a `[[case]]` only when the same upstream report label needs model-disambiguated rows; case values override the header and status `rom` text receives `(DMG)`, `(GBC)`, `(AGB)`, `(SGB)`, or `(SGB2)`.
 - Use `report_revision_suffix = true` independently from `report_model_suffix` when the same upstream report label also needs CPU/revision-disambiguated rows; case values override the header and status `rom` text receives uppercase hyphenated revision labels such as `(DMG-CPU-C)`, `(CPU-CGB-C)`, or `(CPU-AGB-A)`. When both suffixes are enabled, the status text is ordered as `rom.gb (GBC) (CPU-CGB-C)`.
+- Report runtime paths from `reports.toml` must stay inside the report store: `store_dir` may be empty for flat reports, but `status_dir`, `artifact_dir`, `report_file`, and `sources` must be non-empty relative paths without absolute, parent, or current-directory components.
 - Do not add root-level legacy manifests, ad hoc suite copies, or direct upstream checkout paths.
 
 Linked manifests use `[[case]]` plus `[[case.participant]]`, explicit participant IDs, and `topology = "dmg04"`, `topology = "dmg07"`, or `topology = "cgb-ir"`. `report_model_suffix` and `report_revision_suffix` are single-machine suite properties in this iteration; linked participant status keeps the manifest ROM path.
