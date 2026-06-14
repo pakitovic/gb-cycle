@@ -1701,6 +1701,7 @@ impl BgPipelineState {
         self.push.reset();
         self.fill.reset();
         self.fetcher.start_background();
+        self.fetcher.startup_fetch_idle_dots = MODE3_BG_FETCH_STARTUP_DUMMY_DOTS;
     }
 
     pub(super) fn capture_initial_scx(&mut self, scx: u8) {
@@ -2595,6 +2596,7 @@ pub(super) struct BgFetcherState {
     pub(super) startup_visible_tile3_scx_boundary_old_prefix_pixels: u8,
     pub(super) fetch_x: u16,
     pub(super) next_fetch_pixel: u16,
+    pub(super) startup_fetch_idle_dots: u8,
     pub(super) post_alignment_fetch_restart_delay_dots: u8,
     pub(super) window_tilemap_x: u8,
     pub(super) bg_resume_fetch_pixel: u16,

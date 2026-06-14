@@ -28,7 +28,9 @@ fn new_dmg_lcdc_tile_sel_replay_ppu(sprite_x: u8) -> PpuTestRig {
 fn sprite_coupled_line10_tile_sel_replay_matches_trace_signature() {
     let mut ppu = new_dmg_lcdc_tile_sel_replay_ppu(1);
 
-    ppu.advance_until_tile_sel_replay_position(10, 85);
+    // Hardware-true startup adds 3 dummy fetcher dots, so the post-alignment
+    // signature that previously landed at dot 85 now lands at dot 88.
+    ppu.advance_until_tile_sel_replay_position(10, 88);
 
     let startup = ppu.snapshot();
     assert_eq!(startup.visible_lcdc, 0x83);

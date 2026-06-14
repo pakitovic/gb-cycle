@@ -3,6 +3,11 @@ use super::*;
 impl Ppu {
     pub(in crate::ppu) fn advance_bg_fetcher(&mut self, vram: &VramBusView<'_>) -> bool {
         self.prepare_bg_fetcher_dot(vram);
+
+        if self.consume_startup_fetch_idle_dot() {
+            return false;
+        }
+
         let fetch_policy = self.mode3_bgwin_fetch_policy();
 
         if let Some(handed_off) = self.advance_bg_fetcher_special_stage() {
@@ -41,6 +46,24 @@ impl Ppu {
             )),
             _ => None,
         }
+    }
+
+    fn consume_startup_fetch_idle_dot(&mut self) -> bool {
+        if self
+            .runtime
+            .bg_pipeline_state
+            .fetcher
+            .startup_fetch_idle_dots
+            == 0
+        {
+            return false;
+        }
+
+        self.runtime
+            .bg_pipeline_state
+            .fetcher
+            .startup_fetch_idle_dots -= 1;
+        true
     }
 
     fn consume_bg_fetcher_post_alignment_restart_delay_dot(&mut self) -> bool {

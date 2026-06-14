@@ -395,22 +395,26 @@ fn mode3_startup_keeps_dummy_occupancy_out_of_the_fifo_until_alignment_push() {
     assert_eq!(drawing_start.mode_dot, 0);
     assert_eq!(drawing_start.mode0_start_dot, 252);
     assert_eq!(drawing_start.bg_fetcher_stage, PpuBgFetcherStage::TileIndex);
-    assert_eq!(drawing_start.bg_fetcher_stage_dot, 1);
+    // Hardware-true startup: the BG fetcher idles for 3 dummy dots (80, 81, 82)
+    // before its first tile-index read at dot 83, so it is not pre-armed here.
+    assert_eq!(drawing_start.bg_fetcher_stage_dot, 0);
     assert!(drawing_start.bg_fifo_pixels.is_empty());
     assert_eq!(drawing_start.visible_pixels_output, 0);
 
-    ppu.tick_n(7);
+    // The first (discarded) tile-index read happens at dot 83, after the dummy dots.
+    ppu.tick_n(3);
+    assert_eq!(ppu.snapshot().line_dot, 83);
+    assert_eq!(ppu.snapshot().bg_fetcher_stage_dot, 1);
+
+    // The primed (discarded) tile is pushed into the FIFO at dot 89, carrying
+    // exactly the 3 leading dummy pixels of the startup occupancy.
+    ppu.tick_n(6);
 
     let after_first_push = ppu.snapshot();
-    assert_eq!(after_first_push.line_dot, 87);
-    assert_eq!(
-        after_first_push.bg_fetcher_stage,
-        PpuBgFetcherStage::TileIndex
-    );
-    assert_eq!(after_first_push.bg_fetcher_stage_dot, 1);
+    assert_eq!(after_first_push.line_dot, 89);
     assert_eq!(
         after_first_push.bg_fifo_pixels,
-        vec![0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 2, 3]
+        vec![0, 0, 0, 1, 2, 3, 0, 1, 2, 3]
     );
     assert!(!after_first_push.bg_push_pending);
     assert!(!after_first_push.bg_fill_pending);
@@ -423,7 +427,7 @@ fn mode3_startup_keeps_dummy_occupancy_out_of_the_fifo_until_alignment_push() {
 
     let first_visible = ppu.snapshot();
     assert_eq!(first_visible.visible_pixels_output, 1);
-    assert!(first_visible.line_dot >= 92);
+    assert_eq!(first_visible.line_dot, 92);
     assert_eq!(first_visible.current_scanline_pixels[0], 0);
 }
 
