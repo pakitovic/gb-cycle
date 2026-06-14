@@ -2212,13 +2212,22 @@ impl BgPipelineState {
             return;
         }
 
-        let has_unlatched_startup_alignment_pixel = self.fifo.cached_pixels().any(|cached| {
+        let fifo_has_unlatched_startup_alignment_pixel = self.fifo.cached_pixels().any(|cached| {
             matches!(
                 cached.cached.origin,
                 BgCachedSliceOrigin::StartupAlignmentFill
             ) && !cached.cached.needs_live_tile_data_refetch
         });
-        if !has_unlatched_startup_alignment_pixel {
+        let fill_has_unlatched_startup_alignment_pixel = self.fill.pending
+            && self.fill.includes_real_tile_pixels
+            && matches!(
+                self.fill.cached.origin,
+                BgCachedSliceOrigin::StartupAlignmentFill
+            )
+            && !self.fill.cached.needs_live_tile_data_refetch;
+        if !fifo_has_unlatched_startup_alignment_pixel
+            && !fill_has_unlatched_startup_alignment_pixel
+        {
             return;
         }
 
