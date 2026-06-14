@@ -50,7 +50,7 @@ cargo rom-fetch docboy
 
 `cargo rom-suite` and `cargo rom-suite-link` auto-fetch missing or stale assets for fetchable reports before running selected cases, so explicit `cargo rom-fetch` is only needed when you want a separate materialization step.
 
-`cargo rom-suite <report>` and `cargo rom-report <report>` clear the selected report's runtime `.status` and `.artifacts` directories before generating new single-machine status, so each run starts from a report-local clean status/artifact snapshot. Copy any previous runtime tree before rerunning if you need a before/after comparison.
+`cargo rom-suite <report>` and `cargo rom-report <report>` clear the selected report's runtime `.status` and `.artifacts` directories before generating new single-machine status, so each run starts from a report-local clean status/artifact snapshot. `cargo rom-suite` waits until report/suite/case selection and boot-ROM preflight validation succeed before clearing, so an invalid `--suite` or `--case` does not wipe prior evidence. Copy any previous runtime tree before rerunning if you need a before/after comparison.
 
 Runtime files are scoped by report:
 
@@ -109,7 +109,7 @@ cargo rom-suite-link linked
 cargo rom-suite-link docboy --suite docboy-dmg-link
 ```
 
-`cargo rom-suite <report> [--suite <suite>] [--case <case>] [--threads <n>] [--boot-rom-dir <dir>]` clears the selected report's `.status` and `.artifacts`, then executes single-machine `*.suite.toml` manifests through `gb_core::Machine`. It ignores `*.link.suite.toml`, keeps running later cases after failures, writes per-suite status and failure artifacts, and returns non-zero if any selected case fails. `--case` requires `--suite`.
+`cargo rom-suite <report> [--suite <suite>] [--case <case>] [--threads <n>] [--boot-rom-dir <dir>]` validates report/suite/case selection and boot-ROM preflight, clears the selected report's `.status` and `.artifacts`, then executes single-machine `*.suite.toml` manifests through `gb_core::Machine`. It ignores `*.link.suite.toml`, keeps running later cases after failures, writes per-suite status and failure artifacts, and returns non-zero if any selected case fails. `--case` requires `--suite`.
 
 `cargo rom-suite-link <report> [--suite <suite>] [--case <case>] [--threads <n>] [--boot-rom-dir <dir>]` executes linked-session `*.link.suite.toml` manifests. It collects participant-scoped serial, snapshot, framebuffer, and trace observations and uses the same oracle catalog as single-machine suites.
 

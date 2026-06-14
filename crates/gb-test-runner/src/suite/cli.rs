@@ -30,7 +30,7 @@ pub fn suite_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>] [--threads <n>] [--boot-rom-dir <dir>]\n",
         "\n",
-        "Clears test/<report>/.status and test/<report>/.artifacts, then runs report-local *.suite.toml manifests through the new minimal suite runner.\n",
+        "Validates report/suite/case selection, clears test/<report>/.status and test/<report>/.artifacts, then runs report-local *.suite.toml manifests through the new minimal suite runner.\n",
     )
 }
 
@@ -140,12 +140,6 @@ fn run_options<W: Write>(
         return Err(missing_report_error(&reports));
     };
     let report = report_for_id(&report_id, &reports)?;
-    crate::runtime::clean_report_runtime_dirs(
-        workspace_root,
-        &report.store_dir,
-        &report.status_dir,
-        &report.artifact_dir,
-    )?;
     let selected_families = load_selected_suite_families(
         workspace_root,
         report,
@@ -189,6 +183,13 @@ fn run_options<W: Write>(
     } else {
         None
     };
+
+    crate::runtime::clean_report_runtime_dirs(
+        workspace_root,
+        &report.store_dir,
+        &report.status_dir,
+        &report.artifact_dir,
+    )?;
 
     let mut all_passed = true;
     for suite in &suites {

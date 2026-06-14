@@ -162,6 +162,80 @@ status = "PASS"
 }
 
 #[test]
+fn command_preserves_report_status_and_artifacts_when_selection_is_invalid() {
+    let workspace = unique_temp_dir("invalid-selection-preserves-runtime");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/blargg-cpu-instrs.suite.toml",
+        &basic_manifest(
+            "sample-report",
+            "blargg-cpu-instrs",
+            "blargg",
+            "blargg-cpu-instrs-01-special",
+            "cpu_instrs/01-special.gb",
+        ),
+    );
+    let stale_status = workspace.join("test/sample-report/.status/stale-suite.toml");
+    fs::create_dir_all(stale_status.parent().expect("status should have parent"))
+        .expect("stale status parent should be creatable");
+    fs::write(
+        &stale_status,
+        r#"suite_name = "stale-suite"
+family = "stale"
+
+[[cases]]
+rom = "stale.gb"
+status = "PASS"
+"#,
+    )
+    .expect("stale status should be writable");
+    let stale_artifact =
+        workspace.join("test/sample-report/.artifacts/stale-suite/stale-case/old.txt");
+    fs::create_dir_all(
+        stale_artifact
+            .parent()
+            .expect("artifact should have parent"),
+    )
+    .expect("stale artifact parent should be creatable");
+    fs::write(&stale_artifact, "stale").expect("stale artifact should be writable");
+
+    let mut output = Vec::new();
+    let unknown_suite = run_suite_command_with_workspace_for_test(
+        ["sample-report", "--suite", "missing-suite"],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("unknown suite should fail before cleanup");
+    assert!(unknown_suite.contains("unknown suite \"missing-suite\""));
+    assert!(stale_status.is_file());
+    assert!(stale_artifact.is_file());
+
+    let mut output = Vec::new();
+    let unknown_case = run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "blargg-cpu-instrs",
+            "--case",
+            "missing-case",
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("unknown case should fail before cleanup");
+    assert!(unknown_case.contains("unknown case \"missing-case\""));
+    assert!(stale_status.is_file());
+    assert!(stale_artifact.is_file());
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn command_local_report_ignores_link_suite_manifests_without_fetching() {
     let workspace = unique_temp_dir("local-report-link-manifests");
     write_local_report(&workspace, "linked");
