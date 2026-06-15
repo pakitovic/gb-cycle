@@ -654,3 +654,184 @@ state.rs:2362) was measured to have NO effect on x8's dot — REFUTED.** The car
 seam (the seed-fetch / `delayed_background_tileindex_read` / fill timing). Once x8 lands at the oracle dot, §5.3
 samples band 0-7 correctly and the seed fix + retarget tables can be DELETED (P3 exit criteria b/d), reaching CGB
 24/24 with a net seam-count DECREASE. Residual after band 0-7 closes: rows 22 & 69 (3 stray px) — re-measure then.
+
+## 19. BAND ly0-7 ROOT CAUSE — the obj-alignment-stall lets the lead BG fetcher race through x8; §18 hypothesis REFUTED (2026-06-15)
+
+Per-dot reproduction (gb `GBCYCLE_SCY_PROBE_LY` per-dot trace at `advance_mode3_pipeline` + GetTile0/TileDataLow0
+emits, vs DocBoy `build-trace-cgb GBTRACE_LY`; baseline px-diff `actual.png` vs `expected-0.png` = **41px = band
+ly0-7 38px + strays row22:1, row69:2**). The §18 framing ("startup-seam overhead / seed-fetch / delayed reads /
+fill timing") is **REFUTED** — the carrier is the **obj-alignment-stall × fetcher-lead interaction**, not the seam
+counters.
+
+### 19.1 The two contrasting bands (storm frame, scy writes gb @80,88,96,104,…; latency-net-0 ⇒ §5.3 reads LIVE scy at TileDataLow/0)
+
+| | gb x0 GT0 / DL0 | gb x8 GT0 / DL0 (scy) | DocBoy x8 BG_GETTILE0 (bwfscy) | obj-fetch start (sx, stall) |
+|---|---|---|---|---|
+| **ly=28** (mid, PASSES) | 83 / 85 (clean) | 96 / **98 (scy=2 ✓)** | @99 (scy=2) | @87, sx=3, stall=2 |
+| **ly=4** (band 0-7, FAILS) | 83 / **91** (obj-stalled) | 96 / **98 (scy=2 ✗)** | **@102 (scy=3)** | **@80, sx=0, stall=5** |
+
+gb's x8 DL0 is **@98 on BOTH lines**; DocBoy's x8 GETTILE0 **varies with the sprite** (99 vs 102). To read scy=3 gb
+needs x8 DL0 **@104** (gb writes are +4 vs DocBoy and gb reads live, so the scy=3 write lands @104; DocBoy reads it by
+@102 with its −4 phase + 2-dot latency). So ly=4's x8 is **6 dots early**, ly=28's is correct.
+
+### 19.2 Mechanism (per-dot, nailed)
+- The test sprite is at **OAM x = 0** for ly0-7 (`sprite_trigger_x = sprite.x = 0`), and at x≥3 for the mid bands.
+- For **x=0** the obj-fetch hit is pending at `match_x=0` from the FIRST mode3 dot, so gb starts it **@80** — before
+  the BG seed tile (x0) is even fetched. Its alignment stall (`sprite.x==0 ⇒ OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS=5`,
+  `obj_fetch.rs:88`) therefore lands on **x0** (gb stalls x0 @85-91), NOT x8. For x=3 (ly=28) the hit fires @87 (after
+  x0), stalling **x8** — which is why the mid bands are already oracle-correct.
+- DocBoy fetches BG tile x0 FIRST (GETTILE0@83, push@88), THEN does the x=0 obj fetch during the FIFO-drain wait
+  (dots 88-101), THEN x8 GETTILE0@102. The x=0 stall always delays **x8** on hardware.
+- **The fetcher-lead is why scoped levers fail:** during the obj alignment stall the BG fetcher is **advanced**
+  (`core.rs:95-96` `if handled && in_alignment_stall { advance_bg_fetcher }`) so it "catches up" and finishes 160px by
+  `mode0_start_dot`. With the **large x=0 stall (5)** the lead fetcher races through x8's ENTIRE GetTile0→TileDataLow/0
+  during the stall, latching SCY ~6 dots early. The mid bands' small stall (≤2) only advances x0's tail, so x8 lands right.
+
+### 19.3 Refuted scoped experiments (all measured per-dot + px-diff, all reverted; tree clean)
+| # | Experiment | Result |
+|---|---|---|
+| A | Defer obj-fetch start during `AlignmentSeedPending` (FifoBackedTransfer only) | obj re-fires via `QueuedBgFill` @88; the alignment stall still advances BG through x8 → x8 DL0 **@92 scy=1** (WORSE) |
+| B | Defer obj-fetch start during `AlignmentSeedPending` (all sources) | same: x8 DL0 **@92 scy=1**, alignment-stall races BG through x8 (WORSE) |
+| C | Suppress the BG catch-up during the obj alignment stall in the CGB startup seam (`core.rs:96`) | x8 moves the right way (98→**103**) but **undershoots by 1** (needs 104), and BREAKS the mid bands → **162px** (new fails ly64-71, ly128-135 that DEPEND on the catch-up) |
+
+### 19.4 Design tension (why this is the structural fetcher-lead rework, not a lever)
+The `core.rs:96` BG-catch-up-during-alignment-stall is **REQUIRED** twice over: (1) for `mode0_start_dot`
+conservation (the #245 per-sprite Mode-3 cost — `extend_mode3_by_one_dot` runs per obj dot regardless, but the BG must
+finish 160px by then), and (2) the mid bands rely on it to land x8 correctly. But that same catch-up is exactly what
+lets the large x=0 stall race the lead fetcher through x8's data stage, sampling SCY early. **You cannot toggle the
+catch-up to fix band 0-7 without breaking the mid bands / length.** The hardware-true fix must **decouple the startup
+continuation tile's tile-data READ (the §5.3 SCY sample) from the lead fetcher's stage-advance during the obj stall**:
+the fetcher may advance its stage (length-conserving), but the SCY/tile-data commit for that tile must occur at the
+post-stall (true-fetch) dot — i.e. a deferred SCY sample fired `alignment_stall_remaining` dots after the lead crosses
+TileDataLow/0, equivalently "the lead-fetched startup tile re-samples SCY at the dot it would have reached without the
+lead." This is the **fetcher-lead hardening** the branch is named for; it touches the #245-adjacent obj-stall region
+and must prove `mode0_start_dot` byte-identical for every sprite-x + wilbertpol 117 + shootout 264 green.
+
+**Status: root cause nailed, 3 scoped levers refuted, structural approach specified. Tree clean (probes/experiments
+reverted). Next = the deferred-SCY-sample-for-the-lead-startup-tile model (a phase decision, flagged HARD per §6).**
+
+## 20. CANONICAL MODEL — how SameBoy + DocBoy structure the startup BG/OBJ interleave (the §19 fix spec, 2026-06-15)
+
+Read SameBoy `Core/display.c` (`render_pixel_if_possible` / `advance_fetcher_state_machine` / the object-fetch loop)
+and DocBoy `src/docboy/docboy/ppu/ppu.cpp` (the `bgwin_*`/`obj_*` fetcher tick selectors). **Both converge on the SAME
+model, and it differs structurally from gb-cycle.** This is the spec for the §19 fix.
+
+**Canonical fetcher (SameBoy lines 1951-2025; DocBoy `bgwin_pixel_slice_fetcher_push` ~2322-2398):**
+1. SCY is latched **once at GetTile0** (DocBoy `bwf.scy = scy` @ `bg_prefetcher_get_tile_0` ~2021; consumed for the
+   tile-data address at `setup_bg_pixel_slice_fetcher_tile_data_address` ~2617). (= §12 CGB-D corroboration.)
+2. After fetching a tile (GetTile0→…→HIGH1) the fetcher enters **PUSH, which BLOCKS until the BG FIFO has room**
+   (DocBoy: `can_push_to_bg_fifo = bg_fifo.is_empty()`; SameBoy: FIFO has space). **The next tile's GetTile0 does NOT
+   start until that push succeeds.** The fetcher does NOT pre-fetch — it idles at PUSH holding the fetched tile.
+3. The **object fetch starts only after** the BG fetcher has fetched the first tile (SameBoy gate line 1956:
+   `while (fetcher_state < GET_TILE_DATA_HIGH_T2 || fifo_size == 0) advance…` ⇒ obj waits until fetcher ≥ HIGH **and**
+   FIFO primed; DocBoy: obj fetch is launched from inside the PUSH handler, `is_obj_ready_to_be_fetched()`). During the
+   obj fetch the **BG fetcher is FROZEN** (SameBoy line 943 the tile-x calc only advances `!during_object_fetch`; DocBoy
+   the bwf stays in PUSH). It does NOT run ahead.
+4. ⇒ For an x=0 sprite: x0 fetched (dots 83-88), PUSH-blocks (FIFO full from the startup placeholders), obj fetch runs
+   FROZEN during the drain (dots ~88-93), FIFO drains lx0-7 (dots 94-101), **x8 GetTile0 @102** (push finally succeeds).
+   The x=0 obj fully delays x8. Length is conserved because the fetcher had a FULL FIFO while frozen (no lost pixels).
+
+**gb-cycle divergence (the three coupled defects):**
+- (a) **Pre-fetch / fetcher-lead:** gb's fetcher does GetTile0→data eagerly right after the seed push and BLOCKS at the
+  Push stage *after* fetching (dots 102-110), so x8's TileDataLow/0 SCY sample fires ~6 dots early (@98). Canonical:
+  GetTile0 is gated on push-success, so the sample is late.
+- (b) **Obj-start gate missing:** gb starts the x=0 obj fetch @dot80 (before the BG fetched tile x0; gb's FIFO has
+  startup placeholders so it looks "primed"), charging the stall to x0. Canonical gate requires fetcher ≥ data-high
+  (first REAL tile fetched) first, so the obj always lands on x8.
+- (c) **Freeze vs advance:** gb ADVANCES the BG during the obj alignment stall (`core.rs:96`) for length conservation;
+  canonical FREEZES it (and conserves length via the full-FIFO-at-PUSH surplus). gb can't simply freeze (exp C: the BG
+  isn't at a full-FIFO PUSH when frozen, so it falls behind → mid bands' right edge breaks, 162px).
+
+**Why no scoped lever works (confirmed):** the correct SCY-sample dot must track the **canonical GetTile0**, which is
+gated on push-success + frozen-obj. That dot is early for mid sprites (x≥3, gb @98 ≈ oracle @99 — already right) and
+late for x=0 (oracle @102). A fixed deferral, a refetch-on-push, or toggling the catch-up each break one side. The
+sample dot is intrinsically a function of the obj position, reproducible only by the canonical interleave.
+
+**Fix spec (the option-1 implementation):** restructure the CGB startup BG/OBJ interleave to the canonical model,
+`is_cgb_family()`-gated and confined to the startup seam (AlignmentSeedPending/PostAlignment), leaving the steady path
+and DMG untouched:
+- (i) gate the startup continuation tile's GetTile0 (and its SCY latch, §5.3) on the previous tile's push succeeding
+  (FIFO has room) instead of eager pre-fetch;
+- (ii) gate the startup obj-fetch start on the BG having fetched its first real tile (≥ data stage), so the x=0 stall
+  lands on x8;
+- (iii) freeze the BG fetcher during the startup obj fetch, conserving `mode0_start_dot` via the full-FIFO surplus
+  (NOT via the `core.rs:96` advance).
+- **Gate every step:** `mode0_start_dot` byte-identical for every sprite-x (probe), CGB m3_* register-change tests +
+  wilbertpol 117 + shootout 264 + mooneye + mealybug DMG all green. On success, delete the seed fix + retarget tables
+  (P3 b/d). This is the fetcher-lead hardening; it is large and touches the #245-adjacent region — land incrementally.
+
+**Refuted experiment D (the §20 (ii)+(iii) flag-toggle combination, 2026-06-15):** defer the obj-start past the seed
+push AND freeze the BG during the startup obj alignment stall (both `is_cgb_family()` + seam-gated). Result: band ly0-7
+still **38px** (x8 DL0 lands @103, scy=2 — STILL 1 dot short of the @104 needed for scy=3), the mid bands re-break
+(127px total: ly64-71, ly128-135, ly136-143), and `mode0_start_dot` shifts (ly=4 m0 263→268, **length NOT conserved**).
+⇒ The canonical push-blocks/freeze model is **not reachable by toggling `core.rs:96` + the obj-start gate** on top of
+gb's pre-fetch pipeline: gb's BG fetcher is not at a full-FIFO PUSH when frozen, so freezing both loses pixels (mid
+bands) AND miscounts the length. The startup BG-fetch state machine itself must be restructured to the canonical
+"fetch → PUSH-blocks-on-FIFO-room → obj-during-PUSH-frozen → next GetTile0" shape (§20 (i)). Confirmed: 4 flag-level
+experiments (§19.3 A/B/C + D) exhausted; the fix is the state-machine restructure, a dedicated incremental effort.
+
+## 21. CANONICAL STARTUP REFACTOR — gb target + increment plan (AUTHORIZED 2026-06-15)
+
+The user authorized rebuilding the mode3 STARTUP to the canonical model (§20), accepting that unit/integration tests —
+and temporarily ROM tests — may go red, to be re-greened after. **ROM tests are the priority gate.** gb's steady state
+is already canonical (push cadences the next GetTile0 at 8 dots, no lead); the **fetcher-lead is startup-only** (the
+abstract placeholder/seed/QueueFill model lets the seed push succeed early), so the rewrite is scoped to the mode3
+startup. See [[project_ppu_canonical_refactor]].
+
+**Regression dashboard (baseline @ commit 2bcb48e9, this branch):** blargg 58, mooneye 113, wilbertpol 117,
+gb-emulator-shootout 264, mealybug DMG 24/24, mealybug CGB **23/24** (m3_scy_change 41px = band ly0-7 38 + rows 22/69).
+
+**gb-target canonical startup (replaces the abstract model):**
+- The first BG tile fetch fills the FIFO with 8 real pixels (no `startup_fifo_placeholders` pre-fill); SCX&7 are
+  discarded from the FIFO front before the first visible output.
+- After each tile, the fetcher enters PUSH which BLOCKS until the FIFO has room; the NEXT tile's GetTile0 (and its SCY
+  latch) does not start until the push succeeds — no pre-fetch.
+- The obj fetch starts only after the BG has fetched its first real tile (FIFO primed) and FREEZES the BG fetcher
+  for its duration; pixel output is paused during the fetch. Length conserved by the full-FIFO surplus, NOT by the
+  `core.rs:96` BG-advance-during-stall.
+
+**Increment sequence (each: full ROM dashboard, accept temporary red, log deltas):**
+1. **Gate the startup continuation GetTile0 on FIFO-room** (kill the pre-fetch) — the core fetcher-lead removal.
+2. **Gate the startup obj-fetch start on first-real-tile-fetched** + freeze BG during it (remove `core.rs:96` for the
+   startup, conserve length via the now-full FIFO).
+3. **Collapse `startup_fifo_placeholders` / `Mode3StartupSourceState` (EntryDelay/Abstract)** into the canonical
+   "first real fetch fills FIFO + SCX discard".
+4. **Delete the seams** (P3 b/d): `BgStartupFetchSeamState` continuation slices, `cgb_startup_seed/frozen_tile_row`
+   seed fix, `cgb_dmg_software_startup_visible_tile2/3` retarget tables, the recompute current-row override.
+5. **Re-green** unit/integration tests against the new canonical structure; regen CPU-invisible machine-trace fixtures.
+
+**DELETION LIST (the seams this refactor must remove — success = these gone, dashboard restored + CGB 24/24):**
+`startup_fifo_placeholders`, `Mode3StartupSourceState`, `startup_fetch_idle_dots`(MODE3_BG_FETCH_STARTUP_DUMMY_DOTS),
+`post_alignment_fetch_restart_delay_dots`, `BgStartupFetchSeamState`+`BgStartupContinuationSlice`, the seed fix,
+the `cgb_dmg_software_startup_visible_tile2/3` tables, `cgb_dmg_scy_startup_retarget_active`.
+
+### 21.1 INCREMENT 1 LANDED (WIP) + the critical blast-radius finding (2026-06-15)
+
+Increment 1 implemented: `cgb_startup_continuation_fetch_blocked_on_fifo_room` (bg_fetch.rs) holds a CGB startup
+PostAlignment continuation tile's GetTile0 while `fifo.len() > BG_TILE_WIDTH` — the canonical no-pre-fetch primitive
+(the continuation tile waits for the previous tile's push to have FIFO room, exactly like the steady-state push the
+abstract `QueueFill` startup bypassed). `is_cgb_family()`-gated, startup-scoped. fmt/lint clean.
+
+**Effect (per-dot + px-diff, full ROM dashboard):**
+- m3_scy_change band ly0-7: x8 TileDataLow/0 moved **98 → 104** (the canonical-ish dot), and the row-22 stray closed
+  (41 → 40px). x8 still reads scy=2 not 3 — it lands exactly on gb's SCY write-dot 104, where the CPU write applies
+  AFTER the PPU mode3 step, so the live read is one write behind (needs dot 105). This residual is the SCY-phase /
+  §5.2-observation-at-the-write-boundary, NOT the fetcher timing (now correct). `mode0_start_dot` CONSERVED (263/260).
+- **BLAST RADIUS IS CONTAINED TO CGB MEALYBUG** — the de-risking finding: wilbertpol **117/117**, gb-emulator-shootout
+  **264/264** (incl. its DMG mealybug 24/24), mooneye **113/113**, mealybug DMG **24/24** ALL STAY GREEN. The only
+  regression is mealybug **CGB 23→22/24**: `m3_lcdc_tile_sel_change` broke because the continuation tile's LCDC sample
+  moved with the (now-canonical) fetch timing — and in the canonical model LCDC is latched at the SAME GetTile0 as SCY,
+  so it RE-GREENS once the register latch point follows the canonical GetTile0. ⇒ **the CGB startup can be rewritten
+  freely, gating only on the ~11-case CGB mealybug suite; the broad suites are safe.**
+
+**Refuted en route:** the `>= BG_TILE_WIDTH` threshold (+1 dot) closes band ly0-7 (x8→105, scy=3) but breaks the
+no-startup-obj mid bands ly64-71/ly128-135 (they need the `>8` dot) — the +1 is sprite-dependent (only the x=0-obj
+band needs it). Increment 1 + the §20(ii) obj-start gate together = catastrophe (1247px, sprite-position coupling in
+the #245 region + length blew to 268). ⇒ the +1 for band ly0-7 must come from the canonical obj-pausing-the-drain
+(increment 2: obj-start-after-first-tile + register latch at canonical GetTile0 + sprite-position accounting), not a
+threshold tweak.
+
+**Next (increment 2):** move the CGB register latches (SCY §5.3, LCDC, the tables' targets) to fire at the canonical
+GetTile0 produced by increment 1, and gate the startup obj-fetch start on first-real-tile-fetched with the
+sprite-position accounting updated — re-greens `m3_lcdc_tile_sel_change` and supplies band ly0-7's +1. Gate: CGB
+mealybug back to 23/24 then 24/24, broad suites stay green.
