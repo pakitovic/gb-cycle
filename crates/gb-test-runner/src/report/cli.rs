@@ -25,8 +25,8 @@ pub fn report_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin report -- <report-id> [--html]\n",
         "\n",
-        "Validates that <report-id> has single-machine suites, clears test/<report>/.status and test/<report>/.artifacts,\n",
-        "runs cargo rom-suite <report-id>, and renders the fresh report-local status snapshot into test/<report>/test-report.md.\n",
+        "Validates that <report-id> has single-machine suites, runs cargo rom-suite <report-id>,\n",
+        "and renders the fresh report-local status snapshot into test/<report>/test-report.md; rom-suite owns guarded runtime cleanup after preflight.\n",
     )
 }
 
@@ -94,12 +94,6 @@ fn run_options<W: Write>(
     };
     let report = report_for_id(&report_id, &reports)?;
     ensure_single_machine_suite_manifests(workspace_root, report)?;
-    crate::runtime::clean_report_runtime_dirs(
-        workspace_root,
-        &report.store_dir,
-        &report.status_dir,
-        &report.artifact_dir,
-    )?;
     let statuses = run_suite_and_load_statuses(workspace_root, report, output)?;
     let document = build_report_document(workspace_root, report, statuses)?;
     write_report_files(workspace_root, report, &document, options.html, output)
@@ -113,20 +107,28 @@ fn run_suite_and_load_statuses<W: Write>(
     writeln_checked(
         output,
         &format!(
-            "rom-report: cleared previous status and artifacts for {}; running cargo rom-suite {}",
-            report.id, report.id
+            "rom-report: running cargo rom-suite {}; rom-suite will clear previous status and artifacts after preflight",
+            report.id
         ),
     )?;
-    let suite_result = crate::suite::run_suite_command_with_workspace(
+    let mut suite_runtime_cleaned = false;
+    let suite_result = crate::suite::run_suite_command_with_workspace_tracking_cleanup(
         [report.id.as_str()],
         workspace_root,
         output,
+        &mut suite_runtime_cleaned,
     );
     if let Err(error) = &suite_result {
+        if !suite_runtime_cleaned {
+            return Err(format!(
+                "failed to generate status for report {:?}; cargo rom-suite {} failed before runtime cleanup: {error}",
+                report.id, report.id
+            ));
+        }
         writeln_checked(
             output,
             &format!(
-                "rom-report: cargo rom-suite {} returned: {error}; rendering any written status",
+                "rom-report: cargo rom-suite {} returned after runtime cleanup: {error}; rendering written status",
                 report.id
             ),
         )?;

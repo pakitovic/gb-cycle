@@ -50,7 +50,7 @@ cargo rom-fetch docboy
 
 `cargo rom-suite` and `cargo rom-suite-link` auto-fetch missing or stale assets for fetchable reports before running selected cases, so explicit `cargo rom-fetch` is only needed when you want a separate materialization step.
 
-`cargo rom-suite <report>` and `cargo rom-report <report>` clear the selected report's runtime `.status` and `.artifacts` directories before generating new single-machine status, so each run starts from a report-local clean status/artifact snapshot. `cargo rom-suite` waits until report/suite/case selection and boot-ROM preflight validation succeed before clearing, so an invalid `--suite` or `--case` does not wipe prior evidence. Copy any previous runtime tree before rerunning if you need a before/after comparison.
+`cargo rom-suite <report>` clears the selected report's runtime `.status` and `.artifacts` directories before generating new single-machine status, so each run starts from a report-local clean status/artifact snapshot. `cargo rom-suite` waits until report/suite/case selection, asset materialization, manifest/oracle loading, boot-ROM preflight validation, and thread-pool setup succeed before clearing, so an invalid `--suite`, `--case`, manifest, fixture, fetch, checksum, boot-ROM, or thread setup does not wipe prior evidence. `cargo rom-report <report>` delegates runtime cleanup to that guarded `cargo rom-suite <report>` run instead of clearing first itself. Copy any previous runtime tree before rerunning if you need a before/after comparison.
 
 Runtime files are scoped by report:
 
@@ -61,7 +61,7 @@ Runtime files are scoped by report:
 - Rendered single-machine report views: `/test/<report-store>/test-report.md` and optionally `/test/<report-store>/test-report.html`.
 - Local `linked` assets: `crates/gb-test-runner/data/linked/**`, with runtime status/artifacts still under `/test/linked/`.
 
-Rendered report files are derived from fresh `.status`; regenerate them with `cargo rom-report <report>`, which clears stale single-machine runtime data and reruns the report before rendering.
+Rendered report files are derived from the `.status` produced by the delegated single-machine run; regenerate them with `cargo rom-report <report>`, which reruns the report and relies on `cargo rom-suite` to clear stale runtime data only after suite preflight succeeds.
 
 ## Manifest rules
 
@@ -125,13 +125,13 @@ cargo rom-report gb-emulator-shootout
 cargo rom-report gb-emulator-shootout --html
 ```
 
-`cargo rom-report <report>` validates that the report has single-machine suite manifests, clears the report-local single-machine `.status` and `.artifacts` directories, runs `cargo rom-suite <report>`, and renders the fresh status files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
+`cargo rom-report <report>` validates that the report has single-machine suite manifests, runs `cargo rom-suite <report>`, and renders the fresh status files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. The delegated suite run owns report-local single-machine `.status` and `.artifacts` cleanup after preflight; if it fails before reaching that guarded cleanup point, `cargo rom-report` preserves existing evidence and returns an error instead of rendering stale statuses. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
 
 Fetchable report rows are sorted by `family_order`, then by each family's pinned `sources.report.toml` ROM order, then by same-ROM model variant order, then by suite/case order and lexical fallback for rows not present in the source manifest.
 
-Reports that only contain linked-session manifests are rejected before cleanup because `cargo rom-report` is a single-machine report renderer; use `cargo rom-suite-link` and linked status/artifacts directly for those reports. Suite failures during the `cargo rom-report <report>` regeneration still produce a rendered report when status exists, so use the report rows rather than the command exit as the compatibility signal.
+Reports that only contain linked-session manifests are rejected before cleanup because `cargo rom-report` is a single-machine report renderer; use `cargo rom-suite-link` and linked status/artifacts directly for those reports. Suite case failures during the `cargo rom-report <report>` regeneration still produce a rendered report after the delegated suite runner has cleared and written fresh status, so use the report rows rather than the command exit as the compatibility signal.
 
-Pass `--html` to also write `test/<report-store>/test-report.html` from the same status model. The command is local but destructive for stale single-machine runtime data; publishing the HTML requires a separate operator or GitHub Actions workflow. The manual `rom-reports-pages.yml` workflow publishes the curated HTML report set to GitHub Pages, and a successful non-dry-run `release.yml` dispatches that workflow from the new release tag.
+Pass `--html` to also write `test/<report-store>/test-report.html` from the same status model. The command is local and refreshes stale single-machine runtime data through the delegated guarded suite run; publishing the HTML requires a separate operator or GitHub Actions workflow. The manual `rom-reports-pages.yml` workflow publishes the curated HTML report set to GitHub Pages, and a successful non-dry-run `release.yml` dispatches that workflow from the new release tag.
 
 ## RealBoot
 
@@ -143,7 +143,7 @@ Use RealBoot runs as local comparison evidence. Rerun the matching default start
 
 ## Before/after workflow
 
-For ROM-driven fixes or regressions, copy the relevant `/test/<report>/` status/artifact tree before the change, rerun the suite, copy the final tree, and compare changed rows explicitly. This copy must happen before running `cargo rom-suite` or `cargo rom-report`, because both commands clear the selected report's previous single-machine `.status` and `.artifacts` first.
+For ROM-driven fixes or regressions, copy the relevant `/test/<report>/` status/artifact tree before the change, rerun the suite, copy the final tree, and compare changed rows explicitly. This copy must happen before running `cargo rom-suite` or a `cargo rom-report` command that reaches the delegated suite cleanup point, because the selected report's previous single-machine `.status` and `.artifacts` are cleared before fresh case execution starts.
 
 Same-ROM model variants are ordered DMG before MGB before GBC before AGB before SGB before SGB2 when report suffixes are enabled. Empty report categories are not materialized.
 

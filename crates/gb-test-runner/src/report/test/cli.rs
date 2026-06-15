@@ -184,6 +184,77 @@ status = "PASS"
 }
 
 #[test]
+fn report_command_preserves_runtime_when_suite_preflight_fails_before_cleanup() {
+    let workspace = unique_temp_dir("report-suite-preflight-preserves-runtime");
+    write_reports(
+        &workspace,
+        r#"status_dir = ".status"
+artifact_dir = ".artifacts"
+report_file = "test-report.md"
+
+[[report]]
+id = "sample-report"
+local = true
+store_dir = "sample-report"
+"#,
+    );
+    let suite_root = workspace.join("crates/gb-test-runner/data/sample-report");
+    fs::create_dir_all(&suite_root).expect("suite dir should be created");
+    fs::write(
+        suite_root.join("broken.suite.toml"),
+        r#"report = "sample-report"
+suite_name = "broken-suite"
+family = "sample"
+model = "dmg"
+unknown_header = true
+"#,
+    )
+    .expect("broken suite manifest should be writable");
+    write_status(
+        &workspace,
+        "sample-report",
+        "stale-suite",
+        r#"suite_name = "stale-suite"
+family = "stale"
+
+[[cases]]
+id = "stale-case"
+rom = "stale.gb"
+status = "PASS"
+"#,
+    );
+    let stale_status = workspace.join("test/sample-report/.status/stale-suite.toml");
+    let stale_artifact =
+        workspace.join("test/sample-report/.artifacts/stale-suite/stale-case/old.txt");
+    fs::create_dir_all(
+        stale_artifact
+            .parent()
+            .expect("artifact should have parent"),
+    )
+    .expect("stale artifact parent should be creatable");
+    fs::write(&stale_artifact, "stale").expect("stale artifact should be writable");
+    fs::write(
+        workspace.join("test/sample-report/test-report.md"),
+        "previous report",
+    )
+    .expect("previous markdown report should be writable");
+    let mut output = Vec::new();
+
+    let error =
+        run_report_command_with_workspace_for_test(["sample-report"], &workspace, &mut output)
+            .expect_err("bad suite manifest should fail before cleanup");
+
+    assert!(error.contains("failed before runtime cleanup"));
+    assert!(error.contains("unknown_header"));
+    assert!(stale_status.is_file());
+    assert!(stale_artifact.is_file());
+    let report = fs::read_to_string(workspace.join("test/sample-report/test-report.md"))
+        .expect("previous markdown report should be preserved");
+    assert_eq!(report, "previous report");
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
 fn report_document_uses_source_order_before_suite_order() {
     let workspace = unique_temp_dir("source-order");
     write_basic_reports_with_sources(&workspace);

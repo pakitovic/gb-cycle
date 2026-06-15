@@ -59,6 +59,27 @@ where
     }
 }
 
+pub(crate) fn run_suite_command_with_workspace_tracking_cleanup<I, S, W>(
+    arguments: I,
+    workspace_root: &Path,
+    output: &mut W,
+    cleanup_completed: &mut bool,
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+    W: Write,
+{
+    match parse_suite_arguments(arguments)? {
+        SuiteAction::ShowHelp => write_all(output, suite_help_text()),
+        SuiteAction::Run(options) => {
+            run_options_after_cleanup(options, workspace_root, output, || {
+                *cleanup_completed = true;
+            })
+        }
+    }
+}
+
 fn parse_suite_arguments<I, S>(arguments: I) -> Result<SuiteAction, String>
 where
     I: IntoIterator<Item = S>,
@@ -135,6 +156,15 @@ fn run_options<W: Write>(
     workspace_root: &Path,
     output: &mut W,
 ) -> Result<(), String> {
+    run_options_after_cleanup(options, workspace_root, output, || {})
+}
+
+fn run_options_after_cleanup<W: Write, F: FnMut()>(
+    options: SuiteOptions,
+    workspace_root: &Path,
+    output: &mut W,
+    mut after_cleanup: F,
+) -> Result<(), String> {
     let reports = load_reports(workspace_root)?;
     let Some(report_id) = options.report_id else {
         return Err(missing_report_error(&reports));
@@ -190,6 +220,7 @@ fn run_options<W: Write>(
         &report.status_dir,
         &report.artifact_dir,
     )?;
+    after_cleanup();
 
     let mut all_passed = true;
     for suite in &suites {
