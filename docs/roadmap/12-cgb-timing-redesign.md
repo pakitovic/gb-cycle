@@ -3,8 +3,10 @@
 > **STATUS: P0 done (§11). P1 done 2026-06-15 — phase model REFUTED, re-grounded (§13).** P1 proved
 > the §5.1 "−4 enable→PPU-start phase" is NOT the m3_scy_change carrier (the −4 is a benign internal
 > CPU↔PPU-phase difference; shifting the CGB STAT phase regressed 10+ other mealybug `m3_*` tests). The
-> fix is SCY-observation only: §5.2 (uniform write latency) + §5.3 (CGB-D GetTile0-once sampling). Next
-> step = implement §5.2/§5.3 (was P2/P3), no phase/STAT change. This is the plan for the
+> fix is SCY-observation only: §5.2 (uniform write latency) + §5.3 (CGB-D GetTile0-once sampling). **§5.2/§5.3
+> attempt 1 reverted (§14): the §5.2 latency register is sound, but routing observed SCY through the universal
+> `current_mmio_visible_registers` poisons the output-time recompute (121→2760px). Attempt 2 must feed observed SCY
+> ONLY to the GetTile0 fetch latch, per-tile validated against DocBoy `GBT-TDATA tile_y`.** This is the plan for the
 > coordinated CGB timing rework that the PPU-hardening campaign (`04-ppu-fix.md`) proved is
 > required to close `mealybug-cgb-m3-scy-change`. It supersedes the scoped-fix directions for
 > that ROM. Durable open-work ledger stays in [`docs/TODO.md`](../TODO.md); hardware contract in
@@ -446,3 +448,42 @@ tests are the sensitive set this round (they share the SCY harness), alongside w
 **Lesson:** P0 measured the +4 correctly but misattributed it as the cause; the missing P0 check was "do the OTHER
 m3_* tests share the same +4 write-dot offset and still pass?" (they do). The P1 gated experiment + full-suite
 regression is what caught it. Keep the "prove it on the whole suite before believing a single-ROM fix" discipline.
+
+## 14. §5.2/§5.3 IMPLEMENTATION — attempt 1 reverted; the plan's "single-source" Step 2 is WRONG (2026-06-15)
+
+**Reverted to baseline (m3_scy_change 121px, full suite green). The mapping plan's Step 2 — "route the observed SCY
+into `current_mmio_visible_registers` so it feeds all three consumers" — is WRONG and must NOT be done.**
+
+What was implemented (all reverted, clean tree):
+- A `PpuPendingWrite { observed, pending_value, countdown }` register on `Ppu` (`scy_observation`), armed with
+  `countdown=2` on CGB SCY writes (api.rs Scy write), ticked once per dot (beside `advance_mode3_register_latches`),
+  serialized with `#[serde(default)]`. **This §5.2 mechanism is SOUND** — compiles, save-state round-trips, fmt/lint
+  clean, and the mealybug **suite canary stayed 23/24** (only m3_scy_change; no other `m3_*` regressed).
+- Routed `scy_observation.observed()` into `current_mmio_visible_registers().scy` on CGB (the plan's Step 2).
+
+**Result: m3_scy_change 121 → 2760 px (far worse).** Root cause: `current_mmio_visible_registers` feeds the
+OUTPUT-time recompute (`recompute_live_background_cached_slice` → `current_scanline_tile_row()` at push/pop,
+state.rs:3427-3430). The recompute already samples SCY at the output dot, which is too LATE (doc exp h: feeding it
+the 1-dot-delayed `pipeline.scy` → 228px worse). Adding the 2-dot observation latency there COMPOUNDS the error
+(→2760). Generalizing the GetTile0 frozen-row latch into the recompute (Step 3a) made no difference — the 2760 was
+already there from Step 2. (Also: MECH 1c's dmg-software SCY routing reads SCY and broke 3 unit tests when the
+observed value shifted its marker — confirming MECH 1c must be collapsed together with the SCY model.)
+
+**Corrected design for attempt 2:**
+1. **Keep `current_mmio_visible_registers().scy = self.scy` RAW** — never route observed SCY through the universal
+   helper (it poisons the output-time recompute). The §5.2 register stays as built.
+2. **Observed SCY (2-dot latency) feeds ONLY the GetTile0 latch (fetch time).** At bg_fetch TileIndex/1, for ALL CGB
+   Background tiles, latch the tile row computed from the OBSERVED value (read `scy_observation.observed()`, not the
+   raw helper) — generalize the seed capture.
+3. **The GetTile0-latched row (frozen) feeds BOTH the fetch (TileDataLow/High, replacing the live per-plane read)
+   AND the recompute's CGB Background row (replacing `current_scanline_tile_row()`).** DMG keeps live per-byte.
+4. Remove MECH 1c (`cgb_dmg_scy_high_plane_uses_low_row`) + its 3 unit tests together — the latched-row-for-both-
+   planes replaces it.
+5. **MANDATORY per-tile oracle check BEFORE wiring the recompute:** with `build-trace-cgb`, diff gb's per-tile
+   GetTile0-latched row against DocBoy's emitted `GBT-TDATA … bwfscy=.. tile_y=..` per tile. They must match per
+   tile. Attempt 1 skipped this and wired blind — that is the missing rigor. Do the row-match measurement first,
+   then wire fetch, then recompute, then delete MECH 1c/seed/tables, full CGB suite at each step.
+
+Net: the observation-latency MECHANISM is correct and built; the error was applying it at the wrong site (universal
+helper / output recompute) instead of the GetTile0 fetch latch. Attempt 2 = GetTile0-local observed SCY, per-tile
+DocBoy-validated.
