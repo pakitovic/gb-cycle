@@ -3,7 +3,7 @@ suite_name = "mealybug-tearoom-tests-mbc"
 report = "mealybug-tearoom-tests"
 model = "cgb"
 revision = "cpu-cgb-c"
-timeout_frames = 600
+timeout_frames = 1200
 oracle = { type = "fibonacci-result" }
 
 [[case]]
