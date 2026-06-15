@@ -1080,6 +1080,48 @@ interface), so there is no tiny safe lever — Capa 1 is a coherent rewrite land
 Re-green (unit/integration tests + fixture regen + the full ROM dashboard) happens AFTER the structural pass, per the
 user's directive. Layers 1 and 2 are orthogonal (fetcher interleave vs write observation) and may land independently.
 
+### 24.5 PROGRESS LOG + resume brief (durable; task list does NOT persist across restarts)
+
+**Committed (branch ppu/fetcher-lead-hardening, all green: 616/616 ppu + integration, fmt/clippy clean):**
+- `31b78213` docs §24 design.
+- `1b8197d7` **L1-a**: BG FIFO pre-filled with 8 real junk pixels at `start_line` (state.rs); seed fill no longer
+  re-materializes dummies (bg_push.rs). `startup_fifo_placeholders` now counts leading junk still in the FIFO.
+  Behavior-equivalent (dot-89 FIFO + first-visible@92 preserved).
+- `22178c38` **L1-b step 1**: removed `Mode3TransferBacking` + `effective_fifo_is_empty`; `current_transfer` readiness
+  reads the real FIFO (`fifo.is_empty()`); snapshot `bg_current_transfer_backing` kept as a diagnostic derived from the
+  source window. Behavior-equivalent.
+
+**SameBoy startup-latency finding (display.c, 2026-06-15 — reframes the remaining L1-b):** the 12-dot mode3 fill latency
+is NOT purely emergent in SameBoy either. Before the `mode_3_start` rendering loop SameBoy adds EXPLICIT setup delays:
+`cycles_for_line = MODE2_LENGTH + 4` (line 1824) then `+= 3` (`GB_SLEEP(10,3)`, 1839) then `+= 2` (`GB_SLEEP(32,2)`,
+1843) — ~9 dots of explicit setup before the fetcher starts; at `mode_3_start` it pushes 8 junk
+(`fifo_push_bg_row(...,0,0,0,...)`, 1851) and sets `fetcher_state = GET_TILE_T1` (1855). ⇒ gb's entry-delay(4) +
+dummy-fetch-dots(3) are the CANONICAL-EQUIVALENT of SameBoy's setup `GB_SLEEP` delays and should be KEPT (cleanly), **NOT
+eliminated**. The actual non-canonical accretion to remove is the **SEED-SEAM (M4)** — `BgStartupFetchSeamState`
+(AlignmentSeedPending/PostAlignment + VisibleTile2/3 continuation slices) + `post_alignment_fetch_restart_delay_dots` +
+`queue_bg_startup_alignment_seed_from_fetcher`/`queue_startup_alignment_from_push`/`begin_post_alignment_followup` —
+which has NO SameBoy analog (it is gb's CGB-retarget machinery), plus the residual placeholder COUNT (M1:
+`fifo_contains_real_pixels`, `pop_visible_fifo_pixel` special-case) once the seam is gone.
+
+**Remaining L1-b plan (do as one coherent pass; gate on `cargo test -p gb-core --lib ppu::` + `--test snapshots ppu`):**
+1. Route the first real BG tile push through the SAME canonical path as continuation tiles (kill the alignment-seed
+   special push): delete `queue_bg_startup_alignment_seed_from_fetcher` + the `startup_alignment_seed_pending()` branch
+   in `advance_bg_fetcher_tile_data_high_dot1` (bg_fetch.rs) so the first tile uses `queue_bg_push_from_fetcher`.
+2. Collapse `BgStartupFetchSeamState` to a simple "startup until first real push completed" flag (or remove it if the
+   continuation-slice/delayed-read bookkeeping turns out CGB-only and folds into L1-d). Remove
+   `post_alignment_fetch_restart_delay_dots` + `begin_post_alignment_followup` + `advance_startup_background_fetch_tile`.
+3. Remove the `startup_fifo_placeholders` COUNT: `fifo_contains_real_pixels` becomes a positional/real-FIFO check (the
+   push obj-start gate is L1-c), `pop_visible_fifo_pixel` drops its count special-case, `consume_effective_fifo_pixel`
+   becomes a plain pop. KEEP the explicit startup output delay (entry-delay) — it is canonical (SameBoy `GB_SLEEP`).
+4. Keep `mode0_start_dot` byte-identical (probe the per-sprite Mode-3 cost) and first-visible@92 / mode0=252 for DMG.
+   Rewrite the startup unit tests ONCE to assert canonical state (push real junk; no seam snapshots). Fixture regen via
+   `FIXTURE_ACCEPT_ENV` if the snapshot format changes.
+
+**To resume in a fresh session:** the durable state is the 3 commits above + [[project_ppu_canonical_refactor]] +
+this §24. Say "continúa con el trozo estructural de L1-b" — read §24.4/§24.5 + the SameBoy finding, then execute the
+4-step plan against the unit-test oracle. The abstract startup is ONE interlocked mechanism — remove the seam whole,
+do not peel pieces (peeling churns the same startup tests twice, proven this session).
+
 **Status: write-observation core mapped to the machine scheduler; a scoped causal observation is proven blocked by the
 PPU-before-CPU phase order. The clean SCY +1 increment stands; closing lcdc_tile_sel needs (A) the canonical restructure
 or (C) a fetch-time observation reorder — a console-timing decision, not a lever.**
