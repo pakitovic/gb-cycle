@@ -975,6 +975,111 @@ reads land correctly (that is the §13 dead-end restated structurally).
   get "fresher", but it is a console-timing change with broad regression surface (must keep DMG + every other m3_* CGB
   green); essentially component §5.1 re-attempted at the observation layer rather than the STAT layer.
 
+## 24. CANONICAL RESTRUCTURE — full design (oracle maps complete; BOTH layers authorized, NO ROM-gating during the structural pass, 2026-06-15)
+
+The user authorized the **full canonical restructure of BOTH layers** to make gb-cycle match SameBoy + DocBoy + Pan
+Docs as closely as possible, and explicitly directed: **do NOT measure ROM tests during the structural pass / stop
+chasing the CGB ROM tests — go toward canon first, re-green/refine later.** This supersedes the scoped-lever framing of
+§22-§23. Five parallel oracle/code maps (DocBoy `core/core.cpp`+`ppu/ppu.cpp`, SameBoy `Core/display.c`, gb-cycle
+`mode3/*`+`state.rs`+`scheduler.rs`+`machine/step.rs`) settled the canonical model and the exact gb divergence.
+
+### 24.1 The canonical model (DocBoy + SameBoy converge — this is the target)
+
+**BG fetcher** (DocBoy 8 states `bgwin_prefetcher_get_tile_0`→…→`bgwin_pixel_slice_fetcher_push`, ppu.cpp:449-471;
+SameBoy 7 states `GB_FETCHER_GET_TILE_T1`→…→`GB_FETCHER_PUSH`, display.c:862-872):
+- SCY latched **once at GetTile0** on CGB (`bwf.scy = scy`, ppu.cpp:2021; consumed for tile-data row at
+  `setup_bg_pixel_slice_fetcher_tile_data_address`, 2606-2640). DMG re-reads live `scy` per GetTileDataLow (bitplane
+  desync). Doc-CORROBORATED (mealybug PPU doc, CGB-D latches once at the `B` stage).
+- After GetTileDataHigh1, **PUSH BLOCKS until the BG FIFO is empty** (DocBoy `can_push_to_bg_fifo = bg_fifo.is_empty()`,
+  2344; SameBoy `if (fifo_size(&gb->bg_fifo) > 0) break`, 1084). The FREEZE is structural: DocBoy `tick_fetcher` only
+  advances the fetcher when `!enable_pixel_slice_fetcher_push` (1747-1752); `enable_push` is set true after
+  GetTileDataHigh1 (2319) and cleared only when PUSH succeeds (2368) or an obj fetch launches (2392). **The next
+  GetTile0 does NOT start until the push succeeds — no pre-fetch / no fetcher-lead.**
+
+**OBJ fetcher** (DocBoy 6 states `obj_prefetcher_get_tile_0`→…→`obj_..._merge_with_obj_fifo`, 2402-2565):
+- Obj fetch launches from **inside the PUSH handler** only when `is_obj_ready_to_be_fetched()` (oam_entries[lx] not
+  empty && lcdc.obj_enable, 1819-1824) — i.e. after the BG has fetched its first real tile and reached PUSH. If the
+  FIFO is full, the in-flight BG tile is **cached** (`cache_bg_win_fetch`, 2857-2862) and restored after the obj
+  (2864-2869). SameBoy gate: `while (fetcher_state < GET_TILE_DATA_HIGH_T2 || fifo_size == 0) advance` (1956) — obj
+  waits until the BG fetcher passed the data-high fetch AND the FIFO primed.
+- During the obj fetch the **BG is FROZEN** (DocBoy stays in PUSH with `enable_push=false` so only obj states tick;
+  SameBoy `during_object_fetch` removes the +1 from the tile-x calc, 943). Multiple sprites at the same lx loop
+  (2548). After the last, restore cached BG + re-enable PUSH (2563).
+- **Length is conserved** because the obj runs DURING the PUSH stall, which would have stalled anyway (the FIFO is
+  full). Frame length stays fixed regardless of sprite count (ppu.cpp:2322-2397 length-conservation note).
+
+**Startup** (SameBoy `mode_3_start`, display.c:1845-1872): FIFOs cleared, **8 junk pixels pushed** into the BG FIFO,
+fetcher = GET_TILE_T1. **SCX&7 discarded from the FIFO front** during `render_pixel_if_possible` (687-704:
+`(position_in_line & 7) == (SCX & 7)` ends the discard). The first REAL tile fetch then PUSH-blocks on those 8 junk
+pixels until they drain — there is NO separate "abstract" transfer source; the junk pixels ARE real FIFO entries.
+
+**CPU↔PPU phase** (DocBoy `core/core.cpp`): within EVERY T-cycle (t0/t1/t2/t3) the CPU ticks, THEN the PPU ticks
+(`cpu.tick_t*` at 55/96/154/195 before `ppu.tick()` at 63/115/162/217). So DocBoy's PPU observes a CPU MMIO write the
+SAME T-cycle. Per-register CGB write-observation latency is then layered LOCALLY in the PPU (`pending_write.{lcdc,scy,
+…}.countdown`, ppu.cpp:703-726; SCY/LCDC countdown=2 on CGB). LCD enable is instant (`turn_on()`), re-enable line0 is a
+full glitched 456-dot line.
+
+### 24.2 gb-cycle divergence (the exact deltas to fix)
+
+| Aspect | gb-cycle (now) | Canonical | Layer |
+|---|---|---|---|
+| Startup FIFO | abstract `startup_fifo_placeholders` count overlaying the FIFO (`effective_fifo_is_empty`/`fifo_contains_real_pixels`/`consume_effective_fifo_pixel`, state.rs:1842-1857) | 8 REAL junk pixels in the FIFO, SCX&7 discarded from the front | 1 |
+| Transfer source | `Mode3StartupSourceState{EntryDelay,Abstract,FifoBacked}` abstract window (state.rs:565,1787-1834) + `startup_pre_visible_transfer_dots_remaining` + `transfer_phase=Priming` | none — the FIFO drains naturally; real fetch fills it | 1 |
+| First fetch | `startup_fetch_idle_dots = MODE3_BG_FETCH_STARTUP_DUMMY_DOTS(3)` (state.rs:1712) | first GetTile0 fires immediately; cadence comes from PUSH-blocks | 1 |
+| Push gate | `current_bg_push_dot_ownership` has `WaitingForEmptyFifo` (canonical) but startup uses `QueueFill`/`EntryDelay`/seed (bg_push.rs:36-139) | always PUSH-blocks on real FIFO-empty; obj-from-push when primed | 1 |
+| Seed/continuation | `BgStartupFetchSeamState{AlignmentSeedPending,PostAlignment+VisibleTile2/3 slices}` (state.rs:2552) + `post_alignment_fetch_restart_delay_dots` | none — uniform canonical fetch from the first tile | 1 |
+| Obj-start gate | starts at `match_x` even before the seed is pushed (FIFO "looks primed" via placeholders), charging the x=0 stall to x0; BG **advanced** during the stall (`core.rs:96` catch-up) | obj launches from PUSH after first real tile; BG **frozen**; length via full-FIFO surplus | 1 |
+| CGB SCY sampling | seed fix `cgb_startup_seed_get_tile_scy_row`/frozen row (bg_fetch.rs:294-310) + `cgb_dmg_software_startup_visible_tile2/3` retarget tables (transfer.rs:329-462, mode3_policies.rs) + `cgb_dmg_scy_startup_retarget_active` + inc1/inc2 levers | plain SCY-once-at-GetTile0 latch, no obj-phase retarget | 1 (read point) + 2 (freshness) |
+| CPU↔PPU order | `scheduler.rs` ORDER: PPU `AutonomousPeripheralTicks`(idx3) → `BusArbitration`(4) → CPU `CpuMicroOperation`(5) → `MmioSideEffectCommit`(6). PPU sees writes 1 dot late, structurally | CPU+commit BEFORE PPU tick (same-T-cycle observation) | 2 |
+| Write-observation | immediate store (api.rs SCY) + the `pending_ppu_mmio_write.commit_delay_t_cycles` (LYC=1 CGB) machinery in step.rs:806-936 | DocBoy-style per-register countdown=2 (CGB SCY/LCDC), local to the PPU | 2 |
+| LCD enable | `CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES=5` + re-enable line0 length 448 (ppu.rs:61-68) | instant `turn_on`; re-enable line0 = 456 (glitched full line) | 2 |
+
+### 24.3 DELETION LIST (success = these gone; from §21 + the maps)
+
+M1 `startup_fifo_placeholders` + `effective_fifo_is_empty`/`fifo_contains_real_pixels`/`consume_effective_fifo_pixel`/
+`pop_visible_fifo_pixel` placeholder special-cases. M2 `Mode3StartupSourceState` (+ `startup_source_state`,
+`consume_startup_transfer_entry_delay_dot`, `consume_startup_source_window_dot`, `startup_pre_visible_transfer_dots_remaining`,
+`consume_startup_pre_visible_transfer_dot`, `Mode3TransferPhase::Priming`). M3 `startup_fetch_idle_dots`
+(`MODE3_BG_FETCH_STARTUP_DUMMY_DOTS`, `consume_startup_fetch_idle_dot`). M4 `BgStartupFetchSeamState` +
+`BgStartupContinuationSlice` + `post_alignment_fetch_restart_delay_dots` + the alignment-seed push path
+(`queue_bg_startup_alignment_seed_from_fetcher`, `queue_startup_alignment_from_push`, `begin_post_alignment_followup`,
+`advance_startup_background_fetch_tile`, `peek_startup_background_fetch_origin`, `StartupAlignmentSeed/Fill/Continuation`
+origins). M5 — none. M6 the CGB SCY seam: `cgb_startup_seed_get_tile_scy_row`/frozen-row override,
+`cgb_dmg_software_startup_visible_tile2/3` tables (transfer.rs:329-462,530-..., mode3_policies.rs:983/1009),
+`cgb_dmg_scy_startup_retarget_active`, `scy_obj_phase_owner/policy`, `apply_startup_scy_tiledata_latch_to_fill`,
+`startup_scy_tiledata_latch`, `compute_startup_visible_*` family, the `startup_visible_tile3_scx_boundary_*` fields. M7
+the inc1/inc2 levers `cgb_startup_continuation_fetch_blocked_on_fifo_room`, `cgb_startup_seed_obj_stall_extra_continuation_dot`.
+(The `recompute_live_background_cached_slice` current-row override and the DMG-window seams are touched but largely
+retained — they serve DMG live-write semantics; only the CGB-startup-SCY portions go.)
+
+### 24.4 Execution plan (canon first, re-green later; each step compiles)
+
+The increments are COUPLED through the M1 placeholder abstraction (the transfer model reads the effective-FIFO
+interface), so there is no tiny safe lever — Capa 1 is a coherent rewrite landed across a few compiling checkpoints.
+
+- **L1-a — canonical startup FIFO + SCX discard (replace M1).** Push 8 real junk pixels at mode3 entry; route the
+  transfer model + obj arbitration to the REAL `fifo.is_empty()`/`fifo.len()`; SCX&7 discard pops from the FIFO front.
+  Delete the `effective_*`/placeholder interface. Checkpoint: compiles; DMG startup uses the real FIFO.
+- **L1-b — canonical PUSH-blocks + no pre-fetch for the startup (replace M2/M3/M4).** Route the startup through the
+  steady-state `WaitingForEmptyFifo` push ownership; first GetTile0 immediate; next GetTile0 gated on push success.
+  Delete the abstract source window, the dummy idle dots, the seed/continuation seam.
+- **L1-c — canonical obj interleave (replace `core.rs:96` catch-up).** Obj launches from PUSH after the first real
+  tile; FREEZE the BG during the obj fetch; conserve `mode0_start_dot` via the full-FIFO surplus (cache/restore the
+  in-flight tile like DocBoy). Delete the catch-up + the inc1/inc2 levers (M7).
+- **L1-d — plain CGB SCY-once-at-GetTile0 (replace M6).** Latch SCY once at GetTile0 reading the live value (Layer 2
+  will make it fresh); delete the retarget tables + seed fix + obj-phase policy.
+- **L2-a — scheduler CPU→PPU order.** Move `CpuMicroOperation`+`MmioSideEffectCommit` before
+  `AutonomousPeripheralTicks` (re-home `BusArbitration` accordingly), so the PPU observes CPU writes same-T-cycle, as
+  DocBoy. Carefully re-validate the bus-owner/DMA/IRQ interlock against the oracle trace (this is the foundational,
+  highest-blast-radius step).
+- **L2-b — DocBoy per-register write-observation.** Replace the immediate SCY store + the bespoke `commit_delay`
+  machinery with a uniform per-register countdown (CGB SCY/LCDC=2), local to the PPU, serialized in save-state.
+- **L2-c — canonical LCD enable.** Instant `turn_on`; re-enable line0 length 456. Re-validate the wilbertpol
+  `lcd_restart`/`intr_2_*` model against the oracle (was pinned to 448).
+
+Re-green (unit/integration tests + fixture regen + the full ROM dashboard) happens AFTER the structural pass, per the
+user's directive. Layers 1 and 2 are orthogonal (fetcher interleave vs write observation) and may land independently.
+
 **Status: write-observation core mapped to the machine scheduler; a scoped causal observation is proven blocked by the
 PPU-before-CPU phase order. The clean SCY +1 increment stands; closing lcdc_tile_sel needs (A) the canonical restructure
 or (C) a fetch-time observation reorder — a console-timing decision, not a lever.**
