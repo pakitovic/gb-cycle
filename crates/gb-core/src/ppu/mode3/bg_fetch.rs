@@ -37,7 +37,14 @@ impl Ppu {
                 bg.startup_fetch_seam,
                 BgStartupFetchSeamState::PostAlignment { .. }
             );
-        at_continuation_get_tile0 && bg.fifo.len() > BG_TILE_WIDTH as usize
+        // The left-edge-sprite obj stall delayed the seed, so the first continuation tile must
+        // wait one extra dot of FIFO drain to land its GetTile0 on the canonical (oracle) dot.
+        let min_fifo_room = if bg.cgb_startup_seed_obj_stall_extra_continuation_dot {
+            BG_TILE_WIDTH as usize - 1
+        } else {
+            BG_TILE_WIDTH as usize
+        };
+        at_continuation_get_tile0 && bg.fifo.len() > min_fifo_room
     }
 
     fn prepare_bg_fetcher_dot(&mut self, vram: &VramBusView<'_>) {
@@ -189,6 +196,16 @@ impl Ppu {
                 .bg_pipeline_state
                 .fetcher
                 .cgb_startup_seed_get_tile_scy_row = None;
+            // Consume the left-edge-sprite +1 hold once the first continuation tile's GetTile0
+            // actually fires, so it never extends later continuation tiles. See docs/roadmap/12 §22.
+            if matches!(
+                self.runtime.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::PostAlignment { .. }
+            ) {
+                self.runtime
+                    .bg_pipeline_state
+                    .cgb_startup_seed_obj_stall_extra_continuation_dot = false;
+            }
         }
 
         let tile_map_address =

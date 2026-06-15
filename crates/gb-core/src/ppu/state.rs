@@ -829,6 +829,12 @@ pub(super) struct BgPipelineState {
     pub(super) saw_right_edge_visible_same_x_cluster_this_line: bool,
     #[serde(default)]
     pub(super) obj_alignment_paid_tile: Option<u16>,
+    // CGB startup: a left-edge (sprite.x == 0) object fetch that stalls the BG before the
+    // seed tile is pushed delays the seed, leaving the first continuation tile's canonical
+    // GetTile0 one dot early relative to the steady cadence. Holds the continuation fetch one
+    // extra dot so its data-stage register read lands on the oracle dot. See docs/roadmap/12 §22.
+    #[serde(default)]
+    pub(super) cgb_startup_seed_obj_stall_extra_continuation_dot: bool,
     pub(super) window_wy_latch: bool,
     pub(super) window_lcdc5_latch: bool,
     pub(super) window_force_x0_this_line: bool,
@@ -1658,6 +1664,7 @@ impl BgPipelineState {
         self.visible_pixels_output = 0;
         self.saw_right_edge_visible_same_x_cluster_this_line = false;
         self.obj_alignment_paid_tile = None;
+        self.cgb_startup_seed_obj_stall_extra_continuation_dot = false;
         self.window_wy_latch = false;
         self.window_lcdc5_latch = false;
         self.window_force_x0_this_line = false;
@@ -1698,6 +1705,7 @@ impl BgPipelineState {
         self.current_transfer_x = 0;
         self.saw_right_edge_visible_same_x_cluster_this_line = false;
         self.obj_alignment_paid_tile = None;
+        self.cgb_startup_seed_obj_stall_extra_continuation_dot = false;
         self.push.reset();
         self.fill.reset();
         self.fetcher.start_background();
@@ -2519,6 +2527,7 @@ impl Default for BgPipelineState {
             visible_pixels_output: 0,
             saw_right_edge_visible_same_x_cluster_this_line: false,
             obj_alignment_paid_tile: None,
+            cgb_startup_seed_obj_stall_extra_continuation_dot: false,
             window_wy_latch: false,
             window_lcdc5_latch: false,
             window_force_x0_this_line: false,

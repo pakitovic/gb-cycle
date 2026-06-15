@@ -858,3 +858,123 @@ write observation) together close the CGB mealybug register-change tests at the 
 §13 refuted shifting the whole CGB STAT phase, but the §5.2 per-register observation latency (NOT a phase shift) is the
 remaining lever — apply it at the GetTile0 register latch only, validated per-register against DocBoy across
 m3_scy_change AND m3_lcdc_tile_sel_change (and the other m3_* register-change tests).
+
+## 22. INCREMENT 2 MEASURED — §5.2-as-positive-latency REFUTED at the per-register gate; the +1 obj-aware lever closes the x=0 band only (2026-06-15)
+
+**The mandatory per-register oracle gate (§14 step 5 / §15.4 — the step attempts 1/§21.2 skipped) was finally RUN
+with `bwfscy`/`lcdc4` emitted per tile. It re-grounds §21.2: a positive write-observation latency (the `pending_write`
+countdown=2) is the WRONG DIRECTION and cannot be the lever.** Tooling: DocBoy `build-trace-cgb` now emits
+`lcdc4=%u` (`lcdc.bg_win_tile_data`) alongside `GBT-TDATA`; gb side via an ephemeral data-stage probe (removed).
+
+### 22.1 The measurement (gb data-stage read vs DocBoy `GBT-TDATA`, last frame, per tile)
+| ROM / band | tile | gb @dot / value | oracle @dot / value | direction |
+|---|---|---|---|---|
+| m3_scy_change ly=4 (band 0-7) | x8 | **104 / scy=2** | **104 / scy=3** | gb reads 1 write STALE at the same dot |
+| m3_scy_change ly=28 (mid, PASSES) | x8 | 101 / scy=2 | 101 / scy=2 | match (read dot not on a write boundary) |
+| m3_lcdc_tile_sel ly=4 (band 0-7) | x8 | 104 / lcdc4=0 | 104 / lcdc4=1 | gb reads STALE |
+| m3_lcdc_tile_sel ly=20 (band 8-39) | x8 | 102 / lcdc4=0 | 102 / lcdc4=1 | gb reads STALE at the same dot |
+
+**Decisive finding:** the failing continuation tile reads its register at the *same dot* as the oracle but gets a
+**staler** value — gb's CPU writes land +4 (and apply *after* the PPU mode3 step within a dot), so a read landing on a
+gb write boundary misses that write. A positive observation latency makes the read *staler still* (exp h / §17 already
+found "latency must be 0, not 2"). The fix must make the read see the **contemporaneous** write (fresher), i.e. land
+the read one dot *off* the write boundary — a fetch-timing move, NOT a `pending_write` latency.
+
+### 22.2 The landed fix (the user-approved "measured +1 obj-aware lever")
+- **`cgb_startup_seed_obj_stall_extra_continuation_dot`** (`state.rs`): set when a left-edge sprite (`sprite.x == 0`)
+  obj-fetch pays its alignment stall on the seed tile during `AlignmentSeedPending` (`obj_fetch.rs`), i.e. the obj
+  starts before the seed is pushed and delays it. It holds the first PostAlignment continuation tile's GetTile0 one
+  extra dot of FIFO drain (`cgb_startup_continuation_fetch_blocked_on_fifo_room` threshold `BG_TILE_WIDTH-1`), so the
+  data-stage read lands at **oracle+1** (the steady-tile cadence) where gb's +4-phase write is visible. Consumed at the
+  first PostAlignment `TileIndex/0` so it never extends later tiles. THIS is the whole landed change.
+- **Tried + REVERTED — live LCDC.4 select at the CGB frozen-row data stage** (`bg_fetch.rs` low/high `dot0`): reading
+  `self.lcdc` live for the tile-data base (consistent with the live-SCY row) closed lcdc_tile_sel rows 0-7 (436→372px)
+  but it broadly changed the tile-data SELECT source from the latched pipeline LCDC to live for EVERY CGB-dmg-software
+  BG tile (broke unit test `cgb_dmg_software_bg_fetcher_ignores_native_cgb_bg_attributes`, which pins the latched
+  source) and did NOT close lcdc_tile_sel. A live LCDC.4 read is the right hardware-true target (§4) but belongs to the
+  dedicated write-observation / Seam-2 effort (per-table, HALLAZGO-M2-aware), not a bolt-on here. Reverted.
+
+### 22.3 Results (CGB-scoped, broad suites GREEN — #245 intact)
+- **m3_scy_change CGB 40px → 2px**: band ly0-7 CLOSED. Residual 2px = row-69 cols 14-15, a **sprite-overlay artifact**
+  (x8 SCY read MATCHES the oracle @93 scy=1 — NOT the continuation mechanism; the pre-existing row-22/69 stray family).
+- **m3_lcdc_tile_sel CGB: unchanged at 436px** (inc1's regression; the live-LCDC.4 partial step was reverted — see §22.2).
+- Broad gates unchanged: **wilbertpol 117/117, gb-emulator-shootout 264/264** (incl. DMG mealybug 24/24). CGB **22/24**
+  (neither m3_scy_change nor m3_lcdc_tile_sel fully passes yet). fmt/lint clean; `cargo tests` green (no unit-test break).
+
+### 22.4 Why the lever stops here (the §19.4/§20 entanglement, now per-register-proven)
+The +1 lands the read off the write boundary **only when the write is exactly +1 away** (SCY ly0-7). For
+**m3_lcdc_tile_sel rows 8-39** the LCDC write lands **+2** beyond the canonical dot (gb x8 moved 102→103 still read
+lcdc4=0), and these bands are NOT obj-stalled-on-the-seed (sprite.x≠0), so the flag does not even fire. Broadening the
+flag to "obj paid on tile 0" moved those x8 +1 but they still read stale (write is +2) — neutral, reverted. A single
+fetch-timing offset cannot satisfy two ROMs whose register writes land at different dots; and the mid bands read
+correctly at oracle+0, so a uniform +1 over-shifts them (§21.1). **Closing the non-x=0 LCDC bands needs the
+write-OBSERVATION made canonical** — gb reading the contemporaneous CPU write at the fetch dot — which is the CGB
+CPU↔PPU write-phase problem (§5.1/§13 territory, but per-register not a global STAT shift), i.e. the §20/§21 canonical
+restructure, NOT a scoped lever. This re-confirms §19.4/§20 at the per-register/per-dot level.
+
+**Status: the approved +1 obj-aware lever is landed (SCY band ly0-7 closed, m3_scy_change 40→2px), broad suites green,
+`cargo tests` green, no regression. m3_lcdc_tile_sel stays at inc1's 436px (the live-LCDC.4 partial was reverted as a
+broad/incomplete semantic change). The remaining bands (lcdc rows 8-39/129-143; scy row-69 sprite stray) are the
+write-observation core — gb reads the register STALE at the same fetch dot as the oracle, a +4 CPU↔PPU write-phase
+difference that a fetch-timing lever cannot fix per-register (proven §22.1/§22.4). Next = the canonical write-observation
+(§20/§21 restructure / §5.x done in the fresher direction), which also subsumes the live-LCDC.4 read. Tree: only the
+`cgb_startup_seed_obj_stall_extra_continuation_dot` flag lives; ephemeral gb probes removed; DocBoy `lcdc4` trace emit
+kept (revert at P4/M5).**
+
+## 23. WRITE-OBSERVATION CORE — the machine-level mechanism + why a scoped causal observation cannot close it (2026-06-15)
+
+Grounded the "write-observation" against the actual machine scheduler (`machine/step.rs`, `scheduler.rs`), which
+settles HOW to model it — and shows the scoped form is causally blocked.
+
+### 23.1 The mechanism (already present, used today for LYC)
+CPU writes to PPU MMIO are NOT applied inline. `step_cpu_micro_operation` detects a PPU-MMIO write, buffers it in
+`pending_ppu_mmio_write { address, value, commit_delay_t_cycles }`, and queues a `CommitMmioWrite` side-effect
+(`step.rs:806-818`). The commit runs in `step_mmio_side_effect_commit` (`step.rs:904-936`) via
+`commit_pending_ppu_mmio_write` → `ppu.write_register_with_source(.., CpuMmioCommit)`. A `commit_delay_t_cycles`
+already exists — set to 1 for **LYC (0xFF45) on CGB at normal speed** (`step.rs:808-812`) — i.e. the codebase already
+models a CGB-specific deferred PPU-register commit. This is the natural home for any CGB write-observation latency.
+
+### 23.2 The phase order (the causal constraint)
+`SchedulerPhase::ORDER` (`scheduler.rs:69-79`) per T-cycle: … `AutonomousPeripheralTicks` (**PPU tick**, phase 4) →
+`BusArbitration` → `CpuMicroOperation` (**CPU executes + queues the MMIO write**, phase 6) → `MmioSideEffectCommit`
+(**commit to the PPU**, phase 7) → … So within a T-cycle the **PPU ticks BEFORE the CPU's write is even queued**, and
+the commit lands AFTER. A write queued at T-cycle N commits at N phase 7 and is first visible to the PPU tick at
+**N+1**. The PPU therefore observes every CPU MMIO write **one T-cycle late, structurally — identical on DMG** (which
+passes m3_scy_change). `commit_delay_t_cycles` can only push this **later** (staler), never earlier.
+
+### 23.3 Why a scoped write-observation cannot close the non-x=0 LCDC bands
+The failing tiles read the register **stale at the same fetch dot the oracle reads it fresh** (§22.1). To match, gb's
+fetch read must see a write that gb's CPU commits ~2-3 dots in the FUTURE of the fetch dot (the net −2 of §13, a
+look-ahead from gb's frame). The phase order makes that **causally impossible** for a PPU-side observation: at the
+PPU tick the contemporaneous write is not yet queued, and `commit_delay` only defers. The only causal levers are:
+1. **Move the CPU's write earlier** (shift the CGB STAT/handler phase) — **REFUTED (§13/P1)**: it broke 10+ m3_*
+   CGB tests, because the OUTPUT-time registers (BGP/OBP0, read at the later output dot) match gb's current phase.
+2. **Move the fetch read later** (the +1/+2 timing lever) — **position-dependent, does not generalize** (§22.4): SCY
+   needs +1, LCDC +2-3, mid bands need +0; one offset cannot serve all.
+3. **Reorder the PPU tick after CPU+commit** (globally, or a CGB mode3 sub-tick) — broad, changes VRAM/OAM access and
+   every register observation; would regress the DMG-passing model.
+
+### 23.4 The real asymmetry (why bgp/obp0 pass but scy/lcdc.4 don't)
+All CGB m3_* tests write via the same handler at the same gb dots (80,88,96,…). **OUTPUT-time** registers
+(BGP/OBP0/palettes) are consumed at the *output* dot — late, off gb's write boundary — so gb matches the CGB fixture.
+**FETCH-time** registers (SCY, LCDC.4 tile-data-select) are consumed at the *fetch* dot. inc1 moved the CGB startup
+continuation FETCH to the oracle's canonical dot, which for these registers lands **on gb's write boundary** → stale.
+Pre-inc1 the fetch sat earlier (off the boundary) and lcdc_tile_sel PASSED. So inc1's canonical fetch timing is correct
+for the oracle's phase but wrong for gb's phase; a single CPU↔PPU phase can't make BOTH the fetch-time and output-time
+reads land correctly (that is the §13 dead-end restated structurally).
+
+### 23.5 Consequence — paths (decision needed; none is a scoped lever)
+- **(A) Defer lcdc to the full canonical restructure** (§20/§21 increments 3-5): rebuild the startup so the
+  continuation read lands at gb's natural off-boundary dot AND the obj-interleave is canonical, handling the
+  fetch-vs-output phase holistically. Large; the user-authorized direction. Land the clean SCY +1 win now (CGB 22/24,
+  scy 40→2px, no regression), accept lcdc at inc1's 436px as a tracked WIP regression.
+- **(B) Narrow inc1's continuation block to the x=0 obj-stall case**: non-x=0 lines keep pre-inc1 (off-boundary) fetch
+  timing → lcdc rows 8-39 re-pass, but the row-22 SCY stray re-opens (scy 2→4px) and rows 0-7 lcdc stay — a trade, not
+  a close.
+- **(C) A CGB mode3 PPU-tick / register-observation reorder** confined to fetch-time registers — the only causal way to
+  get "fresher", but it is a console-timing change with broad regression surface (must keep DMG + every other m3_* CGB
+  green); essentially component §5.1 re-attempted at the observation layer rather than the STAT layer.
+
+**Status: write-observation core mapped to the machine scheduler; a scoped causal observation is proven blocked by the
+PPU-before-CPU phase order. The clean SCY +1 increment stands; closing lcdc_tile_sel needs (A) the canonical restructure
+or (C) a fetch-time observation reorder — a console-timing decision, not a lever.**
