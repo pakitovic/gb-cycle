@@ -627,3 +627,30 @@ were the curve-fit for exactly this band; neutralizing them (to let §5.3 close 
 **Net:** §5.3 (data-stage latch, latency-net-0) is the validated, regression-free core that closes 3 of the 4 bands.
 Closing band 0–7 cleanly (and deleting the seed fix + tables per P3) requires the left-edge-sprite obj-stall fix in the
 #245 region — the one HARD-CONSTRAINT lever, now precisely isolated to a single per-line tile.
+
+**LANDED: commit `2bcb48e9`** (§5.3 data-stage latch + CGB retarget-table neutralization; 121→41px; full suite green).
+
+## 18. BAND ly0-7 DIAGNOSIS — left-edge-sprite obj-stall under-positions x8 GetTile0 (point-1 start, 2026-06-15)
+
+Per-tile oracle measurement for the storm frame at ly=4 (band 0-7), gb candidate (TileDataLow/0, live SCY) vs DocBoy:
+
+| x | gb scy/row @dot | DocBoy bwfscy/y @BG_GETTILE0 | |
+|---|---|---|---|
+| 8 | 2/6 @98 | 3/7 @102 | **mismatch — gb 4 dots early** |
+| 16…64 | 4/0, 3, 2, 1, 0, 1, 2 | 4/0, 3, 2, 1, 0, 1, 2 | all match |
+
+Same shape as the (now-closed) mid bands: **only the x8 tile is wrong.** gb's x8 GetTile0 fires at line_dot 98 on
+EVERY line; DocBoy's BG_GETTILE0 dot VARIES with the per-line sprite (ly=28 → 99, ly=4 → 102) because the obj-stall
+tracks the sprite. For the left-edge sprite (ly 0-7, OAM x=0, `obj_fetch.rs:88` `stall=OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS=5`
+at match_tile=0) DocBoy pushes x8 ~4 dots later than gb; gb's x8 stays at 98 and samples one SCY write early
+(gb writes land +4 vs hardware, so the scy=3 write that DocBoy reads by dot 102 only reaches gb at ~104). gb's
+startup-seam overhead sits AFTER x8 (ly=4 gb x8→x16 = 15 dots vs DocBoy's normal 8), so x8 fires before it.
+
+**Point-1 fix (the clean P3 close):** reposition the left-edge-sprite startup/obj-stall overhead so x8's data-stage
+read lands ~4 dots later (at the oracle dot), WITHOUT changing total mode3 length (#245 hard constraint: per-sprite
+Mode-3 cost byte-identical, wilbertpol 117 + shootout 264 must stay green — prove it). i.e. move ~4 dots of the
+x8→x16 startup-seam overhead to before x8. **The naive entry-delay-skip lever (`first_real_push_skips_entry_delay`,
+state.rs:2362) was measured to have NO effect on x8's dot — REFUTED.** The carrier is elsewhere in the PostAlignment
+seam (the seed-fetch / `delayed_background_tileindex_read` / fill timing). Once x8 lands at the oracle dot, §5.3
+samples band 0-7 correctly and the seed fix + retarget tables can be DELETED (P3 exit criteria b/d), reaching CGB
+24/24 with a net seam-count DECREASE. Residual after band 0-7 closes: rows 22 & 69 (3 stray px) — re-measure then.
