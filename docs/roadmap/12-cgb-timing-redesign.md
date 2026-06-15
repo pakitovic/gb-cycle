@@ -1,12 +1,18 @@
 # CGB CPU↔PPU Timing Redesign — Design Doc (working)
 
-> **STATUS: DESIGN DOC for a future workstream. Not started.** This is the plan for the
+> **STATUS: P0 (diagnostic) DONE 2026-06-15 — see §11. P1 not started.** The re-enable-site
+> mechanism is named and oracle-grounded; the boot-handoff verification is tooling-blocked and
+> deferred to P1 as a flagged entry risk (§11.5). STOP does not fire. This is the plan for the
 > coordinated CGB timing rework that the PPU-hardening campaign (`04-ppu-fix.md`) proved is
 > required to close `mealybug-cgb-m3-scy-change`. It supersedes the scoped-fix directions for
 > that ROM. Durable open-work ledger stays in [`docs/TODO.md`](../TODO.md); hardware contract in
-> [`docs/hardware/PPU.md`](../hardware/PPU.md). Oracles: SameBoy (`$HOME/workspace/SameBoy`,
-> read-only) and DocBoy (`$HOME/workspace/docboy`, modifiable for instrumentation, revert at
-> close). Agent-agnostic (Claude + Codex).
+> [`docs/hardware/PPU.md`](../hardware/PPU.md). **Reference order is [`docs/REFERENCES.md`](../REFERENCES.md):
+> primary hardware docs (Pan Docs, TCAGBD, Gekkio GBCTR) + the hardware-derived mealybug fixture FIRST;
+> SameBoy/DocBoy are emulator CROSS-CHECKS (tier 2/4), never the authority.** SameBoy
+> (`$HOME/workspace/SameBoy`, read-only) and DocBoy (`$HOME/workspace/docboy`, modifiable for
+> instrumentation, revert at close) are the per-dot cross-checks; every claim they produce MUST be
+> reconciled with documented hardware behavior (or flagged as doc-silent) — see the grounding ledger in
+> §12. Agent-agnostic (Claude + Codex).
 
 ## 1. Problem statement
 
@@ -89,6 +95,7 @@ wrong for low-x sprites. Hence: coordinated redesign, not a lever.
 ## 5. The three coupled components to model together
 
 1. **CGB LCD-enable → PPU-start phase (the −4-dot root) — model the relationship, never a constant.**
+   *(Grounding: CORROBORATED by **TCAGBD** — §8.1 "LCD timings are a bit different… CGB, AGB, AGS in another way (**even in DMG compatibility mode**)", and §8.9.2 (CGB-in-DMG-mode) vs §8.9.1 (DMG) shows the LY/LYC/transition timing ~4 clocks shifted (our ROM has CGB-flag 0x00 → runs DMG-compat → §8.9.2 applies). Pan Docs + GBCTR are silent on the dot-exact fetch phase — §12. P1 still needs the fetch-domain dot to pick the carrier.)*
    `enter_lcd_enabled_restart_state` (irq.rs) sets `line_dot = LCD_REENABLE_INITIAL_LINE_DOT (=0)`;
    the `LCD_REENABLE_LINE0_*` constants (ppu.rs:61-67: re-enable line0 is `DOTS_PER_SCANLINE-8`,
    mode3 starts at `MODE2_DOTS-8`) are **shared DMG/CGB** and pinned by the wilbertpol
@@ -116,7 +123,9 @@ wrong for low-x sprites. Hence: coordinated redesign, not a lever.
      (PPU restart/start dot vs CPU LCDC-enable-write dot) and name which physical quantity carries
      the −4 before any code lands.
 2. **CGB register write-observation latency — port DocBoy's uniform `pending_write`, collapse the
-   existing SCY mechanisms into it.** DocBoy models this as ONE uniform per-register deferred-write
+   existing SCY mechanisms into it.** *(Grounding: CORROBORATED by primary hardware research —
+   mealybug comprehensive PPU doc: "On CGB and AGB devices, [SCY/SCX] writes appear to take effect 2
+   T-cycles later" vs DMG immediate — §12.)* DocBoy models this as ONE uniform per-register deferred-write
    structure: `pending_write.{lcdc,scy,scx,wx,stat}`, each with a `countdown` decremented in
    `tick_pending_write` at the end of every `tick()` (ppu.cpp:703-726); SCY's countdown is 2 on CGB
    so the PPU observes the write 2 T-cycles late. This is `04-ppu-fix.md` M2-step-1, never
@@ -137,7 +146,10 @@ wrong for low-x sprites. Hence: coordinated redesign, not a lever.
    - **Sign bookkeeping:** applied alone the latency pushes the wrong way (exp h: +2), so it MUST
      land together with the phase model (1): phase gives −4, latency gives +2, net −2 = DocBoy
      (gb-cycle's raw observation must end up 2 dots *earlier* than today).
-3. **CGB fetcher startup sampling = DocBoy's "latch SCY once at GetTile0".** Once (1)+(2) put the
+3. **CGB fetcher startup sampling = DocBoy's "latch SCY once at GetTile0".** *(Grounding: CORROBORATED
+   by primary hardware research — mealybug comprehensive PPU doc: DMG/CGB-C read SCY across the `B,0,1`
+   fetch stages (per-byte → bitplane mixing), AGB/**CGB-D** read SCY ONLY in the `B` stage (latched once,
+   no mixing); our fixture is CGB-D — §12.)* Once (1)+(2) put the
    SCY schedule on the hardware dots, the BG fetcher samples SCY once per tile at GetTile0 (CGB) —
    reading the pending-write register from (2) — rather than via the per-pixel recompute + the
    `cgb_dmg_software_startup_visible_tile2/3_*` obj-phase retarget tables (mode3_policies.rs:983/1009,
@@ -202,6 +214,10 @@ mealybug:
   in the SCY write handler. CGB framebuffer is rank-normalized (color3→rank2; not linear).
 - **Fast loop:** `cargo rom-suite mealybug-tearoom-tests --suite mealybug-tearoom-tests-cgb --case
   mealybug-cgb-m3-scy-change` (~0.7s, regenerates `actual.png`).
+- **Official-doc cross-check each step (per `docs/REFERENCES.md`):** before landing, reconcile the model
+  against Pan Docs (`raw.githubusercontent.com/gbdev/pandocs/master/src/*.md` — the site 403s automated
+  fetchers), TCAGBD, Gekkio GBCTR, and the mealybug comprehensive PPU doc; record CORROBORATED/CONTRADICTED/
+  DOC-SILENT in the §12 ledger. A DocBoy/SameBoy-only behavior is acceptable only when doc-silent + fixture-backed.
 - **Full gates each step:** `cargo fmt-check`, `cargo lint`, `cargo tests`, then
   `rm -rf test/*/.status && cargo rom-report {blargg, mooneye, wilbertpol, gb-emulator-shootout,
   mealybug-tearoom-tests}` (mealybug runs BOTH DMG and CGB suites; CGB-compat is invisible to the
@@ -209,18 +225,31 @@ mealybug:
 
 ## 9. Suggested phasing (each phase fully gated; revert on any regression)
 
-- **P0 — pin the phase MECHANISM, not the magnitude.** Instrument the CGB LCD re-enable AND the
-  direct-boot handoff in gb and DocBoy: capture the PPU restart/start dot vs the CPU's
-  LCDC-enable-write dot, and the CPU SCY-write dots relative to it, at BOTH enable sites in both
-  emulators. Identify which physical quantity ({CGB LCD-enable effect delay, CGB re-enable
-  line-length, CGB direct-boot enable→PPU-start handoff phase}) carries the −4 such that ONE
-  CGB-specific value explains the offset at boot AND re-enable. Gate: a written, oracle-grounded
-  answer naming the mechanism and the CGB constant family it maps to (mirroring the DMG family at
-  ppu.rs:58/62); no prod code. **If no single mechanism explains both sites, STOP and re-ground —
-  do NOT proceed to a fitted constant.**
+**Cross-cutting rule (per `docs/REFERENCES.md` order): every phase must cross-check its model against the
+primary hardware docs (Pan Docs, TCAGBD, Gekkio GBCTR) + the hardware-derived mealybug fixture BEFORE landing,
+and record the result in the §12 grounding ledger as CORROBORATED / CONTRADICTED / DOC-SILENT.** DocBoy/SameBoy
+are cross-checks, not the authority; a DocBoy-only behavior that the docs are silent on (e.g. the −4 enable
+phase) is permitted ONLY when it is reconciled with the hardware-derived fixture AND no documented behavior
+contradicts it — and it is flagged DOC-SILENT, not asserted as fact.
+
+- **P0 — pin the phase MECHANISM, not the magnitude. ✅ DONE 2026-06-15 (see §11).** Re-enable site
+  fully characterized: the −4 is a CGB CPU↔PPU **enable→PPU-start phase** at the LCD re-enable restart
+  (oracle-grounded, adversarially verified). Surviving carrier candidates: {CGB `LCD_REENABLE_INITIAL_LINE_DOT`≠0,
+  CGB re-enable line0 length}; the **`CPU_LCDC_ENABLE_EFFECT_DELAY` and boot-system-counter carriers are
+  STRUCK** (exp e/g + mechanism). STOP does NOT fire (no boot↔reenable contradiction). **Open: the boot-handoff
+  phase is UNVERIFIED — tooling-blocked (all CGB mealybug ROMs mask boot via a disable+VBlank-wait+re-enable
+  harness; DocBoy is `ENABLE_BOOTROM=OFF`); carried into P1 as a flagged entry risk (§11.5).**
 - **P1 — CGB enable→PPU-start phase model.** Implement the −4 as the CGB constant family P0
-  identified (`is_cgb_family()`-gated), NOT a restart-only `correction(4)` literal. Gate: SCY writes
-  land @76,84,92,100 (matching DocBoy `dots`) at the re-enable AND the boot-handoff phase agrees
+  identified (`is_cgb_family()`-gated), NOT a restart-only `correction(4)` literal — and NOT via the
+  STRUCK `CPU_LCDC_ENABLE_EFFECT_DELAY` carrier. **The ~4-clock CGB-vs-DMG phase is already doc-corroborated
+  (TCAGBD §8.1/§8.9.2 — §12); P1's open measurement is the dot-exact fetch phase that discriminates the
+  `LCD_REENABLE_INITIAL_LINE_DOT`-seed vs re-enable line0-length carrier** (TCAGBD is 4-clock-granular and omits
+  the mode3→mode0 transition). So: **(a) measure that fetch phase via DocBoy + the §11.5 boot-handoff probe**
+  (custom boot-phase ROM or a direct
+  enable→PPU-start state-machine emit at the SkipBoot/direct-boot handoff) so the chosen CGB constant is
+  oracle-verified at the boot handoff before prod code lands; scope the fix to the re-enable restart (irq.rs
+  `enter_lcd_enabled_restart_state`), structurally isolated from the boot dispatch.
+  Gate: SCY writes land @76,84,92,100 (matching DocBoy `dots`) at the re-enable AND the boot-handoff phase agrees
   with the oracle, AND full CGB suite green (esp. wilbertpol 117). If wilbertpol regresses the model
   is in the wrong place — re-ground; do NOT patch the shared restart path to chase green.
 - **P2 — uniform CGB write-observation register.** Port DocBoy's `pending_write` structure (per-reg
@@ -255,3 +284,128 @@ mealybug:
   `state.rs:3343` `recompute_live_background_cached_slice`, `helpers/mode3_policies.rs:866/983/1009`
   (SCY obj-phase + retarget tables), `mode3/transfer.rs` `compute_startup_visible_tile2/3_*`.
 - Frozen #245 penalty (DO NOT refit): `mode3/obj_fetch.rs:88` `alignment_stall_remaining`.
+
+## 11. P0 RESULT — diagnostic complete (2026-06-15)
+
+**Gate: MET for the re-enable site; boot-handoff verification tooling-blocked and DEFERRED to P1 (§11.5).
+STOP does NOT fire.** Mechanism named, carriers narrowed, no prod code. Established by fresh oracle measurement
+(DocBoy `build-trace-cgb`, ROM `m3_scy_change.gb` md5 `5f0f33d2…`, byte-identical across both trees) and a
+5-claim adversarial refutation pass (C1/C5 survived; C2/C4 forced the corrections below; C3 adjudicated STOP).
+
+### 11.1 Measurement (gb-cycle `line_dot` ≡ DocBoy `dots`: zero offset, both per-line, OAM-dot-0 origin)
+
+| Quantity (CGB, m3_scy_change) | gb-cycle | DocBoy (oracle) | Δ |
+|---|---|---|---|
+| mode3 start (ly = 1, 24, 40) | 80 | 80 | 0 |
+| SCY-write dots, ly=1 | 80,88,96,104,112,120 (v 0,1,2,254,72,254) | 76,84,92,100,108,116 (same values) | **+4** |
+| SCY-write dots, ly=24 | 80,88,96,104,112,120 (v 0,1,2,3,4,3) | 76,84,92,100,108,116 (same values) | **+4** |
+| re-enable LCDC.7 0→1 | `line_dot=0` (LCD off, frozen); effect +5 t-cyc (`CPU_LCDC_ENABLE_EFFECT_DELAY=5`) | `dots=0` (frozen); `turn_on()` instant (0) | — |
+| re-enable line0 length | 448 (mode3@72; `LCD_REENABLE_LINE0_*`) | 456 (mode3@80; full glitched line) | −8 |
+| boot-epoch LCD disable | ly=144 `line_dot=67` | ly=144 `dots=48` | +19 (**CONFOUNDED**) |
+
+### 11.2 Findings (adversarially verified)
+
+- **The +4 is a genuine CPU↔PPU enable-phase offset at the LCD RE-ENABLE** — DocBoy's CPU reaches each SCY
+  write 4 dots *before* its own mode3@80; gb-cycle's CPU reaches it *at* mode3@80. It is **NOT SCY observation
+  latency** (raw store-dot vs store-dot on both sides: gb stores SCY immediately with no register pending-write,
+  `api.rs:809`; DocBoy emits `CPUWR-SCY` *before* setting `countdown=2`; exp h confirmed latency-alone goes +2
+  wrong-way) and **NOT a mode3 geometry difference** (mode3-start identical at 80 across ly=1/24/40).
+- **Sign:** to match the oracle (SCY at 76, 4 dots earlier on a co-anchored axis), gb's PPU must be **RETARDED
+  ~4 dots relative to the CPU at the re-enable** (the restart begins later in CPU-time, so fewer PPU dots have
+  accrued when the CPU executes each write). Net rendering sign incl. the separate +2 SCY pending-write latency:
+  phase −4 + latency +2 = **net −2** (gb's observation must end 2 dots earlier than today), matching §5.2.
+
+### 11.3 Mechanism + constant family (the P0 deliverable)
+
+**Mechanism: the CGB CPU↔PPU enable→PPU-start phase at the LCD re-enable restart.** gb-cycle has NO
+CGB-specific enable-phase term — the CGB re-enable falls through to the SHARED `LCD_REENABLE_INITIAL_LINE_DOT=0`
+(`irq.rs:683-687` `else` arm) and the SHARED `LCD_REENABLE_LINE0_*` (448/72), neither `is_cgb_family()`-gated
+and both pinned only by DMG-mode wilbertpol. That absence is the defect, mirroring how DMG carries a dedicated
+family (`DMG0_DIRECT_BOOT_HANDOFF_PPU_PHASE_BASE_OFFSET_DOTS=3992` `ppu.rs:58`,
+`DMG_REAL_BOOT_POWER_ON_LCD_ENABLE_INITIAL_LINE_DOT=92` `ppu.rs:62`).
+
+**Surviving carrier candidates for P1 (one mechanism; choose by oracle-match, do not stack):**
+1. A CGB-specific **`LCD_REENABLE_INITIAL_LINE_DOT` ≠ 0** (the restart `line_dot` seed) — the cleanest DMG analog.
+2. A CGB-specific **re-enable line0 length** (`LCD_REENABLE_LINE0_*`). **NOT exonerated** (corrects the earlier
+   "ruled out" claim): `mode3-start=80` at ly≥1 is a per-line LOCAL coordinate reset at every wrap, so it is
+   structurally BLIND to a line0-length error; gb's current 448 already shifts ly≥1 phase by −8 dots. The current
+   448 is the wrong sign to be the *active* cause, but the candidate remains live as a *fix* carrier.
+
+**STRUCK carriers (do NOT pursue):** CGB **`CPU_LCDC_ENABLE_EFFECT_DELAY` ≠ 5** — refuted (exp e "+4 no effect"
++ mechanism: during the countdown `line_dot` is frozen and the restart resets it to `LCD_REENABLE_INITIAL_LINE_DOT=0`
+regardless of delay length; lengthening the delay only postpones the whole restart, leaving the CPU↔PPU phase
+invariant). Also STRUCK: the **boot system-counter** (exp g "+4 no effect" — decoupled from the re-enable phase).
+
+**Hardware-doc grounding (per `docs/REFERENCES.md`; full ledger §12; TCAGBD + GBCTR read locally 2026-06-15):**
+three of the four model claims are now documentation-grounded. §5.2 the CGB 2-T-cycle write-observation latency
+and §5.3 the CGB-D "latch SCY once at the `B` stage" are CORROBORATED by the mealybug comprehensive PPU doc. **The
+~4-clock CPU↔PPU phase is now CORROBORATED by TCAGBD** — §8.1 ("LCD timings… CGB… in another way *even in DMG
+compatibility mode*") and §8.9.2 (CGB-in-DMG-mode) vs §8.9.1 (DMG), which document the CGB holding LY ~4 clocks
+longer (153→0 at clock 8 vs DMG clock 4) in the exact mode our ROM runs (CGB-flag 0x00). **The only residual
+DOC-SILENT item is the dot-exact first-line fetch phase** that discriminates the `LCD_REENABLE_INITIAL_LINE_DOT`
+vs line0-length carrier (TCAGBD is 4-clock-granular and omits the sprite-dependent mode3→mode0 transition; GBCTR
+is silent) — that is what P1's fetch-domain + §11.5 boot-handoff measurement still owes.
+
+### 11.4 STOP adjudication — does NOT fire
+
+The STOP trigger is a *proven contradiction* between the boot and re-enable sites. None exists: the only
+boot-site signal — the LCD-disable dot (Δ=+19) — is non-diagnostic. The ROM gates the disable behind a
+wait-for-VBlank busy-loop (`@0x4800: LDH A,(LY); CP 0x90; JR NZ,-6; RET`, then `XOR A; LDH (LCDC),A`); the loop
+period is 32 dots and 19 < 32, so the gap is one-iteration poll-exit quantization, not phase. exp g independently
+shows the boot system-counter is decoupled from the re-enable SCY dots. A confounded, non-diagnostic boot signal
+cannot establish a contradiction → no STOP. The re-enable defect (the actually-exposed one) is fully characterized.
+
+### 11.5 FLAGGED P1-ENTRY RISK — boot-handoff phase is UNVERIFIED (tooling-blocked)
+
+The §5.1/§9 requirement that the mechanism be "verified against the oracle at BOTH the direct-boot handoff AND the
+re-enable" is **NOT yet met for boot**:
+- m3_scy_change — and all 31 CGB mealybug ROMs (byte-scanned) — use the same `disable + wait-LY==144 + re-enable`
+  harness; the SCY storm is post-re-enable only and the boot epoch emits ZERO in-mode3 SCY writes. No CGB mealybug
+  ROM gives a clean boot-handoff CPU↔PPU phase signal.
+- DocBoy is built `ENABLE_BOOTROM=OFF`, so neither emulator exercises a real CGB boot-ROM handoff; the boot handoff
+  is synthetic on both sides.
+
+**Before any prod code lands, P1 MUST obtain a confound-free boot-handoff measurement** (§9 P1 already gates on
+"boot-handoff phase agrees with the oracle"): either (a) a tiny custom CGB ROM that runs the mode3 SCY storm on the
+first frame after a clean direct boot WITHOUT any LCD disable/re-enable, run through the same probes; or (b)
+instrument BOTH emulators to emit the PPU restart/start dot relative to the CPU's first instruction-fetch dot
+DIRECTLY at the SkipBoot/direct-boot handoff (read off the state machine, not via a poll-gated ROM write). Confirm
+the SAME CGB constant that lands SCY @76/84/92/100 at the re-enable also reproduces the oracle boot-handoff phase.
+Until then the family is NOT certified not-curve-fit, and the fix MUST be re-enable-scoped (irq.rs
+`enter_lcd_enabled_restart_state`) and structurally isolated from the boot dispatch.
+
+### 11.6 Tooling (reproducible)
+
+- **gb-cycle probe** — `crates/gb-core/examples/cgb_scy_phase_probe.rs` (ephemeral, DELETED at P0 close; recreate
+  per §11.7). Raw event tracer: `Machine::new_summary(MachineConfig::new(ConsoleModel::GameBoyColor)
+  .with_startup_mode(StartupMode::SkipBoot))`, step `step_t_cycle()`, and per tick read `ppu.{ly(), line_dot(),
+  access_mode(), lcd_state().is_enabled(), read_register(0xFF40), read_register(0xFF42), mode0_start_dot()}`
+  (accessors `api.rs:207/1493/1497/1501/1505/1522`). Print edges of LCDC.7, LCD enable/disable, `OamScan→Drawing`
+  on the target ly, and SCY value-changes, tagged by enable-epoch (epoch 0 = boot, epoch 1 = first re-enable).
+  Run: `cargo run --release -p gb-core --example cgb_scy_phase_probe -- <m3_scy_change.gb> <ly>`.
+- **DocBoy emits** — kept until P4 (§8/§9-P4), `#ifdef GBCYCLE_FETCH_TRACE`-guarded, copy the `GBTRACE_LY` idiom
+  at `ppu.cpp:3538-3545`: `CPUWR-LCDC-DOCBOY` (in `write_lcdc`, the `if (en != lcdc.enable)` block, before
+  `turn_on()/turn_off()`, prints `ly dots val en`) and `PPU-MODE3-START-DOCBOY` (top of `enter_pixel_transfer`,
+  prints `ly dots`). Rebuild `cmake --build build-trace-cgb -j8`. Run:
+  `GBTRACE_LY=<ly> build-trace-cgb/docboy-nogui <rom> -t 400000 2>&1 | grep -E 'CPUWR|PPU-MODE3'`.
+
+## 12. Hardware-doc grounding ledger (per `docs/REFERENCES.md`)
+
+Cross-check of every model component against primary hardware docs. DocBoy/SameBoy are cross-checks, not the
+authority; CORROBORATED = documented hardware behavior agrees; DOC-SILENT = no documented behavior found
+(permitted only when reconciled with the hardware-derived fixture and uncontradicted, and flagged as such).
+
+| Component / claim | Status | Source + note |
+|---|---|---|
+| §5.2 CGB SCY/SCX write observed **2 T-cycles late** (DMG immediate) | **CORROBORATED** | mealybug comprehensive PPU doc: *"On CGB and AGB devices, writes appear to take effect 2 T-cycles later."* = DocBoy `pending_write.scy.countdown=2`. |
+| §5.3 **CGB-D latches SCY once at the `B` stage** (GetTile0); DMG/CGB-C read across `B,0,1` (per-byte → bitplane mixing) | **CORROBORATED** | mealybug comprehensive PPU doc. Our fixture is `cgb_dmg_mode` = CGB-D. |
+| First frame after LCD enable is blank; LCD disable only during VBlank | **CORROBORATED (qualitative)** | Pan Docs `LCDC.7`. No dot-level first-line timing given. |
+| §5.1 / P0 **~4-clock CPU↔PPU phase, CGB-vs-DMG, present in DMG-compat mode** | **CORROBORATED** | **TCAGBD §8.1**: "LCD timings are a bit different… CGB, AGB, AGS in another way (**even in DMG compatibility mode**)." **TCAGBD §8.9.2 (CGB in DMG mode) vs §8.9.1 (DMG)**: CGB holds LY ~4 clocks longer (153→0 at clock **8** vs DMG clock **4**) and its LY=LYC compare is correspondingly offset — a documented ~4-clock CGB phase shift in DMG-compat mode. Our ROM runs there (CGB-flag byte 0x143 = **0x00** = DMG-compat). Direction coheres with P0's +4: CGB line boundary ~4 clocks later in CPU-time ⇒ CPU writes land ~4 dots earlier in the PPU line (SCY @76 vs gb-DMG @80). |
+| Exact first-line-after-enable mode3-fetch dot / re-enable line0 length (gb 448/72 vs DocBoy 456/80) | **DOC-SILENT (residual)** | TCAGBD documents the ~4-clock phase at 4-clock granularity in the LY/LYC/STAT domain but does **not** tabulate the mode3→mode0 fetch transition (sprite-count-dependent, §8.9 caveat); GBCTR is silent. The dot-exact fetch phase that discriminates the `LCD_REENABLE_INITIAL_LINE_DOT`-seed vs line0-length carrier still needs the P1 fetch-domain + boot-handoff measurement (§11.5). |
+
+**Method note (2026-06-15):** Pan Docs blocks automated fetchers (HTTP 403) — use the GitHub source mirror
+`raw.githubusercontent.com/gbdev/pandocs/master/src/*.md`. **TCAGBD and Gekkio GBCTR were read locally**
+(`$HOME/Downloads/{TCAGBD,gbctr}.pdf` via `pdftotext`/poppler): TCAGBD §8.1/§8.8/§8.9 are the authoritative
+corroboration of the CGB-vs-DMG phase; **GBCTR's PPU chapter (ch.9, p.139+) is DMG-register-focused and silent on
+the CGB phase**. The mealybug comprehensive PPU doc corroborates §5.2/§5.3. Net: 3 of the 4 model claims are now
+documentation-grounded; only the dot-exact carrier choice remains an emulator+fixture measurement (P1).
