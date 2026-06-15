@@ -382,3 +382,31 @@ Run before declaring any milestone done:
 - Oracles: SameBoy `Core/display.c:916-1107, 1471-1532, 1760-2150`, `Core/sm83_cpu.c:1625-1662`; DocBoy `src/docboy/docboy/ppu/ppu.cpp:938-972, 1533-1658, 1708-1791, 1946-2522`.
 - Harness: `crates/gb-core/examples/g3_sprite_grid.rs`; `cpu_visible_stat_mode()` at `crates/gb-core/src/ppu/api.rs:1509`.
 - Guardrail doc: `docs/hardware/PPU-REIMPLEMENTATION.md:28, 29, 57`; ledger `docs/TODO.md:20-23`.
+
+---
+
+## Appendix — PPU core comparison: DocBoy vs SameBoy vs gb-cycle (architectural north star)
+
+> Recorded 2026-06-15 to keep the campaign's direction grounded. This appendix is EVIDENCE/rationale and dies with this doc at M5; the **durable distillation lives in [`docs/CODING-RULES.md`](../CODING-RULES.md) → "Hardware-fidelity discipline (no compensation seams)"** so the principle survives this doc's deletion. Based on a direct read of DocBoy `ppu.cpp` (~4.2k LOC core), SameBoy `Core/display.c` (~2.5k LOC), and gb-cycle `crates/gb-core/src/ppu/` (~19k LOC, ~6k of Mode 3).
+
+**Why DocBoy is the numeric oracle (not SameBoy).** DocBoy shares gb-cycle's dot origin (Mode 3 enters at dot 80 in both, no offset) so its trace diffs directly, dot-by-dot; SameBoy counts `cycles_for_line` with a `+4` STAT-publication lag, forcing a `−3`/`+4` mental conversion per comparison. DocBoy is also modifiable for instrumentation; SameBoy is read-only. SameBoy remains the *fidelity* reference (the scene's de-facto standard) but is the worse measuring instrument.
+
+**Scores (common rubric, 1–10).**
+
+| Dimension | DocBoy | SameBoy | gb-cycle **today** | gb-cycle **post-campaign** |
+|---|---|---|---|---|
+| Hardware fidelity | 9 | **10** | 7 | 9 |
+| Freedom from tables/seams/hacks | **8** | 7 | 3 | 8 |
+| Code cleanliness / readability | **7** | 6 | 6 | 7.5 |
+| Runtime lightness | 8 | **9** | 7 | 8 |
+| Maintainability / extensibility | 7 | 5 | 5 | **8** |
+| **Overall** | **7.8** | 7.4 | 5.8 | **8.1** |
+
+**Essence of each.**
+- **SameBoy — most faithful, worst *blueprint* to copy.** Reference accuracy from a decade of refinement, not clean architecture: a ~43-macro-state machine driven by `goto` + `GB_SLEEP`/`GB_STATE` (coroutine-style, coupled to the CPU scheduler), ~4.3% comments, unexplained magic numbers (`167 + SCX&7`), and the `+4` STAT lag *acknowledged but not modeled* (a literal TODO asks to model it "to greatly simplify the logic"). The `GB_SLEEP` coupling means the PPU cannot be tested in isolation. Excellent artifact, poor mold.
+- **DocBoy — the design that best solves the seam problem.** Its `pending_write` (per-register countdown for lcdc/scy/scx/wx/stat, serialized, decremented at end of tick) is the cleanest of the three for mid-line register observation — exactly what this campaign is porting. Timing is emergent from the FSM, not curve-fit; glitches are documented flag-branches, not per-`sprite_x` arrays. Costs: pervasive `#ifdef CGB/DMG` (~30% of code), large functions (`pixel_transfer_lx8` 147 lines), a 32k-line pixelmap LUT (but pure optimization, justified). Clean partly *because it is young* — no accumulated debt.
+- **gb-cycle — most modular and best-tested, today weighed down by its own seams.** ~33% of Mode 3 (~2,000 lines) is curve-fit observation tables + STAT overrides + glue. The cautionary lesson: its greatest virtue (explicitness, types, a precise name for every concept) is exactly what let the seams proliferate — each compensation got a beautifully-named type, so the curve-fit felt locally "clean" and grew. Over-verbose names; tests pinned to specific ROMs rather than to behavior.
+
+**The thesis that ties them together.** The M2 finding — neutralizing the observation tables regressed 5 sprite-coupled ROMs — proves the tables encode *real* hardware behavior (obj-stall-coupled register sampling). But DocBoy models that *same* behavior emergently because its fetcher lands on the exact dot. ⇒ **A table is the symptom of a non-dot-exact timing step; the cure is dot-exact timing, not better tables.** That is the campaign's central premise, and it is correct.
+
+**Verdict — what to build from scratch.** **DocBoy's architecture + gb-cycle's engineering discipline (in Rust) + SameBoy/DocBoy as dual oracles:** a per-dot FSM with live register reads inside fetch sub-steps and a single uniform `pending_write`-style observation latency from day one (DocBoy's model); modular typed Rust with the test battery (gb-cycle's discipline) under the two binding anti-seam rules now in CODING-RULES.md; SameBoy used only as a fidelity oracle, never as a code template. The interesting conclusion: that ideal hybrid is precisely what **gb-cycle post-campaign aims to be (8.1, above DocBoy today)** — the campaign is not chasing DocBoy, it is trying to surpass it by combining DocBoy's model with gb-cycle's modular/test discipline. The remaining risk is execution (M2–M4 + the CGB redesign, not yet started), not direction. If forced to pick one existing core *as-is, today*: **DocBoy** — faithful, clean, and already embodying the seam-free mechanism without SameBoy's decade of accreted complexity or gb-cycle's half-finished de-seaming.

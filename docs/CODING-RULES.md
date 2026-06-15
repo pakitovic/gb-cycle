@@ -10,6 +10,7 @@
 ## Recommended practices
 
 - Use descriptive names tied to hardware meaning.
+- Name identifiers after the hardware fact they represent, not the internal compensation path: avoid encoding phase numbers, table-lookup strategy, or refetch tactics into names (prefer a short hardware-meaningful name over e.g. `startup_visible_tile2_phase6_refetch_prefers_tilemap_row`). A long name that describes a seam is a smell that the seam should not exist.
 - Prefer enums and small structs over magic numbers.
 - Keep `pub` visibility narrow.
 - Separate state mutation from derived calculations when possible.
@@ -57,6 +58,15 @@
 - Model long-running work as explicit in-flight state with visible lifecycle, ownership, and completion rules; avoid one-shot helpers that silently perform an entire DMA, serial byte, audio tick block, capture, or scanline side effect at once.
 - Keep MMIO side effects owned by the register's subsystem and make same-cycle versus delayed visibility explicit.
 - For timing-sensitive comparisons or regression hunts, prefer retained traces/snapshots/artifacts that identify the first divergent hardware-visible event over broad final-state assertions alone.
+
+## Hardware-fidelity discipline (no compensation seams)
+
+Learned from the PPU Mode 3 cleanup (see the appendix in `docs/roadmap/04-ppu-fix.md`): compensation tables breed compensation tables. These rules are binding for any timing-sensitive subsystem (PPU, CPU, timer, DMA, interrupts, bus).
+
+- **Never encode timing as a per-`sprite_x` / per-`SCX` / per-pixel "observed phase" correction array.** Model a mid-line / timing-sensitive register effect by reading the register live at the actual hardware step (e.g. inside the fetcher sub-step that consumes it) plus a single uniform write-observation latency keyed by console. A per-index table is curve fit — it encodes the *symptom* of a step that lands on the wrong dot, not the hardware. If a behavior seems to need such a table, the underlying fetch/timing step is on the wrong dot: fix the dot, do not tabulate the offset.
+- **Collapse, never accrete.** A new mechanism must REPLACE the one it supersedes in the same change, not sit beside it; the net count of compensation paths must go DOWN. A change that passes a test while leaving the old seam in place (green-with-seams) is a failure, not a fix — revert it.
+- **A console gate must reflect real silicon, never a fitted constant.** When you branch on `is_cgb_family()` (or model/revision), it must encode a documented hardware difference (e.g. DMG re-reads SCY per byte, CGB latches once and defers writes by a fixed observation latency). A magic per-console offset whose only justification is "it makes test ROM X pass" is forbidden — it is a curve-fit seam in a phase-model costume.
+- **Make timing emergent from the state machine; cross-check dot-by-dot before compensating.** Prefer landing the FSM step on the hardware dot (validated against the oracles: SameBoy read-only, DocBoy modifiable and same dot-origin) over adding a layer that corrects a known-early/late step. Reach for a compensation only after the dot-by-dot diff proves the FSM itself cannot express the behavior, and document why in the owning `docs/*` file.
 
 ## Error handling
 
