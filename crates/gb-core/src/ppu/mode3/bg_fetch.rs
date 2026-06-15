@@ -18,7 +18,26 @@ impl Ppu {
             return false;
         }
 
+        if self.cgb_startup_continuation_fetch_blocked_on_fifo_room() {
+            return false;
+        }
+
         self.advance_bg_fetcher_automaton_step(fetch_policy, vram)
+    }
+
+    fn cgb_startup_continuation_fetch_blocked_on_fifo_room(&self) -> bool {
+        if !self.console_model.is_cgb_family() {
+            return false;
+        }
+        let bg = &self.runtime.bg_pipeline_state;
+        let at_continuation_get_tile0 = bg.fetcher.source == PpuBgFetcherSource::Background
+            && matches!(bg.fetcher.stage, PpuBgFetcherStage::TileIndex)
+            && bg.fetcher.stage_dot == 0
+            && matches!(
+                bg.startup_fetch_seam,
+                BgStartupFetchSeamState::PostAlignment { .. }
+            );
+        at_continuation_get_tile0 && bg.fifo.len() > BG_TILE_WIDTH as usize
     }
 
     fn prepare_bg_fetcher_dot(&mut self, vram: &VramBusView<'_>) {
