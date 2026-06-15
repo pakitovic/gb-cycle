@@ -835,3 +835,26 @@ threshold tweak.
 GetTile0 produced by increment 1, and gate the startup obj-fetch start on first-real-tile-fetched with the
 sprite-position accounting updated — re-greens `m3_lcdc_tile_sel_change` and supplies band ly0-7's +1. Gate: CGB
 mealybug back to 23/24 then 24/24, broad suites stay green.
+
+### 21.2 INCREMENT 2 ATTEMPT — the breakage is the +4 register-write phase, NOT the fetch timing (2026-06-15)
+
+Tried gating the fetch-policy pipeline-snapshot reads (`startup_background_tilemap/tiledata/tileindex…`) off for CGB
+so the continuation reads live: **no effect** (lcdc_tile_sel still 436px). The LCDC.4 tile-data-select is read live at
+the data stage already, not via that snapshot. Reverted.
+
+**Oracle measurement settles it:** DocBoy `m3_lcdc_tile_sel_change` storm x8 BG_GETTILE0 is at **dot 102 — IDENTICAL to
+m3_scy_change**. So the canonical continuation fetch dot is 102 for both, and increment 1 (gb's continuation GetTile0
+now ≈102, data stage 104) has the **CORRECT canonical fetch timing**. The lcdc_tile_sel regression is therefore NOT a
+fetch-timing error — it is gb's **+4 register-write phase (§13, P0)**: gb writes its mode3 registers 4 dots later than
+hardware, so reading at the canonical dot (102/104) yields the wrong value. The pre-inc1 read dot (98) happened to
+satisfy LCDC.4 by coincidence of the write schedule; inc1 (104) breaks it. Band ly0-7's SCY needs read@105 for the
+same reason (write@104 applies after the PPU step).
+
+**Consequence — the two are coupled:** the canonical startup (read registers at the canonical GetTile0) only yields
+correct values if the **register writes are observed with the canonical phase**. So increment 2 is the **§5.2 CGB
+write-observation** (the `pending_write` countdown, doc-CORROBORATED 2 T-cycles) made canonical, so a read at the
+canonical GetTile0 sees the write hardware would have applied by then. inc1 (canonical fetch timing) + §5.2 (canonical
+write observation) together close the CGB mealybug register-change tests at the canonical dot; neither alone does.
+§13 refuted shifting the whole CGB STAT phase, but the §5.2 per-register observation latency (NOT a phase shift) is the
+remaining lever — apply it at the GetTile0 register latch only, validated per-register against DocBoy across
+m3_scy_change AND m3_lcdc_tile_sel_change (and the other m3_* register-change tests).
