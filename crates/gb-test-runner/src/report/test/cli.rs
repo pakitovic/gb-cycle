@@ -78,14 +78,19 @@ fn run_rejects_unknown_report_and_lists_available_reports() {
 }
 
 #[test]
-fn report_command_clears_existing_status_and_artifacts_before_running_suite() {
-    let workspace = unique_temp_dir("report-clean-runtime");
+fn report_command_clears_selected_suite_runtime_and_preserves_link_evidence() {
+    let workspace = unique_temp_dir("report-clean-selected-runtime");
     write_local_report_with_missing_rom_suite(&workspace);
+    fs::write(
+        workspace.join("crates/gb-test-runner/data/sample-report/docboy-dmg-link.link.suite.toml"),
+        "this is intentionally not a single-machine suite manifest",
+    )
+    .expect("link suite manifest should be writable");
     write_status(
         &workspace,
         "sample-report",
-        "stale-suite",
-        r#"suite_name = "stale-suite"
+        "sample-suite",
+        r#"suite_name = "sample-suite"
 family = "stale"
 
 [[cases]]
@@ -93,9 +98,21 @@ rom = "stale.gb"
 status = "PASS"
 "#,
     );
-    let stale_status = workspace.join("test/sample-report/.status/stale-suite.toml");
+    write_status(
+        &workspace,
+        "sample-report",
+        "docboy-dmg-link",
+        r#"suite_name = "docboy-dmg-link"
+family = "docboy-dmg"
+
+[[cases]]
+id = "linked-case"
+status = "PASS"
+"#,
+    );
+    let selected_status = workspace.join("test/sample-report/.status/sample-suite.toml");
     let stale_artifact =
-        workspace.join("test/sample-report/.artifacts/stale-suite/stale-case/old.txt");
+        workspace.join("test/sample-report/.artifacts/sample-suite/stale-case/old.txt");
     fs::create_dir_all(
         stale_artifact
             .parent()
@@ -103,6 +120,16 @@ status = "PASS"
     )
     .expect("stale artifact parent should be creatable");
     fs::write(&stale_artifact, "stale").expect("stale artifact should be writable");
+    let linked_status = workspace.join("test/sample-report/.status/docboy-dmg-link.toml");
+    let linked_artifact =
+        workspace.join("test/sample-report/.artifacts/docboy-dmg-link/linked-case/old.txt");
+    fs::create_dir_all(
+        linked_artifact
+            .parent()
+            .expect("linked artifact should have parent"),
+    )
+    .expect("linked artifact parent should be creatable");
+    fs::write(&linked_artifact, "linked").expect("linked artifact should be writable");
     let mut output = Vec::new();
 
     run_report_command_with_workspace_for_test(["sample-report"], &workspace, &mut output)
@@ -110,8 +137,13 @@ status = "PASS"
 
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("running cargo rom-suite sample-report"));
-    assert!(!stale_status.exists());
+    let selected_status =
+        fs::read_to_string(selected_status).expect("selected status should be rewritten");
+    assert!(selected_status.contains("rom = \"missing.gb\""));
+    assert!(!selected_status.contains("stale.gb"));
     assert!(!stale_artifact.exists());
+    assert!(linked_status.is_file());
+    assert!(linked_artifact.is_file());
     assert!(
         workspace
             .join("test/sample-report/.status/sample-suite.toml")
@@ -124,6 +156,7 @@ status = "PASS"
         "| sample | missing.gb | {REPORT_STATUS_FAIL_EMOJI} |"
     )));
     assert!(!report.contains("stale.gb"));
+    assert!(!report.contains("linked-case"));
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 
@@ -260,6 +293,20 @@ fn report_document_uses_source_order_before_suite_order() {
     write_basic_reports_with_sources(&workspace);
     fs::create_dir_all(workspace.join("crates/gb-test-runner/data/sample-report"))
         .expect("source manifest dir should be created");
+    fs::write(
+        workspace.join("crates/gb-test-runner/data/sample-report/a-suite.suite.toml"),
+        r#"report = "sample-report"
+suite_name = "a-suite"
+"#,
+    )
+    .expect("a-suite manifest should be writable");
+    fs::write(
+        workspace.join("crates/gb-test-runner/data/sample-report/z-suite.suite.toml"),
+        r#"report = "sample-report"
+suite_name = "z-suite"
+"#,
+    )
+    .expect("z-suite manifest should be writable");
     fs::write(
         workspace.join("crates/gb-test-runner/data/sample-report/sources.report.toml"),
         r#"[[source]]

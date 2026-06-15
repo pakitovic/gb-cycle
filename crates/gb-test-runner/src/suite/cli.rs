@@ -30,7 +30,7 @@ pub fn suite_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>] [--threads <n>] [--boot-rom-dir <dir>]\n",
         "\n",
-        "Validates report/suite/case selection, clears test/<report>/.status and test/<report>/.artifacts, then runs report-local *.suite.toml manifests through the new minimal suite runner.\n",
+        "Validates report/suite/case selection, clears selected suite status/artifacts under test/<report>/, then runs report-local *.suite.toml manifests through the new minimal suite runner.\n",
     )
 }
 
@@ -214,11 +214,12 @@ fn run_options_after_cleanup<W: Write, F: FnMut()>(
         None
     };
 
-    crate::runtime::clean_report_runtime_dirs(
+    crate::runtime::clean_suite_runtime_dirs(
         workspace_root,
         &report.store_dir,
         &report.status_dir,
         &report.artifact_dir,
+        suites.iter().map(|suite| suite.suite_name.as_str()),
     )?;
     after_cleanup();
 

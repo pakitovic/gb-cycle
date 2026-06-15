@@ -107,7 +107,7 @@ fn run_suite_and_load_statuses<W: Write>(
     writeln_checked(
         output,
         &format!(
-            "rom-report: running cargo rom-suite {}; rom-suite will clear previous status and artifacts after preflight",
+            "rom-report: running cargo rom-suite {}; rom-suite will clear selected single-machine status and artifacts after preflight",
             report.id
         ),
     )?;

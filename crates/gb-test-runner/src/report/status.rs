@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, btree_map::Entry};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -45,6 +45,11 @@ struct SourceFamilyFileEntry {
     target: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct SuiteManifestHeaderFile {
+    suite_name: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct ReportSourceOrder {
     rom_ranks: BTreeMap<String, BTreeMap<String, usize>>,
@@ -55,7 +60,8 @@ pub(super) fn load_statuses(
     report: &Report,
 ) -> Result<Vec<PersistedSuiteStatus>, String> {
     let status_root = status_root_for_report(workspace_root, report);
-    let status_files = status_files(&status_root)?;
+    let suite_status_files = single_machine_suite_status_files(workspace_root, report)?;
+    let status_files = status_files(&status_root, &suite_status_files)?;
     let mut statuses = Vec::with_capacity(status_files.len());
     for path in status_files {
         let text = fs::read_to_string(&path).map_err(|error| {
@@ -116,7 +122,51 @@ pub(super) fn store_root_for_report(workspace_root: &Path, report: &Report) -> P
         .join(&report.store_dir)
 }
 
-fn status_files(status_root: &Path) -> Result<Vec<PathBuf>, String> {
+fn single_machine_suite_status_files(
+    workspace_root: &Path,
+    report: &Report,
+) -> Result<BTreeSet<String>, String> {
+    let report_data_dir = report_data_dir(workspace_root, report);
+    let entries = fs::read_dir(&report_data_dir).map_err(|error| {
+        format!(
+            "failed to read suite manifest directory {}: {error}",
+            report_data_dir.display()
+        )
+    })?;
+    let mut file_names = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to read suite manifest entry in {}: {error}",
+                report_data_dir.display()
+            )
+        })?;
+        let path = entry.path();
+        let Some(manifest_file_name) = path.file_name().and_then(|file_name| file_name.to_str())
+        else {
+            continue;
+        };
+        if !is_single_machine_suite_manifest(manifest_file_name) {
+            continue;
+        }
+        let text = fs::read_to_string(&path).map_err(|error| {
+            format!("failed to read suite manifest {}: {error}", path.display())
+        })?;
+        let header: SuiteManifestHeaderFile = toml::from_str(&text).map_err(|error| {
+            format!(
+                "failed to parse suite manifest header {}: {error}",
+                path.display()
+            )
+        })?;
+        file_names.insert(format!("{}.toml", header.suite_name));
+    }
+    Ok(file_names)
+}
+
+fn status_files(
+    status_root: &Path,
+    suite_status_files: &BTreeSet<String>,
+) -> Result<Vec<PathBuf>, String> {
     if !status_root.exists() {
         return Ok(Vec::new());
     }
@@ -135,12 +185,31 @@ fn status_files(status_root: &Path) -> Result<Vec<PathBuf>, String> {
             )
         })?;
         let path = entry.path();
-        if path.extension().and_then(|extension| extension.to_str()) == Some("toml") {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("toml") {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|file_name| file_name.to_str()) else {
+            continue;
+        };
+        if suite_status_files.contains(file_name) {
             paths.push(path);
         }
     }
     paths.sort();
     Ok(paths)
+}
+
+fn report_data_dir(workspace_root: &Path, report: &Report) -> PathBuf {
+    let source_parent = report
+        .sources
+        .as_deref()
+        .and_then(Path::parent)
+        .unwrap_or(&report.store_dir);
+    workspace_root.join(DATA_DIR).join(source_parent)
+}
+
+fn is_single_machine_suite_manifest(file_name: &str) -> bool {
+    file_name.ends_with(".suite.toml") && !file_name.ends_with(".link.suite.toml")
 }
 
 fn compare_report_rows(

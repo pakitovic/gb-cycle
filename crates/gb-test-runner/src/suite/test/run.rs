@@ -88,8 +88,8 @@ fn command_runs_serial_suite_and_writes_status() {
 }
 
 #[test]
-fn command_clears_report_status_and_artifacts_before_running() {
-    let workspace = unique_temp_dir("clean-report-runtime");
+fn command_clears_selected_suite_status_and_artifacts_before_running() {
+    let workspace = unique_temp_dir("clean-selected-suite-runtime");
     write_reports(
         &workspace,
         "sample-report",
@@ -106,6 +106,11 @@ fn command_clears_report_status_and_artifacts_before_running() {
             "cpu_instrs/01-special.gb",
         ),
     );
+    write_manifest(
+        &workspace,
+        "sample-report/docboy-dmg-link.link.suite.toml",
+        "this is intentionally not a single-machine suite manifest",
+    );
     let rom_path = workspace.join("test/sample-report/blargg/cpu_instrs/01-special.gb");
     fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
         .expect("rom parent should be creatable");
@@ -116,12 +121,12 @@ fn command_clears_report_status_and_artifacts_before_running() {
         "sample-report/sources.report.toml",
         &[("blargg", "blargg")],
     );
-    let stale_status = workspace.join("test/sample-report/.status/stale-suite.toml");
-    fs::create_dir_all(stale_status.parent().expect("status should have parent"))
+    let selected_status = workspace.join("test/sample-report/.status/blargg-cpu-instrs.toml");
+    fs::create_dir_all(selected_status.parent().expect("status should have parent"))
         .expect("stale status parent should be creatable");
     fs::write(
-        &stale_status,
-        r#"suite_name = "stale-suite"
+        &selected_status,
+        r#"suite_name = "blargg-cpu-instrs"
 family = "stale"
 
 [[cases]]
@@ -130,31 +135,47 @@ status = "PASS"
 "#,
     )
     .expect("stale status should be writable");
-    let stale_artifact =
-        workspace.join("test/sample-report/.artifacts/stale-suite/stale-case/old.txt");
+    let selected_artifact =
+        workspace.join("test/sample-report/.artifacts/blargg-cpu-instrs/stale-case/old.txt");
     fs::create_dir_all(
-        stale_artifact
+        selected_artifact
             .parent()
             .expect("artifact should have parent"),
     )
     .expect("stale artifact parent should be creatable");
-    fs::write(&stale_artifact, "stale").expect("stale artifact should be writable");
+    fs::write(&selected_artifact, "stale").expect("stale artifact should be writable");
+    let linked_status = workspace.join("test/sample-report/.status/docboy-dmg-link.toml");
+    fs::write(
+        &linked_status,
+        r#"suite_name = "docboy-dmg-link"
+family = "docboy-dmg"
+
+[[cases]]
+id = "linked-case"
+status = "PASS"
+"#,
+    )
+    .expect("linked status should be writable");
+    let linked_artifact =
+        workspace.join("test/sample-report/.artifacts/docboy-dmg-link/linked-case/old.txt");
+    fs::create_dir_all(
+        linked_artifact
+            .parent()
+            .expect("linked artifact should have parent"),
+    )
+    .expect("linked artifact parent should be creatable");
+    fs::write(&linked_artifact, "linked").expect("linked artifact should be writable");
 
     let mut output = Vec::new();
-    run_suite_command_with_workspace_for_test(
-        ["sample-report", "--suite", "blargg-cpu-instrs"],
-        &workspace,
-        &mut output,
-    )
-    .expect("suite should pass after clearing stale runtime dirs");
+    run_suite_command_with_workspace_for_test(["sample-report"], &workspace, &mut output)
+        .expect("suite should pass after clearing selected suite runtime dirs");
 
-    assert!(!stale_status.exists());
-    assert!(!stale_artifact.exists());
-    assert!(
-        workspace
-            .join("test/sample-report/.status/blargg-cpu-instrs.toml")
-            .is_file()
-    );
+    let status = fs::read_to_string(&selected_status).expect("selected status should be rewritten");
+    assert!(status.contains("rom = \"cpu_instrs/01-special.gb\""));
+    assert!(!status.contains("stale.gb"));
+    assert!(!selected_artifact.exists());
+    assert!(linked_status.is_file());
+    assert!(linked_artifact.is_file());
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("suite blargg-cpu-instrs: 1/1 passed"));
 
