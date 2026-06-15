@@ -1383,8 +1383,8 @@ impl Ppu {
                 .map(|transfer| snapshot_bg_transfer_lane(transfer.context.lane)),
             bg_current_transfer_source_window: current_transfer
                 .map(|transfer| snapshot_bg_transfer_source_window(transfer.context.source_window)),
-            bg_current_transfer_backing: current_transfer_plan
-                .map(|plan| snapshot_bg_transfer_backing(plan.backing)),
+            bg_current_transfer_backing: current_transfer
+                .map(|transfer| snapshot_bg_transfer_backing(transfer.context.source_window)),
             bg_current_transfer_readiness: current_transfer
                 .map(|transfer| snapshot_bg_transfer_readiness(transfer.readiness)),
             bg_current_transfer_kind: current_transfer_plan
@@ -1835,7 +1835,8 @@ impl Ppu {
             self.bg_pipeline_state.current_transfer_x,
             current_transfer.map(|transfer| transfer.context.lane),
             current_transfer.map(|transfer| transfer.context.source_window),
-            current_transfer_plan.map(|plan| plan.backing),
+            current_transfer
+                .map(|transfer| snapshot_bg_transfer_backing(transfer.context.source_window)),
             current_transfer.map(|transfer| snapshot_bg_transfer_readiness(transfer.readiness)),
             current_transfer_plan.map(|plan| snapshot_bg_transfer_kind(plan.result_kind)),
             self.bg_pipeline_state.visible_pixels_output,

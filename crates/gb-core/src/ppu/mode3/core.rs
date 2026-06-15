@@ -264,9 +264,7 @@ impl Ppu {
     }
 
     pub(in crate::ppu) fn current_transfer(&self) -> Option<Mode3CurrentTransfer> {
-        self.mode3_transfer_policy().current_transfer(
-            self.runtime.bg_pipeline_state.fifo.is_empty(),
-            self.runtime.bg_pipeline_state.effective_fifo_is_empty(),
-        )
+        self.mode3_transfer_policy()
+            .current_transfer(self.runtime.bg_pipeline_state.fifo.is_empty())
     }
 }

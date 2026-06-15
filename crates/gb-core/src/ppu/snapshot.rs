@@ -312,12 +312,15 @@ pub(super) const fn snapshot_bg_transfer_source_window(
     }
 }
 
+// The abstract/real backing distinction is gone from the core transfer path (canonical: every
+// transfer dot pops the real FIFO). This snapshot value is now a pure diagnostic derived from the
+// startup source window. See docs/roadmap/12 §24.
 pub(super) const fn snapshot_bg_transfer_backing(
-    backing: Mode3TransferBacking,
+    source_window: Mode3TransferSourceWindow,
 ) -> PpuMode3TransferBackingSnapshot {
-    match backing {
-        Mode3TransferBacking::Abstract => PpuMode3TransferBackingSnapshot::Abstract,
-        Mode3TransferBacking::FifoBacked => PpuMode3TransferBackingSnapshot::FifoBacked,
+    match source_window {
+        Mode3TransferSourceWindow::AbstractStartup => PpuMode3TransferBackingSnapshot::Abstract,
+        Mode3TransferSourceWindow::FifoBacked => PpuMode3TransferBackingSnapshot::FifoBacked,
     }
 }
 

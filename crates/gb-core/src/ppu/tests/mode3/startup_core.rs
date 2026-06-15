@@ -699,6 +699,8 @@ fn mode3_started_uses_explicit_startup_entry_delay_before_transfer_service() {
     ppu.bg_pipeline_state.mode3_started = true;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
     ppu.bg_pipeline_state.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
+    ppu.bg_pipeline_state
+        .push_dummy_fifo_pixels(MODE3_ABSTRACT_SOURCE_WINDOW_DOTS);
     ppu.bg_pipeline_state.startup_source_state =
         Mode3StartupSourceState::EntryDelay { remaining: 2 };
     ppu.bg_pipeline_state
@@ -739,6 +741,7 @@ fn mode3_started_keeps_an_explicit_abstract_source_window_before_fifo_backed_tra
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
     ppu.bg_pipeline_state.mode3_started = true;
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 1 };
     ppu.bg_pipeline_state
         .startup_pre_visible_transfer_dots_remaining = MODE3_ABSTRACT_PREVISIBLE_TRANSFER_DOTS;
@@ -749,7 +752,6 @@ fn mode3_started_keeps_an_explicit_abstract_source_window_before_fifo_backed_tra
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
             execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
-            backing: Mode3TransferBacking::Abstract,
         })
     );
 
@@ -768,7 +770,6 @@ fn mode3_started_keeps_an_explicit_abstract_source_window_before_fifo_backed_tra
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
             execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
-            backing: Mode3TransferBacking::FifoBacked,
         })
     );
 }
@@ -791,7 +792,6 @@ fn mode3_started_keeps_an_explicit_previsible_lane_before_hidden_transfer() {
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
             execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
-            backing: Mode3TransferBacking::FifoBacked,
         })
     );
 
@@ -812,7 +812,6 @@ fn mode3_started_keeps_an_explicit_previsible_lane_before_hidden_transfer() {
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
             execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
-            backing: Mode3TransferBacking::FifoBacked,
         })
     );
 }
@@ -825,6 +824,7 @@ fn late_hidden_dot_can_consume_a_startup_placeholder_before_the_first_real_fill(
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state
         .startup_pre_visible_transfer_dots_remaining = 0;
     ppu.bg_pipeline_state.current_transfer_x = 7;
@@ -846,6 +846,7 @@ fn late_hidden_scx_discard_can_consume_a_startup_placeholder_before_real_fifo_ba
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state
         .startup_pre_visible_transfer_dots_remaining = 0;
     ppu.bg_pipeline_state.current_transfer_x = 0;

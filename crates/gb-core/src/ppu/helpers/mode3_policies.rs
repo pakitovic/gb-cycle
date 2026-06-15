@@ -118,32 +118,22 @@ impl PpuMode3TransferPolicy {
             context.lane.dot_kind()
         };
 
-        let backing = match context.source_window {
-            Mode3TransferSourceWindow::AbstractStartup => Mode3TransferBacking::Abstract,
-            Mode3TransferSourceWindow::FifoBacked => Mode3TransferBacking::FifoBacked,
-        };
-
         Some(Mode3TransferServicePlan {
             result_kind,
             execution,
-            backing,
         })
     }
 
     pub(in crate::ppu) fn current_transfer(
         self,
-        real_bg_fifo_empty: bool,
-        effective_bg_fifo_empty: bool,
+        bg_fifo_empty: bool,
     ) -> Option<Mode3CurrentTransfer> {
         let context = self.current_transfer_context()?;
         let plan = self.transfer_service_plan(context)?;
-        let readiness = if plan.requires_real_bg_fifo_pixel() {
-            if real_bg_fifo_empty {
-                Mode3TransferReadiness::WaitingForFifo(plan)
-            } else {
-                Mode3TransferReadiness::Ready(plan)
-            }
-        } else if plan.requires_effective_bg_fifo_pixel() && effective_bg_fifo_empty {
+        // Canonical: every transfer dot pops one real BG FIFO entry (the startup junk pixels are
+        // real FIFO entries now), so readiness is simply whether the FIFO has a pixel to pop —
+        // the abstract/real backing distinction is gone. See docs/roadmap/12 §24.
+        let readiness = if bg_fifo_empty {
             Mode3TransferReadiness::WaitingForFifo(plan)
         } else {
             Mode3TransferReadiness::Ready(plan)

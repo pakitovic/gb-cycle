@@ -22,15 +22,14 @@ impl Ppu {
             plan.execution,
             Mode3TransferServiceExecution::EmitVisiblePixel
         ) {
+            // The visible pixel is popped (with its cached metadata) in execute_transfer_visible_pixel.
             None
-        } else if plan.requires_real_bg_fifo_pixel() {
-            self.runtime.bg_pipeline_state.pop_real_fifo_pixel()
-        } else if plan.requires_effective_bg_fifo_pixel() {
+        } else {
+            // SCX-discard / pre-visible / hidden dots each pop one real BG FIFO entry; while the
+            // leading startup junk pixels remain this also advances the junk counter.
             self.runtime
                 .bg_pipeline_state
                 .consume_effective_fifo_pixel()
-        } else {
-            None
         }
     }
 

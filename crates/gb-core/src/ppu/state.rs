@@ -492,7 +492,6 @@ pub(super) struct Mode3TransferContext {
 pub(super) struct Mode3TransferServicePlan {
     pub(super) result_kind: Mode3TransferDotKind,
     pub(super) execution: Mode3TransferServiceExecution,
-    pub(super) backing: Mode3TransferBacking,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -523,43 +522,6 @@ pub(super) enum Mode3TransferServiceExecution {
     AdvancePreVisibleWithBgPop,
     AdvanceHiddenWithBgAndObjPop,
     EmitVisiblePixel,
-}
-
-impl Mode3TransferServiceExecution {
-    pub(super) const fn requires_effective_bg_fifo_pixel(self) -> bool {
-        matches!(
-            self,
-            Self::ConsumeScxDiscard
-                | Self::AdvancePreVisibleWithBgPop
-                | Self::AdvanceHiddenWithBgAndObjPop
-        )
-    }
-
-    pub(super) const fn requires_real_bg_fifo_pixel(self) -> bool {
-        matches!(self, Self::EmitVisiblePixel)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(super) enum Mode3TransferBacking {
-    Abstract,
-    FifoBacked,
-}
-
-impl Mode3TransferServicePlan {
-    pub(super) const fn requires_effective_bg_fifo_pixel(self) -> bool {
-        self.execution.requires_effective_bg_fifo_pixel() && !self.requires_real_bg_fifo_pixel()
-    }
-
-    pub(super) const fn requires_real_bg_fifo_pixel(self) -> bool {
-        self.execution.requires_real_bg_fifo_pixel()
-            || (matches!(self.backing, Mode3TransferBacking::FifoBacked)
-                && matches!(
-                    self.execution,
-                    Mode3TransferServiceExecution::ConsumeScxDiscard
-                        | Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop
-                ))
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1842,10 +1804,6 @@ impl BgPipelineState {
         if self.startup_pre_visible_transfer_dots_remaining > 0 {
             self.startup_pre_visible_transfer_dots_remaining -= 1;
         }
-    }
-
-    pub(super) fn effective_fifo_is_empty(&self) -> bool {
-        self.startup_fifo_placeholders == 0 && self.fifo.is_empty()
     }
 
     pub(super) fn fifo_contains_real_pixels(&self) -> bool {

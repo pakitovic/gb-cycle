@@ -234,7 +234,6 @@ fn current_transfer_snapshot_keeps_context_and_readiness_together() {
         Mode3TransferReadiness::WaitingForFifo(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
             execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
-            backing: Mode3TransferBacking::FifoBacked,
         })
     );
 
@@ -250,7 +249,6 @@ fn current_transfer_snapshot_keeps_context_and_readiness_together() {
         Mode3TransferReadiness::Ready(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
             execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
-            backing: Mode3TransferBacking::FifoBacked,
         })
     );
 }
@@ -271,7 +269,6 @@ fn transfer_service_plan_distinguishes_abstract_hidden_and_fifo_backed_visible_p
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
             execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
-            backing: Mode3TransferBacking::Abstract,
         })
     );
 
@@ -282,7 +279,6 @@ fn transfer_service_plan_distinguishes_abstract_hidden_and_fifo_backed_visible_p
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
             execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
-            backing: Mode3TransferBacking::FifoBacked,
         })
     );
 
@@ -293,7 +289,6 @@ fn transfer_service_plan_distinguishes_abstract_hidden_and_fifo_backed_visible_p
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedVisiblePixel,
             execution: Mode3TransferServiceExecution::EmitVisiblePixel,
-            backing: Mode3TransferBacking::FifoBacked,
         })
     );
 }
@@ -344,6 +339,7 @@ fn abstract_previsible_scx_discard_keeps_lx_zero_until_hidden_transfer_begins() 
     ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state.current_transfer_x = 0;
     ppu.bg_pipeline_state.scx_discard_remaining = 1;
 

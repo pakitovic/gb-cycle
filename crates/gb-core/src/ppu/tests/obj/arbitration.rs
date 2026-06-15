@@ -196,7 +196,6 @@ fn abstract_startup_service_kind_tracks_served_progress_not_raw_mode3_dot() {
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedPreVisibleTransfer,
             execution: Mode3TransferServiceExecution::AdvancePreVisibleWithBgPop,
-            backing: Mode3TransferBacking::Abstract,
         })
     );
 
@@ -208,7 +207,6 @@ fn abstract_startup_service_kind_tracks_served_progress_not_raw_mode3_dot() {
         Some(Mode3TransferServicePlan {
             result_kind: Mode3TransferDotKind::ServedHiddenTransfer,
             execution: Mode3TransferServiceExecution::AdvanceHiddenWithBgAndObjPop,
-            backing: Mode3TransferBacking::Abstract,
         })
     );
 }
@@ -282,6 +280,7 @@ fn hidden_startup_dot_advances_pre_visible_match_x_without_bg_fifo_pop() {
     ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
     ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
+    ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state.current_transfer_x = 5;
 
     let result = ppu.advance_mode3_output_phase();
