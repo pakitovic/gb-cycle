@@ -6,7 +6,11 @@
 > fix is SCY-observation only: §5.2 (uniform write latency) + §5.3 (CGB-D GetTile0-once sampling). **§5.2/§5.3
 > attempt 1 reverted (§14): the §5.2 latency register is sound, but routing observed SCY through the universal
 > `current_mmio_visible_registers` poisons the output-time recompute (121→2760px). Attempt 2 must feed observed SCY
-> ONLY to the GetTile0 fetch latch, per-tile validated against DocBoy `GBT-TDATA tile_y`.** This is the plan for the
+> ONLY to the GetTile0 fetch latch, per-tile validated against DocBoy `GBT-TDATA tile_y`.** **ATTEMPT 2 RESULT
+> (§15): the per-tile validation did its job — §5.2 is rebuilt and oracle-dot-exact on the steady path, but §5.3 is
+> NECESSARY-BUT-INSUFFICIENT (it mismatches the oracle at exactly the obj-stalled startup tile, where gb's BG fetcher
+> reaches GetTile0 ~4 dots early). The real carrier is the BG-fetcher obj-stall LEAD, not SCY observation; §5.3
+> wiring HELD, re-ground to fetcher-lead (touches the #245-frozen penalty region — a phase decision).** This is the plan for the
 > coordinated CGB timing rework that the PPU-hardening campaign (`04-ppu-fix.md`) proved is
 > required to close `mealybug-cgb-m3-scy-change`. It supersedes the scoped-fix directions for
 > that ROM. Durable open-work ledger stays in [`docs/TODO.md`](../TODO.md); hardware contract in
@@ -487,3 +491,139 @@ observed value shifted its marker — confirming MECH 1c must be collapsed toget
 Net: the observation-latency MECHANISM is correct and built; the error was applying it at the wrong site (universal
 helper / output recompute) instead of the GetTile0 fetch latch. Attempt 2 = GetTile0-local observed SCY, per-tile
 DocBoy-validated.
+
+## 15. ATTEMPT 2 — per-tile validation PASSED its job: §5.2 confirmed, §5.3 INSUFFICIENT; residual is the BG-fetcher obj-stall lead (2026-06-15)
+
+**Outcome: the §5.2 observation register is rebuilt and VALIDATED dot-exact against the oracle, but the mandatory
+per-tile measurement (§14 step 5 — the step attempt 1 skipped) proves §5.3 (GetTile0-once-from-observed) does NOT
+match DocBoy per tile, and so cannot close m3_scy_change on its own. The residual carrier is the BG-fetcher
+startup/obj-stall TIMING (the "fetcher-lead"), NOT SCY observation. Per the gate's own rule ("if they don't match
+per tile, re-ground; do NOT wire blind"), §5.3 wiring is HELD. No behavior-changing code landed; the §5.2 register
++ an env-gated GetTile0 candidate probe are in the working tree (uncommitted).**
+
+### 15.1 What landed (behavior-neutral, validated)
+- **§5.2 register, rebuilt the right way.** `PpuScyObservation { observed, pending_value, countdown }` lives in
+  `PpuRuntimeState` (ppu.rs, beside `visible_registers`/`pipeline_registers`); armed `countdown=2` on CGB SCY write
+  (`api.rs` `PpuRegister::Scy`), ticked once per dot beside `advance_mode3_register_latches_from_mmio` (api.rs:~1178),
+  resynced to `self.scy` in `reload_mode3_register_latches_from_mmio` (covers startup + every LCD enable/disable/
+  restart), serialized `#[serde(default)]`. `current_mmio_visible_registers().scy` kept RAW (§14 step 1). fmt/lint/
+  tests clean; mealybug CGB stays **23/24** (no consumer yet) ⇒ provably behavior-neutral.
+- **Env-gated GetTile0 candidate probe** (ephemeral, `GBCYCLE_SCY_PROBE_LY=<ly>`) at bg_fetch TileIndex/dot1 for CGB
+  Background tiles, emitting `GBT-CANDIDATE ly dot fetch_x observed row live_scy` — the row gb WOULD freeze under §5.3.
+
+### 15.2 The measurement (gb `GBT-CANDIDATE` vs DocBoy `GBT-TDATA bwfscy/tile_y`, 4 bands)
+DocBoy emit is at tile-data-address setup (≈ gb GetTile0 + 2 dots, the stage offset); compared on GetTile0-aligned
+(first) emit. Per-tile **value** match:
+
+| band (rep ly) | candidate vs oracle | mismatching tiles |
+|---|---|---|
+| 72–79 (ly 74) | **all 21 tiles match** (value-exact) | none |
+| 136–143 (ly 140) | **all 21 tiles match** (value-exact) | none |
+| 23–31 (ly 24, 28) | match EXCEPT one startup tile | **x=8 only** (gb obs=1, oracle=2) |
+| 0–7 (ly 4) | diverges broadly | confounded by the landed seed fix (gb renders via seed, not the raw candidate) |
+
+⇒ The §5.2 latency is correct (steady path + 2 whole bands are dot-exact). The candidate fails ONLY at the
+obj-stalled startup tile, and (separately) the seed-fix band is not modelled by the raw candidate.
+
+### 15.3 Root cause, nailed (ly=28, GetTile0 dots side-by-side)
+| x | gb GetTile0 dot (scy) | DocBoy GetTile0 dot (scy) | Δ |
+|---|---|---|---|
+| 0 | 84 (0) | 85 (0) | +1 |
+| **8** | **97 (1)** | **101 (2)** | **+4** |
+| 16 | 109 (3) | 109 (3) | 0 |
+| 24…160 | aligned | aligned | 0 |
+
+gb: x0→x8 = 13 dots, x8→x16 = 12 dots. DocBoy: x0→x8 = **16** dots, x8→x16 = **8** dots. Same total (both reach
+x16@109), but **gb places its startup/obj-stall delay one tile too LATE** — it fetches tile x=8's index/SCY at dot 97
+(BEFORE the stall), hardware fetches it at dot 101 (AFTER the stall). A SCY write lands in that 4-dot gap, so gb
+samples scy=1 where hardware samples scy=2. That single misplaced stall window is the whole bug. The failing
+tile tracks the per-line sprite (obj fetch stalls the BG fetcher); in bands 72–79/136–143 the stall lands where the
+local SCY value is identical across the gap, so it is invisible there.
+
+### 15.4 Verdict + re-grounded hypothesis
+- **§5.2 (CGB 2-dot SCY write-observation latency): CONFIRMED correct** (doc-CORROBORATED in §12; now also
+  oracle-dot-exact on the steady path). Keep it as the foundation.
+- **§5.3 (GetTile0-once-from-observed): NECESSARY but INSUFFICIENT.** It would render bands 72–79/136–143 correctly,
+  but leaves the obj-stalled startup tile wrong in bands 0–7/23–31, and the raw candidate does not reproduce the
+  seed-fix band — so wiring it now would NOT reach 24/24 and would regress ly0–7. HELD per the gate.
+- **Re-grounded carrier: the BG-fetcher startup/obj-stall lead.** gb's startup fetch distributes its obj-stall delay
+  one tile later than hardware; the post-sprite startup tile's GetTile0 fires ~4 dots early. This is the
+  campaign's known "fetcher ~7 dots adelantado" debt (branch `ppu/fetcher-lead-hardening`). Closing m3_scy_change
+  needs the obj-stall/startup BG-fetch timing made hardware-true so GetTile0 for that tile lands at the oracle dot;
+  THEN §5.2+§5.3 sample the correct SCY automatically (and the seed fix + retarget tables can be deleted).
+- **⚠️ This residual lives in the obj-stall/sprite-penalty region** (`obj_fetch.rs:88` `alignment_stall_remaining`,
+  the #245-frozen penalty) and the startup-fetch idle/alignment machinery — i.e. the §6 HARD CONSTRAINT
+  "never refit the frozen #245 sprite penalty" is adjacent. The fix must move the *position* of the startup delay
+  relative to the tile-fetch boundary WITHOUT re-tuning per-sprite Mode-3 cost (prove byte-identical mode3 duration
+  before/after). This is a phase decision for the next step, not a free lever.
+
+### 15.5 Tooling (reproducible)
+- gb probe: `GBCYCLE_SCY_PROBE_LY=<ly> cargo rom-suite mealybug-tearoom-tests --suite mealybug-tearoom-tests-cgb
+  --case mealybug-cgb-m3-scy-change 2>&1 | grep GBT-CANDIDATE` (bg_fetch.rs `scy_probe_target_ly`; ephemeral).
+- oracle: `GBTRACE_LY=<ly> build-trace-cgb/docboy-nogui <m3_scy_change.gb> -t 250000 2>&1 | grep GBT-TDATA`.
+- side-by-side comparison harness: `/tmp/scy_cmp.sh` (per-tile join, flags value mismatches).
+
+## 16. BREAKTHROUGH — the §5.3 latch point is TileDataLow/0, not TileIndex/0 (2026-06-15)
+
+**The "fetcher-lead" framing in §15 was a measurement artifact of WHERE the candidate sampled. The full per-dot
+stage trace (gb `GBT-STAGE`) shows gb's BG fetcher and DocBoy's reconverge correctly; the bug was that the §5.3
+candidate (and the landed seed fix) sample observed-SCY at `TileIndex/dot1`, but the tile-data ROW is consumed one
+stage later at `TileDataLow/dot0`. At that later dot the §5.2-observed SCY has settled correctly relative to gb's own
+SCY-write phase, and the candidate then matches the oracle EXACTLY.**
+
+Evidence (ly=28, the failing band): gb writes scy=2 at line_dot 96; the §5.2 countdown=2 settles it at dot 98. gb's
+x8 `TileIndex/1` is at dot 97 (observed still =1, unsettled) but its `TileDataLow/0` is at dot 98 (observed=2). DocBoy
+latches bwf.scy at its `B`/GETTILE0 (dot 99) and uses it at LOW0 (dot 101), reading scy=2. So sampling at
+`TileDataLow/0` (dot 98) yields 2 = oracle. The fetcher dots were never wrong — the obj-stall (#245) is irrelevant.
+
+Re-validated per-tile across the 4 bands with the candidate moved to `TileDataLow/dot0`:
+
+| band (rep ly) | result |
+|---|---|
+| 23–31 (ly 24, 28) | **ALL tiles match the oracle** (x8 now obs=2, was 1) |
+| 72–79 (ly 74) | **ALL tiles match** |
+| 136–143 (ly 140) | matches (steady) |
+| 0–7 (ly 4) | still diverges — but this band already PASSES via the landed seed fix (the special stable-scy region right after LCD re-enable; `TileDataLow/0` crosses a write boundary there) |
+
+**Implication:** §5.3 = "latch observed-SCY → tile_data_row ONCE at `TileDataLow/dot0`, freeze for both planes + the
+recompute." This closes the currently-failing bands (23–31, 72–79, 136–143 = the 121px) with NO change to fetcher /
+obj-stall / #245 timing. The `is_cgb_family()` GetTile0 latch is the §5.3 mechanism; the only open question for the
+P3 seam-deletion is band 0–7, currently held by the seed fix (`TileIndex/0` capture in the stable post-re-enable
+region) — keep it until the §5.3 path is proven to also cover band 0–7, then delete.
+
+## 17. §5.3 WIRED + REGRESSION-FREE — 121→41px, 3 of 4 bands closed; residual = band-0-7 left-edge obj-stall (2026-06-15)
+
+**Milestone (uncommitted WIP): the §5.3 model is wired and the FULL suite is regression-free. m3_scy_change CGB
+121px → 41px. The remaining 41px is band 0–7 (~38px) + 3 stray px (rows 22, 69).**
+
+What is wired (the §5.3 + net-0 latency model):
+- §5.2 `CGB_SCY_OBSERVATION_DELAY_DOTS = 0` (the register stays, but the empirically-correct latency is **0**, not 2 —
+  see below). Frozen row = `(live scy + ly) % 8` sampled at `TileDataLow/dot0`.
+- `advance_bg_fetcher_tile_data_low_dot0`: for every non-seed CGB Background tile, latch the row into
+  `cgb_startup_seed_get_tile_scy_row` and compute the low-plane address from it.
+- `advance_bg_fetcher_tile_data_high_dot0`: reuse that latched row for the high plane (replaces MECH 1c on this path).
+- recompute consumes it via the existing `cgb_startup_frozen_tile_row` override.
+- The CGB `compute_startup_visible_tile2/3_scy_*` retarget tables are NEUTRALIZED (return None on CGB).
+
+**Why latency must be 0, not the doc-CORROBORATED 2 (the §13 "net −2" bookkeeping, restored):** gb's SCY writes
+land +4 dots vs hardware (P0). DocBoy writes @76/84/92 + 2-dot latency settles BEFORE its (later) data-stage read; gb
+writes @80/88/96, and at gb's data-stage read the write is only ~1 dot old, so applying the 2-dot latency makes gb
+observe one write STALE (ly=68 x16: latency=2 → obs 3, oracle 4). gb's +4 write phase already supplies the freshness
+DocBoy gets from the latency, so the NET correct model for gb is latency 0 = "use live SCY at the data stage." This
+is exactly §5.2's withdrawn "phase −4 + latency +2 = net −2" — restored, and oracle-confirmed per-tile on ly 28/68/132.
+
+**Full-suite gate (all green, no regressions):** wilbertpol **117/117** (incl. `intr_2_mode0_timing_sprites`),
+gb-emulator-shootout **264/264**, mooneye green, blargg green, mealybug DMG **24/24**, mealybug CGB **23/24**
+(m3_scy_change the only fail, now 41px). The #245 sprite penalty is provably untouched (shootout + wilbertpol green).
+
+**The residual (band 0–7, ~38px) is the left-edge-sprite obj-stall — and it IS the #245 region.** For ly 0–7 the
+test's per-line sprite sits at the left edge (sprite x ≈ ly/8 ≈ 0), where the obj-stall is large; DocBoy's x8 GetTile0
+lands ~8 dots later (ly=4: gb @98 vs DocBoy @106) and gb samples one SCY write early. The retarget tables + seed fix
+were the curve-fit for exactly this band; neutralizing them (to let §5.3 close the mid bands) re-exposed it. So:
+- The mid bands (sprite mid-screen, small/no obj-stall offset) → §5.3 closes them, tables not needed.
+- Band 0–7 (left-edge sprite, large obj-stall) → §5.3 samples at the wrong dot; needs either the #245 left-edge
+  obj-stall timing made hardware-true, OR the seed/tables kept for that band only (a residual seam).
+
+**Net:** §5.3 (data-stage latch, latency-net-0) is the validated, regression-free core that closes 3 of the 4 bands.
+Closing band 0–7 cleanly (and deleting the seed fix + tables per P3) requires the left-edge-sprite obj-stall fix in the
+#245 region — the one HARD-CONSTRAINT lever, now precisely isolated to a single per-line tile.

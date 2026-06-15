@@ -331,6 +331,10 @@ impl Ppu {
         visible_x: u8,
         vram: &VramBusView<'_>,
     ) -> Option<u8> {
+        // Superseded by the §5.3 data-stage row latch on CGB (docs/roadmap/12 §17); deletion pending.
+        if self.console_model.is_cgb_family() {
+            return None;
+        }
         self.runtime.bg_pipeline_state.startup_scy_tiledata_latch?;
 
         let sprite_phase = self.scy_obj_phase_policy()?;
@@ -368,6 +372,10 @@ impl Ppu {
         pixel_index: u8,
         vram: &VramBusView<'_>,
     ) -> Option<u8> {
+        // Superseded by the §5.3 data-stage row latch on CGB (docs/roadmap/12 §17); deletion pending.
+        if self.console_model.is_cgb_family() {
+            return None;
+        }
         if self.console_model.is_cgb_family()
             && self.operating_mode.uses_dmg_software_contract()
             && matches!(
@@ -525,6 +533,10 @@ impl Ppu {
         pixel_index: u8,
         vram: &VramBusView<'_>,
     ) -> Option<u8> {
+        // Superseded by the §5.3 data-stage row latch on CGB (docs/roadmap/12 §17); deletion pending.
+        if self.console_model.is_cgb_family() {
+            return None;
+        }
         if self.console_model.is_cgb_family()
             && self.operating_mode.uses_dmg_software_contract()
             && matches!(
@@ -586,6 +598,10 @@ impl Ppu {
         pixel_index: u8,
         vram: &VramBusView<'_>,
     ) -> Option<u8> {
+        // Superseded by the §5.3 data-stage row latch on CGB (docs/roadmap/12 §17); deletion pending.
+        if self.console_model.is_cgb_family() {
+            return None;
+        }
         self.runtime.bg_pipeline_state.startup_scy_tiledata_latch?;
 
         if !matches!(

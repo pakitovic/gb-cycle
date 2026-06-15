@@ -2379,42 +2379,6 @@ fn startup_scy_visible_tile2_tilemap_retarget_can_read_a_neighbor_row() {
 }
 
 #[test]
-fn cgb_dmg_software_startup_scy_tilemap_retarget_requires_a_live_scy_write_marker() {
-    let mut ppu = cgb_fetch_startup_rig(crate::model::OperatingMode::GbCompatible, 0x91);
-    ppu.visible_registers.lcdc = 0x91;
-    ppu.pipeline_registers = ppu.visible_registers;
-    ppu.ly = 0;
-    push_selected_sprite_x(&mut ppu, 2);
-    ppu.bg_pipeline_state.current_transfer_x = 2;
-    ppu.write_bg_tile_row(0, 1, 0x08, 0x00);
-
-    let cached = BgCachedSlice {
-        source: PpuBgFetcherSource::Background,
-        origin: BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2),
-        fetch_x: BG_TILE_WIDTH as u16,
-        tile_index: 0,
-        tile_high_address: 2 * TILE_ROW_BYTES + 1,
-        ..BgCachedSlice::default()
-    };
-
-    assert_eq!(
-        ppu.with_ppu_vram(|ppu, vram| {
-            ppu.compute_startup_visible_tile2_scy_tilemap_retarget_pixel(cached, 4, vram)
-        }),
-        None
-    );
-
-    ppu.bg_pipeline_state.cgb_dmg_scy_startup_retarget_active = true;
-
-    assert_eq!(
-        ppu.with_ppu_vram(|ppu, vram| {
-            ppu.compute_startup_visible_tile2_scy_tilemap_retarget_pixel(cached, 4, vram)
-        }),
-        Some(1)
-    );
-}
-
-#[test]
 fn cgb_dmg_software_startup_scy_retarget_marker_requires_effective_row_change() {
     for operating_mode in [
         crate::model::OperatingMode::GbCompatible,

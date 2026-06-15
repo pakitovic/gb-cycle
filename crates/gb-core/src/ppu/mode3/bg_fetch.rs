@@ -255,7 +255,32 @@ impl Ppu {
         fetcher: BgFetcherState,
         vram: &VramBusView<'_>,
     ) {
-        let tile_data_address = if fetcher.source == PpuBgFetcherSource::Window {
+        // CGB-D latches the SCY tile_data row once at the data stage; see docs/roadmap/12 §16-§17.
+        let cgb_frozen_row = if fetcher.source == PpuBgFetcherSource::Background
+            && self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && !matches!(
+                self.runtime.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::AlignmentSeedPending
+            ) {
+            let frozen_row = u16::from(self.scy.wrapping_add(self.ly) % BG_TILE_WIDTH);
+            self.runtime
+                .bg_pipeline_state
+                .fetcher
+                .cgb_startup_seed_get_tile_scy_row = Some(frozen_row);
+            Some(frozen_row)
+        } else {
+            None
+        };
+        let tile_data_address = if let Some(frozen_row) = cgb_frozen_row {
+            let attributes = fetcher.cgb_bg_attrs.unwrap_or_default();
+            self.background_fetch_context(fetcher.fetch_x)
+                .tile_data_address_for_row(
+                    fetcher.tile_index,
+                    cgb_bg_effective_tile_row(frozen_row, attributes),
+                    0,
+                )
+        } else if fetcher.source == PpuBgFetcherSource::Window {
             self.runtime
                 .bg_pipeline_state
                 .fetcher
@@ -317,18 +342,41 @@ impl Ppu {
         fetcher: BgFetcherState,
         vram: &VramBusView<'_>,
     ) {
-        let tile_data_address = self.compute_fetch_tile_data_address_with_attributes(
-            fetcher.source,
-            fetcher.fetch_x,
-            fetcher.tile_index,
-            1,
-            fetcher.cgb_bg_attrs,
-        );
-        let tile_data_address = if fetcher.cgb_dmg_scy_high_plane_uses_low_row {
-            fetcher.tile_low_address | 1
+        // Reuse the row latched at TileDataLow/0 for the high plane (see docs/roadmap/12 §16-§17).
+        let cgb_frozen_row = if fetcher.source == PpuBgFetcherSource::Background
+            && self.console_model.is_cgb_family()
+            && self.operating_mode.uses_dmg_software_contract()
+            && !matches!(
+                self.runtime.bg_pipeline_state.startup_fetch_seam,
+                BgStartupFetchSeamState::AlignmentSeedPending
+            ) {
+            fetcher.cgb_startup_seed_get_tile_scy_row
         } else {
-            tile_data_address
+            None
         };
+        let tile_data_address = if let Some(frozen_row) = cgb_frozen_row {
+            let attributes = fetcher.cgb_bg_attrs.unwrap_or_default();
+            self.background_fetch_context(fetcher.fetch_x)
+                .tile_data_address_for_row(
+                    fetcher.tile_index,
+                    cgb_bg_effective_tile_row(frozen_row, attributes),
+                    1,
+                )
+        } else {
+            self.compute_fetch_tile_data_address_with_attributes(
+                fetcher.source,
+                fetcher.fetch_x,
+                fetcher.tile_index,
+                1,
+                fetcher.cgb_bg_attrs,
+            )
+        };
+        let tile_data_address =
+            if cgb_frozen_row.is_none() && fetcher.cgb_dmg_scy_high_plane_uses_low_row {
+                fetcher.tile_low_address | 1
+            } else {
+                tile_data_address
+            };
         self.runtime
             .bg_pipeline_state
             .fetcher
