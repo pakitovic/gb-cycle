@@ -38,7 +38,9 @@ fn sprite_coupled_line10_tile_sel_replay_matches_trace_signature() {
     assert_eq!(startup.visible_pixels_output, 0);
     assert_eq!(startup.bg_current_transfer_x, 1);
     assert!(startup.bg_fill_pending);
-    assert_eq!(startup.bg_fill_startup_dummy_pixels, 7);
+    // Canonical startup: the junk pixels are real FIFO entries pre-filled at start_line, so the
+    // seed fill no longer carries any dummy pixels of its own. See docs/roadmap/12 §24.
+    assert_eq!(startup.bg_fill_startup_dummy_pixels, 0);
     assert_eq!(startup.bg_startup_fifo_placeholders, 7);
     assert_eq!(startup.selected_sprites.len(), 1);
     assert_eq!(

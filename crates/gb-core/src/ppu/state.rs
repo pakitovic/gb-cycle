@@ -1696,7 +1696,12 @@ impl BgPipelineState {
         self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_mode3_live_lcdc_bg_state = Default::default();
+        // Canonical startup (SameBoy `mode_3_start`, DocBoy): the BG FIFO is pre-filled with real
+        // junk pixels that drain before the first real tile pushes — NOT an abstract count
+        // materialized late. `startup_fifo_placeholders` now tracks how many of those leading FIFO
+        // entries are still junk. See docs/roadmap/12 §24.
         self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
+        self.push_dummy_fifo_pixels(MODE3_ABSTRACT_SOURCE_WINDOW_DOTS);
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
         };

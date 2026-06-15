@@ -141,15 +141,16 @@ impl Ppu {
     pub(in crate::ppu) fn queue_bg_fill_from_push(&mut self) {
         let push = self.runtime.bg_pipeline_state.push;
         if push.cached.is_startup_alignment_seed() {
-            let startup_fifo_placeholders =
-                self.runtime.bg_pipeline_state.startup_fifo_placeholders;
             self.runtime
                 .bg_pipeline_state
                 .begin_post_alignment_followup();
+            // The leading junk pixels are already real FIFO entries (pre-filled at start_line), so
+            // the seed fill only appends its real tile pixels behind whatever junk remains — it no
+            // longer re-materializes the placeholder count as dummies. See docs/roadmap/12 §24.
             self.runtime
                 .bg_pipeline_state
                 .fill
-                .queue_startup_alignment_from_push(push, startup_fifo_placeholders);
+                .queue_startup_alignment_from_push(push, 0);
         } else {
             self.runtime.bg_pipeline_state.fill.queue_from_push(push);
         }

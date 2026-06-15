@@ -398,7 +398,9 @@ fn mode3_startup_keeps_dummy_occupancy_out_of_the_fifo_until_alignment_push() {
     // Hardware-true startup: the BG fetcher idles for 3 dummy dots (80, 81, 82)
     // before its first tile-index read at dot 83, so it is not pre-armed here.
     assert_eq!(drawing_start.bg_fetcher_stage_dot, 0);
-    assert!(drawing_start.bg_fifo_pixels.is_empty());
+    // Canonical startup: the BG FIFO is pre-filled with 8 real junk pixels that drain before the
+    // first real tile pushes (SameBoy `mode_3_start`). See docs/roadmap/12 §24.
+    assert_eq!(drawing_start.bg_fifo_pixels, vec![0, 0, 0, 0, 0, 0, 0, 0]);
     assert_eq!(drawing_start.visible_pixels_output, 0);
 
     // The first (discarded) tile-index read happens at dot 83, after the dummy dots.
