@@ -560,20 +560,20 @@ sparse_paths = ["tests/results/cgb_dmg_mode/mealybug"]
 
 [[source.family.file]]
 path = "tests/results/cgb_dmg_mode/mealybug/m3_lcdc_win_en_change_multiple_wx.png"
-target = "fixtures/cgb-docboy/m3_lcdc_win_en_change_multiple_wx.png"
+target = "ppu/m3_lcdc_win_en_change_multiple_wx.png"
 sha256 = "10fa379cfb30b2a4b493b717ca11e84d131a70d9c59488d39aed42512e3fbe80"
 
 [[source.family.file]]
 path = "tests/results/cgb_dmg_mode/mealybug/m3_wx_4_change.png"
-target = "fixtures/cgb-docboy/m3_wx_4_change.png"
+target = "ppu/m3_wx_4_change.png"
 sha256 = "0376aede3a01c020ba866137bcc9aa6bfdc0c68bfb773821ef14836a56dc847b"
 
 [[source.family.file]]
 path = "tests/results/cgb_dmg_mode/mealybug/m3_wx_5_change.png"
-target = "fixtures/cgb-docboy/m3_wx_5_change.png"
+target = "ppu/m3_wx_5_change.png"
 sha256 = "6120abeb8b5953fd54924309a5cef87221dcfde12f19e0ed67c9d1978006f085"
 
 [[source.family.file]]
 path = "tests/results/cgb_dmg_mode/mealybug/m3_wx_6_change.png"
-target = "fixtures/cgb-docboy/m3_wx_6_change.png"
+target = "ppu/m3_wx_6_change.png"
 sha256 = "47b8366224a61be1c2b70b95e854392bbf1b92e848aa4bf87389b52f0f7ff04e"

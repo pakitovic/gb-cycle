@@ -1827,20 +1827,36 @@ fn cgb_double_speed_does_not_shorten_hdma_block_timing() {
     machine.write_bus(0xFF54, 0x40);
     machine.write_bus(0xFF55, 0x80);
 
-    step_t_cycles(&mut machine, 31);
+    step_t_cycles(&mut machine, 32);
     assert_eq!(machine.dma().read_hdma5(), 0x00);
     assert!(machine.dma().cpu_stall_active());
+    let first_half_expected: Vec<_> = (0xE0u8..0xE8).collect();
+    assert_eq!(
+        &machine.debug_vram_bytes()[0x0840..0x0848],
+        first_half_expected.as_slice(),
+        "double-speed HDMA must not copy a full 16-byte LCD-domain block after only 32 fast T-cycles"
+    );
 
-    step_t_cycles(&mut machine, 1);
-    assert_eq!(machine.dma().read_hdma5(), 0xFF);
+    step_t_cycles(&mut machine, 32);
+    assert_eq!(machine.dma().read_hdma5(), 0x00);
+    assert!(machine.dma().cpu_stall_active());
     let expected: Vec<_> = (0xE0u8..0xF0).collect();
     assert_eq!(
         &machine.debug_vram_bytes()[0x0840..0x0850],
         expected.as_slice()
     );
+    step_t_cycles(&mut machine, 5);
+    assert_eq!(machine.dma().read_hdma5(), 0x00);
     assert!(
         !machine.dma().cpu_stall_active(),
-        "HDMA block timing must stay in the VRAM-DMA domain instead of inheriting OAM-DMA speed handling"
+        "HDMA should release the CPU before the public HDMA5 completion edge"
+    );
+
+    step_t_cycles(&mut machine, 7);
+    assert_eq!(machine.dma().read_hdma5(), 0xFF);
+    assert!(
+        !machine.dma().cpu_stall_active(),
+        "HDMA block timing must stay in the VRAM-DMA domain and publish completion after the final active cycle"
     );
 }
 

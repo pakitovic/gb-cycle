@@ -237,6 +237,22 @@ fn observed_cgb_dmg_software_lcdc2_obj_size_plane_selection_tracks_cgb_residual_
         (
             0,
             32,
+            4,
+            4,
+            Some(4),
+            Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High),
+        ),
+        (
+            0,
+            32,
+            4,
+            4,
+            Some(5),
+            Some(PpuMode3Lcdc2ObjSizePlaneSelection::Live8),
+        ),
+        (
+            0,
+            32,
             5,
             4,
             None,

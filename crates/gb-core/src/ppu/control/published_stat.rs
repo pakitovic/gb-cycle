@@ -2,11 +2,25 @@ use super::*;
 
 impl Ppu {
     pub(in crate::ppu) fn current_published_stat_access_mode(&self) -> PpuAccessMode {
+        if self.cgb_scx1_mode0_readback_linger_applies() {
+            return PpuAccessMode::Drawing;
+        }
+
         let Some(context) = self.current_published_stat_mode_context() else {
             return self.published_stat_mode_at_line_start();
         };
 
         self.resolve_published_stat_access_mode(context)
+    }
+
+    fn cgb_scx1_mode0_readback_linger_applies(&self) -> bool {
+        self.console_model.is_cgb_family()
+            && self.is_lcd_enabled()
+            && !self.vblank_wrap_line0_stat_readback_delay_active()
+            && self.ly < VISIBLE_SCANLINES
+            && (self.scx & 0x07) == 1
+            && self.line_dot >= self.current_mode0_start_dot()
+            && self.line_dot <= self.current_mode0_start_dot() + 1
     }
 
     fn current_published_stat_mode_context(&self) -> Option<PpuPublishedStatModeContext> {

@@ -366,11 +366,11 @@ fn late_window_enable_for_wx16_arms_and_repaints_the_observed_segment() {
 #[test]
 fn cgb_dmg_software_late_lcdc5_enable_arms_the_hardware_observed_initial_segment() {
     for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
-        let mut ppu = cgb_previsible_retarget_fixture(18, MODE2_DOTS + 32, 0, operating_mode);
+        let mut ppu = cgb_previsible_retarget_fixture(19, MODE2_DOTS + 32, 0, operating_mode);
         ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
         ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
-        ppu.visible_registers.wx = 18;
-        ppu.pipeline_registers.wx = 18;
+        ppu.visible_registers.wx = 19;
+        ppu.pipeline_registers.wx = 19;
         ppu.bg_pipeline_state.window_started_this_line = false;
         ppu.bg_pipeline_state.visible_pixels_output = 13;
 
@@ -380,7 +380,7 @@ fn cgb_dmg_software_late_lcdc5_enable_arms_the_hardware_observed_initial_segment
         );
         assert_eq!(
             ppu.bg_pipeline_state.dmg_late_window_enable_override,
-            Some(DmgLateWindowEnableOverride::new(11, 35, 11)),
+            Some(DmgLateWindowEnableOverride::new(12, 36, 12)),
             "{operating_mode:?}"
         );
         assert_eq!(
@@ -393,11 +393,11 @@ fn cgb_dmg_software_late_lcdc5_enable_arms_the_hardware_observed_initial_segment
 #[test]
 fn cgb_dmg_software_late_lcdc5_enable_arms_the_observed_full_tail_segment() {
     for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
-        let mut ppu = cgb_previsible_retarget_fixture(46, MODE2_DOTS + 80, 0, operating_mode);
+        let mut ppu = cgb_previsible_retarget_fixture(47, MODE2_DOTS + 80, 0, operating_mode);
         ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
         ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
-        ppu.visible_registers.wx = 46;
-        ppu.pipeline_registers.wx = 46;
+        ppu.visible_registers.wx = 47;
+        ppu.pipeline_registers.wx = 47;
         ppu.bg_pipeline_state.window_started_this_line = false;
         ppu.bg_pipeline_state.visible_pixels_output = 41;
 
@@ -407,7 +407,7 @@ fn cgb_dmg_software_late_lcdc5_enable_arms_the_observed_full_tail_segment() {
         );
         assert_eq!(
             ppu.bg_pipeline_state.dmg_late_window_enable_override,
-            Some(DmgLateWindowEnableOverride::new(39, SCREEN_WIDTH as u8, 39)),
+            Some(DmgLateWindowEnableOverride::new(40, SCREEN_WIDTH as u8, 40)),
             "{operating_mode:?}"
         );
         assert_eq!(
@@ -464,11 +464,11 @@ fn cgb_dmg_software_lcdc5_reenable_resume_repaints_without_counting_a_restart() 
 #[test]
 fn cgb_dmg_software_lcdc5_low_wx_reenable_arms_fixed_panel_repaint() {
     for operating_mode in [OperatingMode::GbCompatible, OperatingMode::CgbDmgExt] {
-        let mut ppu = cgb_previsible_retarget_fixture(4, MODE2_DOTS + 32, 0, operating_mode);
+        let mut ppu = cgb_previsible_retarget_fixture(5, MODE2_DOTS + 32, 0, operating_mode);
         ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
         ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
-        ppu.visible_registers.wx = 4;
-        ppu.pipeline_registers.wx = 4;
+        ppu.visible_registers.wx = 5;
+        ppu.pipeline_registers.wx = 5;
         ppu.bg_pipeline_state.visible_pixels_output = 8;
 
         assert!(
@@ -480,8 +480,8 @@ fn cgb_dmg_software_lcdc5_low_wx_reenable_arms_fixed_panel_repaint() {
             .dmg_window_restart
             .pending_cgb_previsible_wx_phase_repaint
             .expect("low-WX LCDC.5 repaint should arm");
-        assert_eq!(repaint.start_x, 5, "{operating_mode:?}");
-        assert_eq!(repaint.end_x, 15, "{operating_mode:?}");
+        assert_eq!(repaint.start_x, 6, "{operating_mode:?}");
+        assert_eq!(repaint.end_x, 16, "{operating_mode:?}");
         assert_eq!(repaint.pattern_len, 10, "{operating_mode:?}");
         assert_eq!(
             &repaint.pixels[..10],
@@ -495,6 +495,130 @@ fn cgb_dmg_software_lcdc5_low_wx_reenable_arms_fixed_panel_repaint() {
 fn cgb_dmg_software_lcdc5_fixed_panel_repaint_table_covers_observed_wx_cases() {
     let cases = [
         (
+            3,
+            8,
+            1,
+            12,
+            11,
+            [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0],
+        ),
+        (
+            5,
+            8,
+            6,
+            16,
+            10,
+            [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            6,
+            8,
+            0,
+            7,
+            7,
+            [1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            7,
+            8,
+            1,
+            16,
+            15,
+            [1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            8,
+            8,
+            8,
+            9,
+            1,
+            [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            9,
+            8,
+            9,
+            18,
+            9,
+            [3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            10,
+            8,
+            3,
+            8,
+            5,
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            33,
+            34,
+            34,
+            42,
+            8,
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            34,
+            34,
+            27,
+            35,
+            8,
+            [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            35,
+            34,
+            28,
+            44,
+            16,
+            [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            36,
+            34,
+            29,
+            37,
+            8,
+            [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            37,
+            34,
+            30,
+            46,
+            16,
+            [1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+        ),
+    ];
+
+    for (wx, visible_output, start_x, end_x, pattern_len, pixels) in cases {
+        let mut ppu =
+            cgb_previsible_retarget_fixture(wx, MODE2_DOTS + 52, 0, OperatingMode::GbCompatible);
+        ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
+        ppu.pipeline_registers.lcdc = CGB_WINDOW_DISABLED_LCDC;
+        ppu.visible_registers.wx = wx;
+        ppu.pipeline_registers.wx = wx;
+        ppu.bg_pipeline_state.visible_pixels_output = visible_output;
+
+        assert!(!ppu.maybe_start_window_after_transfer_dot(Mode3TransferDot::not_served()));
+
+        let repaint = ppu
+            .bg_pipeline_state
+            .dmg_window_restart
+            .pending_cgb_previsible_wx_phase_repaint
+            .unwrap_or_else(|| panic!("WX={wx} fixed panel repaint should arm"));
+        assert_eq!(repaint.start_x, start_x, "WX={wx}");
+        assert_eq!(repaint.end_x, end_x, "WX={wx}");
+        assert_eq!(repaint.pattern_len, pattern_len, "WX={wx}");
+        assert_eq!(repaint.pixels, pixels, "WX={wx}");
+    }
+}
+
+#[test]
+fn cgb_dmg_software_lcdc5_docboy_table_moves_legacy_repaints_down_and_right() {
+    let cases = [
+        (
             2,
             8,
             0,
@@ -503,12 +627,12 @@ fn cgb_dmg_software_lcdc5_fixed_panel_repaint_table_covers_observed_wx_cases() {
             [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0],
         ),
         (
-            5,
+            4,
             8,
-            0,
-            6,
-            6,
-            [1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            5,
+            15,
+            10,
+            [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
         ),
         (
             6,
@@ -567,6 +691,14 @@ fn cgb_dmg_software_lcdc5_fixed_panel_repaint_table_covers_observed_wx_cases() {
             [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
         ),
         (
+            35,
+            34,
+            28,
+            36,
+            8,
+            [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
             36,
             34,
             29,
@@ -576,7 +708,8 @@ fn cgb_dmg_software_lcdc5_fixed_panel_repaint_table_covers_observed_wx_cases() {
         ),
     ];
 
-    for (wx, visible_output, start_x, end_x, pattern_len, pixels) in cases {
+    for (legacy_wx, visible_output, legacy_start_x, legacy_end_x, pattern_len, pixels) in cases {
+        let wx = legacy_wx + 1;
         let mut ppu =
             cgb_previsible_retarget_fixture(wx, MODE2_DOTS + 52, 0, OperatingMode::GbCompatible);
         ppu.visible_registers.lcdc = CGB_WINDOW_TEST_LCDC;
@@ -591,9 +724,9 @@ fn cgb_dmg_software_lcdc5_fixed_panel_repaint_table_covers_observed_wx_cases() {
             .bg_pipeline_state
             .dmg_window_restart
             .pending_cgb_previsible_wx_phase_repaint
-            .unwrap_or_else(|| panic!("WX={wx} fixed panel repaint should arm"));
-        assert_eq!(repaint.start_x, start_x, "WX={wx}");
-        assert_eq!(repaint.end_x, end_x, "WX={wx}");
+            .unwrap_or_else(|| panic!("WX={wx} shifted DocBoy repaint should arm"));
+        assert_eq!(repaint.start_x, legacy_start_x + 1, "WX={wx}");
+        assert_eq!(repaint.end_x, legacy_end_x + 1, "WX={wx}");
         assert_eq!(repaint.pattern_len, pattern_len, "WX={wx}");
         assert_eq!(repaint.pixels, pixels, "WX={wx}");
     }
@@ -636,10 +769,11 @@ fn cgb_dmg_software_lcdc5_second_enable_can_replace_resume_with_fixed_panel_repa
             .pending_cgb_previsible_wx_phase_repaint
             .expect("second-enable LCDC.5 repaint should arm");
         assert_eq!(repaint.start_x, 28, "{operating_mode:?}");
-        assert_eq!(repaint.end_x, 36, "{operating_mode:?}");
+        assert_eq!(repaint.end_x, 44, "{operating_mode:?}");
+        assert_eq!(repaint.pattern_len, 16, "{operating_mode:?}");
         assert_eq!(
-            &repaint.pixels[..8],
-            &[1, 1, 1, 1, 1, 1, 1, 3],
+            repaint.pixels,
+            [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
             "{operating_mode:?}"
         );
         assert_eq!(

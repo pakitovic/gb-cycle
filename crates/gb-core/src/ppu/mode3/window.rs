@@ -359,7 +359,7 @@ impl Ppu {
             matches!(visible_wx, 28 | 29 | 35)
         } else if cgb_dmg_software_contract {
             // The CGB-C/D hardware capture for `m3_lcdc_win_en_change_multiple_wx` shows that only a sparse set of same-line LCDC.5 aborts leave a later re-enable segment behind. The segment does not count as a second window start; it is a bounded repaint over pixels that were already emitted.
-            matches!(visible_wx, 21 | 22 | 28 | 29 | 30 | 32 | 35 | 36)
+            matches!(visible_wx, 21 | 22 | 23 | 28 | 29 | 30 | 31 | 33 | 36 | 37)
         } else {
             false
         };
@@ -500,7 +500,7 @@ impl Ppu {
             .is_some()
         {
             let segment_pixels = match visible_wx {
-                21 | 22 | 28 | 29 | 30 | 32 | 35 | 36 => 8,
+                21 | 22 | 23 | 28 | 29 | 30 | 31 | 33 | 36 | 37 => 8,
                 _ => 0,
             };
             if segment_pixels == 0 {
@@ -530,7 +530,7 @@ impl Ppu {
         };
 
         // These CGB-family DMG-software windows are observed as direct late-enable repaints, not fetcher restarts, on the experimental CGB-C/D oracle. Keeping them in the repaint path preserves the global window line counter used by later rows.
-        if (13..=14).contains(&visible_output) && matches!(visible_wx, 18..=22) {
+        if (13..=14).contains(&visible_output) && matches!(visible_wx, 19..=23) {
             self.arm_dmg_late_window_enable_override(
                 window_origin_x,
                 window_origin_x.saturating_add(24),
@@ -539,7 +539,7 @@ impl Ppu {
             return true;
         }
 
-        if (41..=42).contains(&visible_output) && matches!(visible_wx, 46..=48) {
+        if (41..=42).contains(&visible_output) && matches!(visible_wx, 47..=49) {
             self.arm_dmg_late_window_enable_override(
                 window_origin_x,
                 SCREEN_WIDTH as u8,
@@ -589,75 +589,75 @@ impl Ppu {
     ) -> Option<CgbDmgLcdc5FixedPanelRepaint> {
         // These panel-shade patterns are taken from the experimental CGB-C/D capture for `m3_lcdc_win_en_change_multiple_wx`. They are intentionally expressed as shades, then converted back through BGP, so the repaint remains tied to the DMG-software palette contract rather than hard-coded RGB output.
         match visible_wx {
-            2 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
-                0,
-                11,
+            3 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                1,
+                12,
                 11,
                 [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0],
             )),
-            4 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
-                5,
-                15,
+            5 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                6,
+                16,
                 10,
                 [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
             )),
-            5 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
-                0,
-                6,
-                6,
-                [1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            )),
             6 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
                 0,
-                15,
-                15,
+                7,
+                7,
                 [1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             )),
             7 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
-                7,
-                8,
                 1,
-                [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                16,
+                15,
+                [1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             )),
             8 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
                 8,
-                17,
+                9,
+                1,
+                [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            9 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                9,
+                18,
                 9,
                 [3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0],
             )),
-            9 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
-                2,
-                7,
+            10 if visible_output <= 8 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                3,
+                8,
                 5,
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             )),
-            32 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
-                33,
-                41,
+            33 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                34,
+                42,
                 8,
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             )),
-            33 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
-                26,
-                34,
-                8,
-                [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
-            )),
             34 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
                 27,
-                43,
-                16,
+                35,
+                8,
                 [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
             )),
             35 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
                 28,
-                36,
-                8,
+                44,
+                16,
                 [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
             )),
             36 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
                 29,
-                45,
+                37,
+                8,
+                [1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+            )),
+            37 if visible_output >= 34 => Some(CgbDmgLcdc5FixedPanelRepaint::new(
+                30,
+                46,
                 16,
                 [1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3],
             )),

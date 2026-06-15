@@ -306,14 +306,14 @@ id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-wx-cgb-c"
 rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
-oracle = { type = "framebuffer", source = "cgb", fixture = "fixtures/cgb-docboy/m3_lcdc_win_en_change_multiple_wx.png" }
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_en_change_multiple_wx.png" }
 
 [[case]]
 id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-wx-cgb-d"
 rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
 model = "cgb"
 revision = "cpu-cgb-d"
-oracle = { type = "framebuffer", source = "cgb", fixture = "fixtures/cgb-docboy/m3_lcdc_win_en_change_multiple_wx.png" }
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_en_change_multiple_wx.png" }
 
 [[case]]
 id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-wx-dmg-cpu-b"
@@ -504,7 +504,7 @@ id = "mealybug-ppu-m3-wx-4-change-cgb-d"
 rom = "ppu/m3_wx_4_change.gb"
 model = "cgb"
 revision = "cpu-cgb-d"
-oracle = { type = "framebuffer", source = "cgb", fixture = "fixtures/cgb-docboy/m3_wx_4_change.png" }
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_wx_4_change.png" }
 
 [[case]]
 id = "mealybug-ppu-m3-wx-4-change-sprites-dmg"
@@ -539,7 +539,7 @@ id = "mealybug-ppu-m3-wx-5-change-cgb-d"
 rom = "ppu/m3_wx_5_change.gb"
 model = "cgb"
 revision = "cpu-cgb-d"
-oracle = { type = "framebuffer", source = "cgb", fixture = "fixtures/cgb-docboy/m3_wx_5_change.png" }
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_wx_5_change.png" }
 
 [[case]]
 id = "mealybug-ppu-m3-wx-6-change-dmg"
@@ -553,7 +553,7 @@ id = "mealybug-ppu-m3-wx-6-change-cgb-d"
 rom = "ppu/m3_wx_6_change.gb"
 model = "cgb"
 revision = "cpu-cgb-d"
-oracle = { type = "framebuffer", source = "cgb", fixture = "fixtures/cgb-docboy/m3_wx_6_change.png" }
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_wx_6_change.png" }
 
 [[case]]
 id = "mealybug-ppu-win-without-bg"
