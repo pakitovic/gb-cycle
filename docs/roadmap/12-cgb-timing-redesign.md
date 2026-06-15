@@ -1,8 +1,10 @@
 # CGB CPU↔PPU Timing Redesign — Design Doc (working)
 
-> **STATUS: P0 (diagnostic) DONE 2026-06-15 — see §11. P1 not started.** The re-enable-site
-> mechanism is named and oracle-grounded; the boot-handoff verification is tooling-blocked and
-> deferred to P1 as a flagged entry risk (§11.5). STOP does not fire. This is the plan for the
+> **STATUS: P0 done (§11). P1 done 2026-06-15 — phase model REFUTED, re-grounded (§13).** P1 proved
+> the §5.1 "−4 enable→PPU-start phase" is NOT the m3_scy_change carrier (the −4 is a benign internal
+> CPU↔PPU-phase difference; shifting the CGB STAT phase regressed 10+ other mealybug `m3_*` tests). The
+> fix is SCY-observation only: §5.2 (uniform write latency) + §5.3 (CGB-D GetTile0-once sampling). Next
+> step = implement §5.2/§5.3 (was P2/P3), no phase/STAT change. This is the plan for the
 > coordinated CGB timing rework that the PPU-hardening campaign (`04-ppu-fix.md`) proved is
 > required to close `mealybug-cgb-m3-scy-change`. It supersedes the scoped-fix directions for
 > that ROM. Durable open-work ledger stays in [`docs/TODO.md`](../TODO.md); hardware contract in
@@ -95,7 +97,7 @@ wrong for low-x sprites. Hence: coordinated redesign, not a lever.
 ## 5. The three coupled components to model together
 
 1. **CGB LCD-enable → PPU-start phase (the −4-dot root) — model the relationship, never a constant.**
-   *(Grounding: CORROBORATED by **TCAGBD** — §8.1 "LCD timings are a bit different… CGB, AGB, AGS in another way (**even in DMG compatibility mode**)", and §8.9.2 (CGB-in-DMG-mode) vs §8.9.1 (DMG) shows the LY/LYC/transition timing ~4 clocks shifted (our ROM has CGB-flag 0x00 → runs DMG-compat → §8.9.2 applies). Pan Docs + GBCTR are silent on the dot-exact fetch phase — §12. P1 still needs the fetch-domain dot to pick the carrier.)*
+   *(**⚠️ REFUTED as the m3_scy_change carrier — P1, §13.** The ~4-clock CGB-vs-DMG phase is real and TCAGBD-documented (§8.1/§8.9.2), but it is a BENIGN internal-phase difference, NOT the bug: every other `m3_*` mealybug CGB test writes its register via the SAME STAT-Mode-2-IRQ handler at gb's dots and PASSES, and shifting the CGB STAT phase to match DocBoy regressed 10+ of them. gb's CPU↔PPU phase is correct; m3_scy_change is a SCY-observation bug (§5.2 + §5.3). Do NOT implement this component.)*
    `enter_lcd_enabled_restart_state` (irq.rs) sets `line_dot = LCD_REENABLE_INITIAL_LINE_DOT (=0)`;
    the `LCD_REENABLE_LINE0_*` constants (ppu.rs:61-67: re-enable line0 is `DOTS_PER_SCANLINE-8`,
    mode3 starts at `MODE2_DOTS-8`) are **shared DMG/CGB** and pinned by the wilbertpol
@@ -239,19 +241,16 @@ contradicts it — and it is flagged DOC-SILENT, not asserted as fact.
   STRUCK** (exp e/g + mechanism). STOP does NOT fire (no boot↔reenable contradiction). **Open: the boot-handoff
   phase is UNVERIFIED — tooling-blocked (all CGB mealybug ROMs mask boot via a disable+VBlank-wait+re-enable
   harness; DocBoy is `ENABLE_BOOTROM=OFF`); carried into P1 as a flagged entry risk (§11.5).**
-- **P1 — CGB enable→PPU-start phase model.** Implement the −4 as the CGB constant family P0
-  identified (`is_cgb_family()`-gated), NOT a restart-only `correction(4)` literal — and NOT via the
-  STRUCK `CPU_LCDC_ENABLE_EFFECT_DELAY` carrier. **The ~4-clock CGB-vs-DMG phase is already doc-corroborated
-  (TCAGBD §8.1/§8.9.2 — §12); P1's open measurement is the dot-exact fetch phase that discriminates the
-  `LCD_REENABLE_INITIAL_LINE_DOT`-seed vs re-enable line0-length carrier** (TCAGBD is 4-clock-granular and omits
-  the mode3→mode0 transition). So: **(a) measure that fetch phase via DocBoy + the §11.5 boot-handoff probe**
-  (custom boot-phase ROM or a direct
-  enable→PPU-start state-machine emit at the SkipBoot/direct-boot handoff) so the chosen CGB constant is
-  oracle-verified at the boot handoff before prod code lands; scope the fix to the re-enable restart (irq.rs
-  `enter_lcd_enabled_restart_state`), structurally isolated from the boot dispatch.
-  Gate: SCY writes land @76,84,92,100 (matching DocBoy `dots`) at the re-enable AND the boot-handoff phase agrees
-  with the oracle, AND full CGB suite green (esp. wilbertpol 117). If wilbertpol regresses the model
-  is in the wrong place — re-ground; do NOT patch the shared restart path to chase green.
+- **P1 — CGB enable→PPU-start phase model. ❌ REFUTED 2026-06-15 (see §13).** The ROM source shows the SCY
+  storm runs in the STAT Mode 2 IRQ handler (not enable-gated). Shifting the CGB STAT phase to match DocBoy's SCY
+  dots reproduced @76 but REGRESSED 10+ other mealybug `m3_*` tests that share the handler and pass at gb's timing
+  ⇒ gb's CPU↔PPU phase is correct; the −4 is benign; there is no phase term to implement. Reverted.
+- **P2/P3 (now the active work) — SCY-observation only.** Implement §5.2 (uniform CGB write-observation latency,
+  countdown=2, collapsing the 3 SCY mechanisms) + §5.3 (CGB-D GetTile0-once SCY sampling), NO phase/STAT change;
+  then delete the seed fix + retarget tables (P3 exit criteria, §9 below). **Regression gate: the mealybug `m3_*`
+  register-change tests are the sensitive set (shared SCY/STAT harness) alongside wilbertpol 117 / mooneye 113 —
+  run the FULL CGB suite each step.** If the `m3_*` tests regress, the SCY model is leaking into the shared path —
+  re-ground.
 - **P2 — uniform CGB write-observation register.** Port DocBoy's `pending_write` structure (per-reg
   countdown, SCY=2 on CGB), serialized in save-state, as the SINGLE observation-latency mechanism;
   route the fetcher's SCY read through it and COLLAPSE the 2-deep latch helpers + the raw-live
@@ -409,3 +408,41 @@ authority; CORROBORATED = documented hardware behavior agrees; DOC-SILENT = no d
 corroboration of the CGB-vs-DMG phase; **GBCTR's PPU chapter (ch.9, p.139+) is DMG-register-focused and silent on
 the CGB phase**. The mealybug comprehensive PPU doc corroborates §5.2/§5.3. Net: 3 of the 4 model claims are now
 documentation-grounded; only the dot-exact carrier choice remains an emulator+fixture measurement (P1).
+
+## 13. P1 RESULT — phase model REFUTED; re-grounded to SCY-observation (2026-06-15)
+
+**Outcome: the §5.1 "CGB enable→PPU-start phase" / −4 carrier is REFUTED as the m3_scy_change cause. The −4 is a
+benign internal CPU↔PPU-phase difference between gb-cycle and DocBoy (each self-consistent), NOT the bug. The fix
+is §5.2 (uniform CGB write-observation latency) + §5.3 (CGB-D GetTile0-once SCY sampling) ONLY — no phase/STAT
+change. The "net −2 = phase −4 + latency +2" sign bookkeeping (§5.2) is WITHDRAWN; there is no phase term.**
+
+How P1 got here (the measurement that the doc's P1 gate demanded, plus the regression that refuted the model):
+1. **The ROM source settles the mechanism.** `mealybug-tearoom-tests/src/ppu/m3_scy_change.asm`: after re-enabling
+   the LCD the ROM sets `STAT=$20` (Mode 2 OAM IRQ), `ei`, and runs a NOP slide — **the SCY writes execute inside
+   the STAT Mode 2 IRQ handler (vector 0x48), re-armed by each line's Mode 2 entry.** It does NOT poll LY/STAT and
+   does NOT depend on the enable geometry — which is exactly why exp d/e/g (enable-phase levers) had "no effect".
+2. **Measured (CGB):** gb dispatches the handler at ly=1 line_dot 16 → SCY writes @80,88,96; DocBoy dispatches it
+   4 dots earlier (entry 12) → @76,84,92. The handler is byte-identical, so the +4 is purely "when the STAT-Mode-2
+   handler runs relative to the PPU fetch" — i.e. the CGB STAT/CPU↔PPU phase (TCAGBD §8.9.2).
+3. **Experiment:** `ordinary_mode2_stat_pretrigger_dots` 4→8 for `is_cgb_family()` (irq.rs:304) reproduced DocBoy's
+   SCY dots @76 exactly (handler entry → 12).
+4. **REGRESSION (the refutation):** that change broke **10+ other mealybug CGB tests** — `m3_bgp_change`,
+   `m3_bgp_change_sprites`, `m3_obp0_change`, `m3_lcdc_obj_en_change_variant`, `m3_lcdc_obj_size_change_scx`,
+   `m3_lcdc_tile_sel_change`, `m3_lcdc_tile_sel_win_change`, `m3_lcdc_win_en_change_multiple(_wx)`,
+   `m3_lcdc_win_map_change`, … (mooneye 113/113 and wilbertpol 117/117 stayed green; only the mealybug
+   register-change tests broke). Reverted → mealybug CGB back to 23/24.
+5. **Decisive conclusion:** every other `m3_*` test writes its register via the SAME STAT-Mode-2-IRQ handler at gb's
+   dots (80,88,…) and PASSES against the hardware fixture. So gb's STAT/write timing is CORRECT, and the +4 vs
+   DocBoy is a benign internal-phase difference. m3_scy_change fails at the SAME write timing that renders
+   BGP/OBP0/LCDC correctly ⇒ the bug is **SCY-observation-specific** (gb samples SCY live per-plane during fetch;
+   CGB-D samples it ONCE at the `B`/GetTile0 stage with a 2-T-cycle write latency — §12 CORROBORATED).
+
+**Revised plan (supersedes §9 P0/P1 phase model):** skip the §5.1 phase component entirely. Implement §5.2 (the
+uniform CGB write-observation latency, countdown=2, collapsing the 3 overlapping SCY mechanisms) and §5.3 (CGB-D
+GetTile0-once SCY sampling), WITHOUT touching STAT/phase timing, then delete the seed fix + retarget tables (P3
+exit criteria). Hard regression gate stays: full CGB suite green at each step — the mealybug `m3_*` register-change
+tests are the sensitive set this round (they share the SCY harness), alongside wilbertpol 117 / mooneye 113.
+
+**Lesson:** P0 measured the +4 correctly but misattributed it as the cause; the missing P0 check was "do the OTHER
+m3_* tests share the same +4 write-dot offset and still pass?" (they do). The P1 gated experiment + full-suite
+regression is what caught it. Keep the "prove it on the whole suite before believing a single-ROM fix" discipline.
