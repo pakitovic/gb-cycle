@@ -22,6 +22,8 @@ mod ppu_lcd_restart;
 mod ppu_mode_edges;
 #[path = "ppu/ppu_oam_dma.rs"]
 mod ppu_oam_dma;
+#[path = "ppu/ppu_oracle_sweep.rs"]
+mod ppu_oracle_sweep;
 
 fn step_until_visible_pixels_output_on_line(
     machine: &mut Machine,
