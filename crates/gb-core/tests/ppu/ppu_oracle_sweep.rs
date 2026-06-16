@@ -249,6 +249,104 @@ fn oracle_run_ly_lyc_roms() {
     }
 }
 
+// ---- faithful vblank_if_timing round4/5 probe (wait vblank IRQ at LY=144, di, nops
+// delay, then read LY). Reports the LY value + the ly/line_dot at the read. Real test:
+// nops 96 -> LY 144, nops 97 -> LY 145. ----
+fn build_vblank_ly_after_irq_probe_rom(delay: usize) -> Vec<u8> {
+    let base = PROBE_ENTRY;
+    let mut program = Vec::new();
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+    program.push(0xAF); // xor a
+    program.push(0x57); // ld d,a  (d=0, not the marker)
+    // wait_ly 142
+    let w142 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]);
+    program.extend_from_slice(&[0xFE, 142]);
+    emit_jr_nz_at(&mut program, w142);
+    program.extend_from_slice(&[0x3E, 0x01]); // ld a,1
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh (IE),a = VBlank
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh (IF),a = 0
+    program.push(0xFB); // ei
+    program.push(0x76); // halt  (wake on VBlank IRQ at LY=144)
+    program.push(0x00); // nop
+    program.push(0xF3); // di
+    program.extend(std::iter::repeat_n(0x00, delay)); // nops delay
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,(LY)  <-- measured read
+    program.push(0x4F); // ld c,a
+    program.extend_from_slice(&[0x3E, 0xAA]); // ld a,$AA
+    program.push(0x57); // ld d,a  (marker)
+    program.push(0x76); // halt
+    let done = base + program.len() as u16;
+    emit_jr_at(&mut program, done);
+
+    let mut rom = build_nom_bc_test_rom_with_program_entry(&program, 0x00, base as usize, &[]);
+    rom[0x0040] = 0xD9; // reti (VBlank vector)
+    rom
+}
+
+fn run_vblank_ly_after_irq_probe(model: ConsoleModel, delay: usize) -> Option<(u8, u8, u16)> {
+    let mut machine =
+        Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+    machine
+        .load_cartridge(build_vblank_ly_after_irq_probe_rom(delay))
+        .expect("probe ROM should load");
+    let mut read_at = None;
+    for _ in 0..3_000_000 {
+        machine.step_t_cycle();
+        // Capture the LAST LY read before the marker (the measured read); the wait_ly 142
+        // loop also reads 0xFF44 many times, so keep overwriting.
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Read
+            && event.access_address == Some(0xFF44)
+            && machine.cpu().registers().d == 0
+        {
+            let s = machine.ppu().snapshot();
+            read_at = Some((s.ly, s.line_dot));
+        }
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d == 0xAA
+        {
+            let (ly, dot) = read_at?;
+            return Some((machine.cpu().registers().c, ly, dot));
+        }
+    }
+    None
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_sweep_vblank_ly_after_irq() {
+    for model in [ConsoleModel::GameBoy, ConsoleModel::GameBoyColor] {
+        println!("=== vblank_if round4/5 (LY after vblank IRQ) model={model:?} ===");
+        for delay in 92..=102 {
+            match run_vblank_ly_after_irq_probe(model, delay) {
+                Some((v, ly, dot)) => {
+                    println!("delay={delay:3} LY={v:#04X}({v}) read_at(ly={ly} dot={dot})")
+                }
+                None => println!("delay={delay:3} <timeout>"),
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_run_vblank_if_rom() {
+    let base = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../test/wilbertpol/wilbertpol/acceptance/gpu"
+    );
+    // vblank_if_timing rounds: r1 nops97->IF $E0, r2 nops98->IF $E1, r3 wait_ly20->IF $E1,
+    // r4 vblank_irq+nops96->LY 144 ($90), r5 vblank_irq+nops97->LY 145 ($91). Captures WRAM
+    // round stores; identify by value sequence. wb-only (DMG).
+    run_real_rom_capture_wram(
+        &format!("{base}/vblank_if_timing.gb"),
+        ConsoleModel::GameBoy,
+        40,
+    );
+}
+
 fn sweep_vblank(
     label: &str,
     model: ConsoleModel,
@@ -274,9 +372,9 @@ fn sweep_vblank(
 fn oracle_sweep_vblank() {
     for model in [ConsoleModel::GameBoy, ConsoleModel::GameBoyColor] {
         // vblank_if_timing: STAT disabled, vblank IF edge E0->E1 (expected nops 97->98).
-        sweep_vblank("vblank_if", model, 0x00, 98..=108);
+        sweep_vblank("vblank_if", model, 0x00, 92..=114);
         // intr_1_timing-ish: mode1 STAT enabled, vblank+mode1 edge (E0->E3).
-        sweep_vblank("intr_1(mode1)", model, 0x10, 98..=108);
+        sweep_vblank("intr_1(mode1)", model, 0x10, 92..=114);
     }
 }
 
@@ -404,6 +502,113 @@ fn run_intr_2_mode0_timing_probe(model: ConsoleModel, delay: usize, target_mode:
         }
     }
     None
+}
+
+// ---- faithful intr_2_mode0_scxN_timing_nops probe (wilbertpol: set SCX, mode2 IRQ,
+// nops delay, then a SINGLE `ld a,(STAT); and $03` read = the mode bits at that dot).
+// Returns the mode bits. Real test (scx3): delay 49 -> 0x03 (mode3), delay 50 -> 0x00
+// (mode0). (scx7): delay 50 -> 0x03, delay 51 -> 0x00. ----
+fn build_intr_2_scx_single_read_probe_rom(scx: u8, delay: usize) -> Vec<u8> {
+    let base = PROBE_ENTRY;
+    let mut program = Vec::new();
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+    program.push(0xAF); // xor a
+    program.push(0x57); // ld d,a  (d=0, not the marker)
+    // wait_ly 144 (rough vblank sync)
+    let w144 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]);
+    program.extend_from_slice(&[0xFE, 144]);
+    emit_jr_nz_at(&mut program, w144);
+    program.extend_from_slice(&[0x3E, scx]); // ld a,scx
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh (SCX),a
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,2
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh (IE),a = STAT
+    program.extend_from_slice(&[0x21, 0x41, 0xFF]); // ld hl,$FF41 (STAT)
+
+    program.push(0xCD); // call setup_and_wait_mode2
+    let setup_operand = program.len();
+    program.extend_from_slice(&[0x00, 0x00]);
+
+    program.extend(std::iter::repeat_n(0x00, delay)); // nops delay
+    program.push(0x7E); // ld a,(hl)  ; single STAT read
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    program.push(0x4F); // ld c,a  (mode bits -> c)
+    program.extend_from_slice(&[0x3E, 0xAA]); // ld a,$AA
+    program.push(0x57); // ld d,a  (marker)
+    program.push(0x76); // halt
+    let done = base + program.len() as u16;
+    emit_jr_at(&mut program, done);
+
+    // setup_and_wait_mode2 (identical to the mode0 timing probe):
+    let setup_pc = base + program.len() as u16;
+    let wly = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,(LY)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz_at(&mut program, wly);
+    let wm0 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]);
+    program.extend_from_slice(&[0xE6, 0x03]);
+    program.extend_from_slice(&[0xFE, 0x00]);
+    emit_jr_nz_at(&mut program, wm0);
+    let wm3 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]);
+    program.extend_from_slice(&[0xE6, 0x03]);
+    program.extend_from_slice(&[0xFE, 0x03]);
+    emit_jr_nz_at(&mut program, wm3);
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20 (mode2 enable)
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh (STAT),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh (IF),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fl = base + program.len() as u16;
+    emit_jr_at(&mut program, fl); // jr . (fail loop)
+
+    patch_abs16(&mut program, setup_operand, setup_pc);
+
+    let mut rom = build_nom_bc_test_rom_with_program_entry(&program, 0x00, base as usize, &[]);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+fn run_intr_2_scx_single_read_probe(model: ConsoleModel, scx: u8, delay: usize) -> Option<u8> {
+    let mut machine =
+        Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+    machine
+        .load_cartridge(build_intr_2_scx_single_read_probe_rom(scx, delay))
+        .expect("probe ROM should load");
+    for _ in 0..3_000_000 {
+        machine.step_t_cycle();
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d == 0xAA
+        {
+            return Some(machine.cpu().registers().c);
+        }
+    }
+    None
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_sweep_intr_2_mode0_scx_timing() {
+    for model in [ConsoleModel::GameBoy, ConsoleModel::GameBoyColor] {
+        for scx in 0..=8_u8 {
+            // mode3->mode0 STAT readback bracket at SCX. scx3 asserts 49->mode3, 50->mode0;
+            // scx7 asserts 50->mode3, 51->mode0.
+            println!(
+                "=== intr_2_mode0_scx{scx}_timing model={model:?} (single STAT read after delay) ==="
+            );
+            for delay in 44..=58 {
+                match run_intr_2_scx_single_read_probe(model, scx, delay) {
+                    Some(m) => println!("delay={delay:3} mode={m:#04X}"),
+                    None => println!("delay={delay:3} <timeout>"),
+                }
+            }
+        }
+    }
 }
 
 // ---- faithful intr_2_oam_ok_timing probe (mooneye: mode2 IRQ, nops, poll OAM read

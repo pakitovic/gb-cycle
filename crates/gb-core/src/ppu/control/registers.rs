@@ -213,10 +213,24 @@ impl Ppu {
             && self.line_dot >= self.current_ly_read_advance_start_dot()
             && self.ly + 1 < TOTAL_SCANLINES
         {
-            self.ly + 1
-        } else {
-            self.ly
+            return self.ly + 1;
         }
+
+        // VBlank lines have no 6-dot read lead, but the CPU-first reorder observes the
+        // pre-tick `line_dot`, so the LY increment at the final dot of a vblank line must
+        // publish the next line one dot early for the same-cycle CPU read, mirroring the
+        // mode0-publish overrides (wilbertpol vblank_if_timing round5: LY reads 145 at the
+        // 144->145 wrap). Line 153 is excluded by `ly + 1 < TOTAL_SCANLINES` and handled by
+        // `line_153_reads_as_ly0`.
+        if self.is_lcd_enabled()
+            && self.ly >= VISIBLE_SCANLINES
+            && self.ly + 1 < TOTAL_SCANLINES
+            && self.line_dot + 1 >= self.current_scanline_length()
+        {
+            return self.ly + 1;
+        }
+
+        self.ly
     }
 
     fn skip_boot_ly_read_lag_active(&self) -> bool {
