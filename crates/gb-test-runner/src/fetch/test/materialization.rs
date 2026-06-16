@@ -19,6 +19,7 @@ fn duplicate_targets_are_rejected() {
         id: "source".to_string(),
         git_url: Some("file:///unused".to_string()),
         git_rev: Some("rev".to_string()),
+        file_base_url: None,
         archive_url: None,
         archive_sha256: None,
         archive_format: None,
@@ -222,6 +223,94 @@ fn materializes_selected_family_from_local_zip_archive_source() {
 
     let _ = fs::remove_dir_all(workspace_root);
     let _ = fs::remove_dir_all(archive_root);
+}
+
+#[test]
+fn materializes_selected_family_from_local_file_base_source() {
+    let workspace_root = unique_temp_dir("file-base-workspace");
+    let upstream_root = unique_temp_dir("file-base-source");
+    fs::create_dir_all(upstream_root.join("release/family-a"))
+        .expect("upstream family directory should be creatable");
+    fs::create_dir_all(upstream_root.join("release/family-b"))
+        .expect("upstream family directory should be creatable");
+    fs::write(upstream_root.join("release/family-a/test.gb"), b"rom bytes")
+        .expect("upstream ROM should be writable");
+    fs::write(
+        upstream_root.join("release/family-b/test.gb"),
+        b"other family",
+    )
+    .expect("upstream ROM should be writable");
+    let rom_hash = sha256_hex(b"rom bytes");
+
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"sample-report\"\n",
+            "store_dir = \"sample-report\"\n",
+            "sources = \"report/sources.report.toml\"\n",
+        ),
+    );
+    write_source_manifest(
+        &workspace_root,
+        "report/sources.report.toml",
+        &format!(
+            concat!(
+                "[[source]]\n",
+                "id = \"file-base-source\"\n",
+                "file_base_url = {:?}\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"family-a\"\n",
+                "target_root = \"family-a\"\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"family-a/test.gb\"\n",
+                "target = \"test.gb\"\n",
+                "sha256 = {:?}\n",
+                "\n",
+                "[[source.family]]\n",
+                "id = \"family-b\"\n",
+                "target_root = \"family-b\"\n",
+                "\n",
+                "[[source.family.file]]\n",
+                "path = \"family-b/test.gb\"\n",
+                "target = \"test.gb\"\n",
+                "sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+            ),
+            format!("file://{}", upstream_root.join("release").display()),
+            rom_hash,
+        ),
+    );
+
+    let store_root = workspace_root.join("test/sample-report");
+    fs::create_dir_all(store_root.join("family-a")).expect("family root should be creatable");
+    fs::write(store_root.join("family-a/stale.gb"), b"stale")
+        .expect("stale ROM should be writable");
+
+    let mut output = Vec::new();
+    run_fetch_command(["sample-report", "family-a"], &workspace_root, &mut output)
+        .expect("file base fetch should materialize selected family");
+
+    assert_eq!(
+        fs::read(store_root.join("family-a/test.gb")).expect("materialized ROM should exist"),
+        b"rom bytes"
+    );
+    assert!(
+        !store_root.join("family-b/test.gb").exists(),
+        "unselected file base families should not be materialized"
+    );
+    assert!(
+        !store_root.join("family-a/stale.gb").exists(),
+        "selected family root should be replaced"
+    );
+
+    let _ = fs::remove_dir_all(workspace_root);
+    let _ = fs::remove_dir_all(upstream_root);
 }
 
 #[test]

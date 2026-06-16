@@ -1,5 +1,5 @@
 family = "magen"
-suite_name = "magen-cgb"
+suite_name = "magen"
 report = "magen"
 model = "cgb"
 timeout_frames = 72
