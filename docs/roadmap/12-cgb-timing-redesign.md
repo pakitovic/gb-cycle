@@ -1464,3 +1464,88 @@ canonical behaviour (they ASSERT the removed mechanism — rewrite, don't force-
 fmt-check` + `cargo lint` + `cargo tests` + `cargo rom-report blargg` + mooneye 113 / wilbertpol 117 / m3_* no-regress.
 Then L2-b (per-register write latch, §24.8 corrected spec) + L2-c (LCD enable 456). Oracle for hard cases: DocBoy
 `build-trace-cgb` + `GBCYCLE_SCY_PROBE_LY` at /Users/pakitovic/workspace/DocBoy.
+
+### 24.11 L2-a.1 FIX-PHASE BATCH 2 — unit tests closed (8/9) + CRITICAL ROM-scope finding (2026-06-16)
+
+**State:** branch `ppu/fetcher-lead-hardening`, working tree DIRTY (uncommitted, net-positive, fmt+lint clean). Files
+touched this batch: `ppu/control/irq.rs`, `ppu/control/published_stat.rs`, `ppu/control/registers.rs`,
+`tests/ppu/ppu_oam_dma.rs`. (`ppu.rs` enable-delay was tried at 6 then reverted to 5 — see below.)
+
+**CRITICAL FINDING — the reorder's ROM damage was never measured and is ~3× the brief's "9 unit tests".** §24.10/§24.9
+said "ROM suites NOT yet run". They have now been run. The reorder commit `4f0b04e4` (+ LY −1 `a37d7779`), BEFORE this
+batch, already regressed the ROM oracle hard:
+- **Baseline at HEAD a37d7779 (hide still active): mooneye 108/113, wilbertpol 93/117.** (vs PR #245 main = 113/113,
+  117/117.) So the reorder broke ~5 mooneye + ~24 wilbertpol ROMs — the 9 unit tests were the tip of the iceberg.
+- Baseline mooneye fails (5): `boot_hwio-dmg0`, `intr_2_mode0_timing`, `intr_2_mode0_timing_sprites`,
+  `intr_2_mode3_timing`, `intr_2_oam_ok_timing`.
+- Baseline wilbertpol fails (24): `hblank_ly_scx_timing_variant_nops`, `intr_0_timing`, `intr_1_timing`,
+  `intr_2_mode0_scx3/scx7_timing_nops`, `intr_2_mode0_timing`, `intr_2_mode0_timing_sprites(+_nops, +_scx1/2/3/4_nops)`,
+  `intr_2_mode3_timing`, `intr_2_oam_ok_timing`, `intr_2_timing`, `ly_lyc-C/GS`, `ly_lyc_0-C/GS`, `ly_lyc_0_write-GS`,
+  `ly_lyc_144-C/GS`, `ly_lyc_write-GS`, `vblank_if_timing`.
+
+**THIS BATCH'S WORK (net-positive, ZERO regressions vs baseline):**
+- **Unit tests: 8 of the 9 behavioural ppu.rs tests now GREEN** (was 0/9). The 1 remaining = `ppu_lcd_restart::
+  lcd_reenable_line0_mode0_halt_wake_uses_the_scx_aligned_aperture` (scx1 only: 0x63 vs expected 0x62 — analysis below).
+- **ROMs improved: mooneye 108→109, wilbertpol 93→101.** Fixed (8 wilbert + 1 mooneye): `hblank_ly_scx_…_nops`,
+  `intr_0_timing`, `intr_2_mode0_timing_sprites_nops`, `…_scx1/2/3/4_nops`, `intr_2_mode3_timing` (both suites).
+- The fixes (all reorder-compensation, delay stays 5):
+  1. **Retired the hide** (§24.10 plan): both call sites `irq.rs`/`registers.rs` → `true`; deleted the 4
+     `*_stat_irq_edge_hidden_from_same_cycle_cpu_if` predicates + `stat_request_hidden_from_same_cycle_cpu_if` +
+     `ordinary_mode2_stat_pretrigger_edge` (only the hide used it). NOTE: retiring the hide changed NOTHING in the 9
+     unit probes (proving it was dead FOR THOSE), and net-IMPROVED the ROMs (93→101) — so the "hide is dead" call was
+     right for the cases it covered. `pending_interrupts_hidden_from_cpu_if` is now always 0 → the
+     `cpu_if_visible` param of `queue_interrupt_request_with_cpu_if_visibility` + the mask field are dead-but-harmless;
+     left for a follow-up simplification (not done — risk).
+  2. **mode2 reenable pretrigger lead** `ordinary_mode2_stat_pretrigger_lead_dots()` = 3 during `blank_frame_active`, 4
+     otherwise (fixes prearmed/arming/if_probe mode2; `blank_frame_active` guard keeps steady-state `mode2_to_mode0`
+     green — DO NOT make it unconditional).
+  3. **mode0 line0 reenable** `lcd_reenable_line0_mode0_irq_dot()` += 1 (counter + if_probe).
+  4. **mode0 line0 halt-wake** `lcd_reenable_line0_mode0_halt_wake_dot()` += 1 (deferred-wake dot).
+  5. **first-frame line1** `current_stat_irq_access_mode()` suppress-deferral now applies to ALL scx (dropped the
+     `matches!(scx,3|7)` guard) + `current_mode0_stat_irq_start_dot()` suppress arm += 1.
+  6. **mode2→mode3 published-STAT override** (`published_stat.rs`): fires one dot earlier (`line_dot == MODE2_DOTS - 1`
+     with a post-tick `access_mode_for_line_dot(line_dot+1)==Drawing` check) so a CPU `ld a,(FF41)` observes mode3 at
+     the canonical dot under the pre-tick read. (Fixed `intr_2_mode3` in BOTH suites — proves these unit-probe fixes
+     DO propagate to ROMs when the probe genuinely mirrors the ROM.)
+  7. **oam_dma test** (`ppu_oam_dma.rs`): the corruption uses the PRE-tick scan row (canonical = DocBoy CPU-then-PPU);
+     the test captured the POST-tick snapshot row. Fixed the TEST to capture the row before the step (no production
+     change — the pre-tick row is correct).
+
+**halt-wake scx1 (the 1 remaining unit test) — root-caused, likely a genuine post-reorder value:** with edge `+1`
+(needed by the counter/if_probe, confirmed via the mooneye `intr_2_mode0_*` family) scx1's mode0 STAT IRQ *pends* at
+line_dot 253; the halt-wake deferral can only DELAY, so it cannot wake before 253 → b=0x63. The expected 0x62 came from
+the old order's {scx0,scx1} grouping, which is unachievable once scx1's edge sits 4 dots after scx0's (the counter
+REQUIRES that spacing: scx0→0x3D, scx1→0x3E). Measured wake-dot→count map (TIMA sum): `[249,252]→0x62, [253,256]→0x63,
+[257,260]→0x64`. Do NOT chase scx1 with another `+1` — it cascades into the counter. Resolve only once the `intr_2_*`
+ROM cluster is canonical; then either accept 0x63 (update the test) or the deeper fix falls out.
+
+**DEAD END recorded:** `CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES` 5→6 fixes ALL reenable STAT IRQ + oam_dma in one shot
+but BREAKS the `cpu_path_lcd_enable_read_{ly,stat}` probes (raster moves 1 late for the READ path). The read path
+self-compensates the reorder (read-1-behind cancels raster-1-early) at delay 5; the IRQ path does not. So the enable
+delay is a SHARED knob that can't satisfy both — keep it 5 and compensate the IRQ path per-case. This is why the fixes
+are scattered, not one constant.
+
+**REMAINING ROM FAILURES (the real L2-a.1 fix work — 4 mooneye + 16 wilbertpol):**
+- `boot_hwio-dmg0` (mooneye) — boot HWIO; may be separate from STAT timing (verify on main/branch history).
+- `intr_2_mode0_timing`, `intr_2_mode0_timing_sprites`, `intr_2_oam_ok_timing`, `intr_2_timing` (the base, non-`_nops`
+  variants) — STAT mode0/mode2/oam IRQ timing. The `_nops` variants are FIXED; the base ones differ in CPU phase
+  alignment. No fast unit proxy (the `mode2_to_mode0` unit probe PASSES yet `intr_2_mode0_timing` ROM FAILS — the probe
+  is an INCOMPLETE proxy). Must ground vs the ROM directly (slow) or build a tighter probe.
+- `intr_2_mode0_scx3/scx7_timing_nops` (wilbert) — scx-seam mode0; related to `current_mode0_stat_irq_start_dot` seam.
+- `intr_1_timing`, `vblank_if_timing` (wilbert) — mode1/vblank STAT IF-visibility. Were failing at baseline too (NOT
+  caused by the hide retirement). Need the vblank-entry / line-153 STAT pretrigger constants re-derived.
+- `ly_lyc{,_0,_0_write,_144,_write}-{C,GS}` (8-9 wilbert) — LY-LYC coincidence STAT IRQ + readback. UNTOUCHED this
+  batch. Likely needs the `live_ly_for_lyc_compare` windows / `regular_line_dot0_compare_window` (line_dot==0) / the
+  `LINE_153_LYC*` + `CGB_LINE_153_*` compare constants shifted for the pre-tick CPU observation. Biggest single cluster.
+
+**METHODOLOGY LEARNING:** the curated unit probes are NOT a complete oracle for these ROMs. `intr_2_mode3` and
+`hblank_ly_scx` probes DID mirror their ROMs (fixing the probe fixed the ROM). But `mode2_to_mode0` passes while
+`intr_2_mode0_timing`/`intr_2_oam_ok` ROMs fail — so for the remaining cluster there is no fast proxy; iterate against
+the ROM suite (`cargo rom-suite {mooneye,wilbertpol}` then `cargo rom-report …`; ~2-3 min each) or first WRITE a tighter
+unit probe that reproduces the ROM's exact CPU read/IRQ sequence. The trace-fixture regens (§24.10 step 7) are NOT done
+yet (the ~17 phase2/4/5/machine/dma fixtures still need `GB_CYCLE_ACCEPT_*_FIXTURES=1`); do them only once the ROM
+cluster is closed and behaviour is final.
+
+**RESUME:** read §24.8–24.10 + this §24.11. Net-positive WIP is in the working tree (uncommitted, fmt+lint clean,
+1472 lib + 45/46 ppu integration green). Next: pick the `ly_lyc` cluster (biggest, untouched) or the base `intr_2_*`
+cluster; ground each against the ROM oracle. Target: mooneye 113/113, wilbertpol 117/117, m3_* no-regress, blargg green.
