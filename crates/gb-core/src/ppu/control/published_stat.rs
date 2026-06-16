@@ -150,6 +150,13 @@ impl Ppu {
             && self.ly < VISIBLE_SCANLINES
             && ((self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::HBlank
                 && self.line_dot == self.current_mode0_start_dot())
+                // The CPU micro-op observes the pre-tick `line_dot`, so the Drawing→HBlank
+                // boundary must unlock OAM one dot earlier to match the same-cycle CPU read,
+                // mirroring the STAT readback mode0 override (wilbertpol/mooneye
+                // intr_2_oam_ok_timing).
+                || (self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::Drawing
+                    && self.line_dot + 1 == self.current_mode0_start_dot()
+                    && self.access_mode_for_line_dot(self.line_dot + 1) == PpuAccessMode::HBlank)
                 || (self.line_dot != 0
                     && self.access_mode_for_line_dot(self.line_dot - 1) == PpuAccessMode::OamScan
                     && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::Drawing

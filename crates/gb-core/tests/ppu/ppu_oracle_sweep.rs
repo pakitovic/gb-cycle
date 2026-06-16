@@ -406,6 +406,116 @@ fn run_intr_2_mode0_timing_probe(model: ConsoleModel, delay: usize, target_mode:
     None
 }
 
+// ---- faithful intr_2_oam_ok_timing probe (mooneye: mode2 IRQ, nops, poll OAM read
+// until it returns 0 = OAM accessible / HBlank). OAM[0] is cleared to 0 in vblank;
+// while blocked the read returns 0xFF. Returns count register c. Real test asserts
+// delay 46 -> 1, delay 45 -> 2. ----
+fn build_intr_2_oam_poll_probe_rom(delay: usize) -> Vec<u8> {
+    let base = PROBE_ENTRY;
+    let mut program = Vec::new();
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+    program.push(0xAF); // xor a
+    program.push(0x57); // ld d,a  (d=0, not the marker)
+    // wait_ly 144 (rough vblank sync)
+    let w144 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]);
+    program.extend_from_slice(&[0xFE, 144]);
+    emit_jr_nz_at(&mut program, w144);
+    // OAM[0] = 0 (writable in vblank). hl stays $FE00 for the poll loop.
+    program.extend_from_slice(&[0x21, 0x00, 0xFE]); // ld hl,$FE00 (OAM)
+    program.push(0xAF); // xor a
+    program.push(0x77); // ld (hl),a   OAM[0]=0
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,2
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh (IE),a = STAT
+
+    program.push(0xCD); // call setup_and_wait_mode2 (preserves hl=$FE00)
+    let setup_operand = program.len();
+    program.extend_from_slice(&[0x00, 0x00]);
+
+    program.extend(std::iter::repeat_n(0x00, delay)); // nops delay
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let loop_pc = base + program.len() as u16;
+    program.push(0x04); // inc b
+    program.push(0x7E); // ld a,(hl)  ; read OAM[0]
+    program.extend_from_slice(&[0xE6, 0xFF]); // and $FF  (Z if a==0 = accessible)
+    emit_jr_nz_at(&mut program, loop_pc); // jr nz,loop
+
+    program.push(0x48); // ld c,b  (count -> c)
+    program.extend_from_slice(&[0x3E, 0xAA]); // ld a,$AA
+    program.push(0x57); // ld d,a  (marker)
+    program.push(0x76); // halt
+    let done = base + program.len() as u16;
+    emit_jr_at(&mut program, done);
+
+    // setup_and_wait_mode2 (identical to the mode0 timing probe):
+    let setup_pc = base + program.len() as u16;
+    let wly = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,(LY)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz_at(&mut program, wly);
+    let wm0 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]);
+    program.extend_from_slice(&[0xE6, 0x03]);
+    program.extend_from_slice(&[0xFE, 0x00]);
+    emit_jr_nz_at(&mut program, wm0);
+    let wm3 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]);
+    program.extend_from_slice(&[0xE6, 0x03]);
+    program.extend_from_slice(&[0xFE, 0x03]);
+    emit_jr_nz_at(&mut program, wm3);
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20 (mode2 enable)
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh (STAT),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh (IF),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fl = base + program.len() as u16;
+    emit_jr_at(&mut program, fl); // jr . (fail loop)
+
+    patch_abs16(&mut program, setup_operand, setup_pc);
+
+    let mut rom = build_nom_bc_test_rom_with_program_entry(&program, 0x00, base as usize, &[]);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+fn run_intr_2_oam_poll_probe(model: ConsoleModel, delay: usize) -> Option<u8> {
+    let mut machine =
+        Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+    machine
+        .load_cartridge(build_intr_2_oam_poll_probe_rom(delay))
+        .expect("probe ROM should load");
+    for _ in 0..3_000_000 {
+        machine.step_t_cycle();
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d == 0xAA
+        {
+            return Some(machine.cpu().registers().c);
+        }
+    }
+    None
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_sweep_intr_2_oam_ok_timing() {
+    for model in [ConsoleModel::GameBoy, ConsoleModel::GameBoyColor] {
+        // intr_2_oam_ok_timing: mode2 IRQ -> nops -> poll OAM until accessible (==0).
+        // Real test asserts delay 46 -> count 1, delay 45 -> count 2.
+        println!("=== intr_2_oam_ok_timing model={model:?} (poll OAM until accessible) ===");
+        for delay in 42..=49 {
+            match run_intr_2_oam_poll_probe(model, delay) {
+                Some(c) => println!("delay={delay:3} count={c:#04X}"),
+                None => println!("delay={delay:3} <timeout>"),
+            }
+        }
+    }
+}
+
 #[test]
 #[ignore = "oracle sweep (manual run with --nocapture)"]
 fn oracle_sweep_intr_2_mode0_timing() {

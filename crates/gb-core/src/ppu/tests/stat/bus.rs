@@ -188,7 +188,7 @@ fn cpu_oam_read_bus_state_only_opens_the_mode2_end_probe_window() {
 }
 
 #[test]
-fn cpu_oam_read_bus_state_switches_to_hblank_on_the_exact_mode0_start_dot() {
+fn cpu_oam_read_bus_state_switches_to_hblank_one_dot_before_mode0_start() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -207,8 +207,13 @@ fn cpu_oam_read_bus_state_switches_to_hblank_on_the_exact_mode0_start_dot() {
     ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
     ppu.blank_frame_active = false;
 
-    ppu.line_dot = MODE0_START_DOT - 1;
+    ppu.line_dot = MODE0_START_DOT - 2;
     assert_eq!(ppu.cpu_oam_read_bus_state().mode(), PpuAccessMode::Drawing);
+
+    // The CPU micro-op observes the pre-tick `line_dot`, so OAM unlocks one dot before
+    // the raster mode0 start to match the same-cycle CPU read (intr_2_oam_ok_timing).
+    ppu.line_dot = MODE0_START_DOT - 1;
+    assert_eq!(ppu.cpu_oam_read_bus_state().mode(), PpuAccessMode::HBlank);
 
     ppu.line_dot = MODE0_START_DOT;
     assert_eq!(ppu.cpu_oam_read_bus_state().mode(), PpuAccessMode::HBlank);
@@ -252,10 +257,21 @@ fn sprite_extended_mode0_start_opens_cpu_oam_read_before_published_stat_catches_
     assert_eq!(ppu.baseline_mode0_start_dot(), MODE0_START_DOT + 1);
     assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT + 18);
 
+    ppu.line_dot = ppu.current_mode0_start_dot() - 2;
+    assert_eq!(ppu.cpu_oam_read_bus_state().mode(), PpuAccessMode::Drawing);
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        PpuAccessMode::Drawing.stat_bits()
+    );
+
+    // The CPU micro-op observes the pre-tick `line_dot`, so OAM unlocks one dot before the
+    // raster mode0 start. The published STAT readback still lags here (its mode0 override is
+    // gated on `scx == 0 || mode0-int`, which this scx=1/no-mode0-int line does not satisfy),
+    // so OAM read opens ahead of the STAT mode bits.
     ppu.line_dot = ppu.current_mode0_start_dot() - 1;
     assert_eq!(ppu.owner_bus_state().mode(), PpuAccessMode::Drawing);
     assert_eq!(ppu.cpu_bus_state().mode(), PpuAccessMode::Drawing);
-    assert_eq!(ppu.cpu_oam_read_bus_state().mode(), PpuAccessMode::Drawing);
+    assert_eq!(ppu.cpu_oam_read_bus_state().mode(), PpuAccessMode::HBlank);
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
         PpuAccessMode::Drawing.stat_bits()
