@@ -135,13 +135,17 @@ fn cpu_inc_hl_inside_fe_range_reaches_the_same_mode2_corruption_controller() {
 
     let mut triggered_row = None;
     for _ in 0..1_024 {
+        // The CPU micro-op runs before the PPU tick within a T-cycle, so the OAM
+        // corruption controller observes the scan row as it stands at the start of
+        // the cycle (the pre-tick row). Capture it before stepping to match.
+        let row_before_tick = machine.ppu().snapshot().current_oam_scan_row;
         machine.step_t_cycle();
         if let Some(event) = machine.cpu().last_address_event()
             && event.kind == CpuAddressEventKind::IncDec
             && event.idu_address == Some(0xFE09)
             && event.update_direction == Some(CpuAddressUpdateDirection::Increment)
         {
-            triggered_row = machine.ppu().snapshot().current_oam_scan_row;
+            triggered_row = row_before_tick;
             break;
         }
     }

@@ -199,7 +199,6 @@ impl Ppu {
                 .runtime
                 .stat_state
                 .suppress_mode0_pretrigger_until_vblank
-            && matches!(self.scx & 0x07, 3 | 7)
             && self.current_access_mode() == PpuAccessMode::HBlank
             && self.line_dot < self.current_mode0_stat_irq_start_dot()
         {
@@ -228,20 +227,21 @@ impl Ppu {
             return mode0_start_dot;
         }
 
-        match self.scx & 0x07 {
-            3 => mode0_start_dot.saturating_add(4),
-            7 => mode0_start_dot.saturating_add(1),
-            _ => mode0_start_dot,
-        }
+        let scx_seam = match self.scx & 0x07 {
+            3 => 4,
+            7 => 1,
+            _ => 0,
+        };
+        mode0_start_dot.saturating_add(scx_seam + 1)
     }
 
     fn lcd_reenable_line0_mode0_irq_dot(&self) -> u16 {
         let scx_group_delay = u16::from((self.scx & 0x07).saturating_add(3) / 4) * 4;
-        LCD_REENABLE_LINE0_MODE0_RESTORE_DOT + scx_group_delay
+        LCD_REENABLE_LINE0_MODE0_RESTORE_DOT + scx_group_delay + 1
     }
 
     fn lcd_reenable_line0_mode0_halt_wake_dot(&self) -> u16 {
-        self.current_mode0_start_dot().saturating_sub(3) & !0x0003
+        (self.current_mode0_start_dot().saturating_sub(3) & !0x0003) + 1
     }
 
     pub(crate) fn dmg_lcd_reenable_mode0_halt_wake_deferred(&self) -> bool {
@@ -262,57 +262,20 @@ impl Ppu {
         self.line_dot >= irq_dot && self.line_dot < halt_wake_dot
     }
 
-    fn mode0_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
-        if self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT == 0
-            || !self.is_lcd_enabled()
-            || self.ly >= VISIBLE_SCANLINES
-        {
-            return false;
-        }
-
-        let real_boot_scx_seam_suppresses_pretrigger = self
-            .runtime
-            .stat_state
-            .real_boot_handoff_mode0_scx_seam_phase_active
-            && matches!(self.scx & 0x07, 3 | 7);
-        let ordinary_pretrigger_allowed = !self
-            .runtime
-            .stat_state
-            .suppress_mode0_pretrigger_until_vblank
-            && !self.runtime.stat_state.startup_mode0_irq_phase_active
-            && !real_boot_scx_seam_suppresses_pretrigger;
-        let ordinary_pretrigger_source = ordinary_pretrigger_allowed
-            && self.line_dot < self.current_mode0_start_dot()
-            && self.line_dot + 4 >= self.current_mode0_start_dot();
-        if ordinary_pretrigger_source {
-            return true;
-        }
-
-        let mode0_start_dot = if self
-            .lcd_restart_phase
-            .is_first_line_after_enable_active(self.ly)
-        {
-            self.lcd_reenable_line0_mode0_irq_dot()
+    fn ordinary_mode2_stat_pretrigger_lead_dots(&self) -> u16 {
+        if self.runtime.blank_frame_active {
+            3
         } else {
-            self.current_mode0_stat_irq_start_dot()
-        };
-
-        self.line_dot == mode0_start_dot
-            && self.current_stat_irq_access_mode() == PpuAccessMode::HBlank
+            4
+        }
     }
 
     fn ordinary_mode2_stat_pretrigger_source(&self) -> bool {
         self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
             && self.is_lcd_enabled()
             && self.ly + 1 < VISIBLE_SCANLINES
-            && self.line_dot + 4 >= self.current_scanline_length()
-    }
-
-    fn ordinary_mode2_stat_pretrigger_edge(&self) -> bool {
-        self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
-            && self.is_lcd_enabled()
-            && self.ly + 1 < VISIBLE_SCANLINES
-            && self.line_dot + 4 == self.current_scanline_length()
+            && self.line_dot + self.ordinary_mode2_stat_pretrigger_lead_dots()
+                >= self.current_scanline_length()
     }
 
     fn mode2_vblank_entry_stat_pretrigger_dots(&self) -> Option<u16> {
@@ -372,51 +335,6 @@ impl Ppu {
                 .runtime
                 .stat_state
                 .dmg_stat_write_quirk_blocks_line153_lyc0
-    }
-
-    fn mode2_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
-        if self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT == 0
-            || !self.is_lcd_enabled()
-        {
-            return false;
-        }
-
-        self.ordinary_mode2_stat_pretrigger_edge() || self.mode2_vblank_entry_stat_source()
-    }
-
-    fn mode1_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
-        self.stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0
-            && self.is_lcd_enabled()
-            && self.ly == VISIBLE_SCANLINES
-            && self.line_dot == 0
-            && self.current_access_mode() == PpuAccessMode::VBlank
-    }
-
-    fn lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
-        if self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT == 0 || !self.is_lcd_enabled()
-        {
-            return false;
-        }
-
-        if self.line_153_lyc0_stat_irq_pretrigger_source() {
-            return true;
-        }
-
-        if self.regular_line_dot0_compare_window() && self.ly == self.lyc {
-            return true;
-        }
-
-        if !self.live_lyc_coincidence() {
-            return false;
-        }
-
-        if self.ly == TOTAL_SCANLINES - 1 && !self.console_model.is_cgb_family() {
-            return (self.lyc == TOTAL_SCANLINES - 1
-                && self.line_dot == LINE_153_LYC153_COMPARE_START_DOT)
-                || (self.lyc == 0 && self.line_dot == LINE_153_LYC0_COMPARE_START_DOT);
-        }
-
-        false
     }
 
     pub(in crate::ppu) fn mode2_stat_write_irq_source(&self) -> bool {
@@ -498,10 +416,7 @@ impl Ppu {
             && new_line
             && self.line_153_lyc0_stat_irq_pretrigger_source();
         if !self.runtime.stat_state.irq_line && new_line {
-            self.queue_interrupt_request_with_cpu_if_visibility(
-                InterruptSource::LcdStat,
-                !self.stat_request_hidden_from_same_cycle_cpu_if(),
-            );
+            self.queue_interrupt_request_with_cpu_if_visibility(InterruptSource::LcdStat, true);
             if self.dot0_lyc_stat_irq_edge_is_cancellable() {
                 self.runtime.stat_state.dot0_lyc_stat_irq_edge_pending = true;
             }
@@ -574,13 +489,6 @@ impl Ppu {
         } else {
             self.runtime.pending_interrupts_hidden_from_cpu_if |= bit;
         }
-    }
-
-    pub(in crate::ppu) fn stat_request_hidden_from_same_cycle_cpu_if(&self) -> bool {
-        self.mode0_stat_irq_edge_hidden_from_same_cycle_cpu_if()
-            || self.mode2_stat_irq_edge_hidden_from_same_cycle_cpu_if()
-            || self.mode1_stat_irq_edge_hidden_from_same_cycle_cpu_if()
-            || self.lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if()
     }
 
     pub(in crate::ppu) fn stat_write_quirk_active_for_write(&self) -> bool {

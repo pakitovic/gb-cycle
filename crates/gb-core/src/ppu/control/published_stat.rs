@@ -75,12 +75,22 @@ impl Ppu {
         &self,
         context: PpuPublishedStatModeContext,
     ) -> bool {
-        context.published_mode == PpuAccessMode::OamScan
-            && context.current_mode == PpuAccessMode::Drawing
-            && !self.vblank_wrap_line0_stat_readback_delay_active()
-            && !self.runtime.blank_frame_active
-            && self.ly < VISIBLE_SCANLINES
-            && self.line_dot == MODE2_DOTS
+        if context.published_mode != PpuAccessMode::OamScan
+            || self.vblank_wrap_line0_stat_readback_delay_active()
+            || self.runtime.blank_frame_active
+            || self.ly >= VISIBLE_SCANLINES
+        {
+            return false;
+        }
+
+        if context.current_mode == PpuAccessMode::Drawing && self.line_dot == MODE2_DOTS {
+            return true;
+        }
+
+        // The CPU micro-op observes the pre-tick `line_dot`, so the OamScan→Drawing
+        // boundary must publish one dot earlier to match the same-cycle CPU read.
+        self.line_dot == MODE2_DOTS - 1
+            && self.access_mode_for_line_dot(self.line_dot + 1) == PpuAccessMode::Drawing
     }
 
     pub(in crate::ppu) fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {
