@@ -1783,3 +1783,54 @@ subsume it:** make the VBlank/STAT IF-read timing fall out of the tick order (al
 within-cycle order the way DocBoy interleaves CPU-access-then-PPU-raise), or fold it into the items (1)/(2) canonical
 IF-read / mode-from-delayed-registers model — then delete the mask. Revisit when items (1)/(2) land; net seam count must
 not rise on its account.
+
+### 24.17 ITEM (1) LANDED — line-153 LYC0 IRQ edge deferred via a delayed register; full seam deletion is item-2-coupled (2026-06-16)
+
+**What landed.** `ly_lyc_0-GS`, `ly_lyc_0-C`, `ly_lyc_0_write-GS` now match the `main`/PR-#245 oracle exactly
+(**wilbertpol 107→110/117**); mooneye 109, mealybug 13-fail (m3_scy_change DMG still closed), blargg untouched — ZERO ROM
+regression. The fix is a single canonical 1-T-cycle **delayed register**
+(`StatState.last_line_153_lyc0_pretrigger_window`, captured at the END of the tick in `capture_delayed_lyc_state`,
+mirroring DocBoy `ppu.cpp:554-560`): the line-153 LYC0 STAT IRQ pretrigger source reads the *previous* dot's window
+membership, which defers the otherwise-1-read-position-early edge by one dot under the CPU-first reorder. This is the
+SAME principle as E1 (regular-line dot0 latch) and item (3) (VBlank IF-read), now applied to the last reorder-skewed LYC
+edge. It adds a delayed register (canonical `last_*` family), NOT a manual table/constant — no window constants were
+re-derived (the §24.13 refutation stands). The three seam-pinned unit tests
+(`mode_edges::dmg_line153_lyc0_stat_pretrigger_bridges_to_visible_coincidence_without_retrigger`,
+`mode_edges::cgb_line153_lyc_edges_follow_the_cgb_compare_schedule`,
+`registers::dmg_vblank_stat_write_quirk_blocks_the_repeated_line153_lyc0_source`) were rewritten to the deferred
+behaviour; lib/integration/trace-fixture failure sets are otherwise byte-identical to clean `d0b7d59e` (the 9 `mode_edges`
++ ~16 phase/machine/dma trace reds are pre-existing reorder debt, unchanged, NOT regenerated — behaviour is not final
+until items 2–3).
+
+**The §24.15 "flip both consumers to is_lyc_eq_ly + delete the seam" plan is REFUTED for item (1) in isolation** — proven
+by the differential oracle (main worktree + `oracle_run_ly_lyc_roms`), three experiments, all reverted:
+1. **Flip `lyc_coincidence_for_irq_line` to a raw-`last_ly`/`last_lyc` delayed `is_lyc_eq_ly`** — did NOT close `ly_lyc_0`
+   (the line-153 LYC0 edge is fired by the separate pretrigger source, not the coincidence path) and REGRESSED
+   `ly_lyc_write-GS` (the DocBoy `last_lyc` delay conflicts with gb-cycle's immediate LYC-write re-evaluation, which the
+   green baseline depends on).
+2. **Delayed effective-compare-LY with LIVE LYC** (`last_compare_ly == Some(lyc)`) — recovered `ly_lyc_write-GS` and was
+   behaviourally equivalent to E1 for every green ROM, but still did NOT close `ly_lyc_0` (pretrigger again) and created a
+   compare/pretrigger seam gap at the line-153 dot-12 boundary.
+3. **Routing that delayed coincidence through the whole IRQ path** — REGRESSED CGB `ly_lyc_write-C` /
+   `ly_lyc_153_write-C` (round2: a LYC write at a `Some` dot must see the LIVE compare to raise immediately; the uniform
+   delay made the write-time evaluation stale on CGB).
+
+**Why the full observation-tables-seam deletion is blocked in item (1) alone (the structural finding).** The seam is two
+coupled compensations, each tied to *other* unlanded work:
+- The **irq-vs-readback split** (`lyc_coincidence_for_irq_line` vs `_for_readback`) compensates gb-cycle's CPU-first
+  reorder: the readback self-compensates (read-1-behind cancels raster-1-early, §24.12) while the IRQ needs an explicit
+  defer (E1). DocBoy has no split because it is not reordered (it raises straight to IF and reads IF in canonical tick
+  order). Unifying them requires modeling the reorder skew at the IF read — the item-(3)/§24.16 canonical end-state.
+- The **line-153 LYC0/LYC153 compare windows** compensate gb-cycle NOT wrapping `ly` to 0 mid-line-153 (DocBoy does, at
+  dot 3, so its `last_ly` delay produces the LYC0 coincidence in-line; gb-cycle keeps `ly=153` until the end-of-line
+  wrap). Deleting them requires the mid-line `ly`-wrap — the item-(2) raster rephasing.
+- gb-cycle's **immediate LYC/STAT write re-evaluation** (vs DocBoy `tick_pending_write` + next-tick `raise_stat_irq`) is
+  load-bearing for the write ROMs; the canonical `last_lyc` write delay can only land alongside removing that immediate
+  re-eval — coupled to the item-(2) work as well.
+
+**Classification — INTERIM COMPENSATION (like E1 and item 3), net manual-seam count does NOT rise.** A 1-T-cycle delayed
+register is the canonical mechanism, not a manual table; no constants were added or re-derived. **Canonical end-state
+that subsumes it:** once item (2) lands the mid-line-153 `ly`-wrap and the mode/registers-from-delayed-registers model
+(and the write path moves to pending-write + next-tick), the line-153 LYC0 pretrigger + compare windows collapse into the
+single delayed `is_lyc_eq_ly`, and `last_line_153_lyc0_pretrigger_window` + the `LINE_153_LYC0_*`/`CGB_LINE_153_*`
+constants delete together. Tracked as item-2-coupled debt; revisit when item (2) lands.
