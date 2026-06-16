@@ -1931,3 +1931,13 @@ mode0; `intr_2_timing` (wb); `intr_2_mode0_scx3/scx7_timing_nops` (wb) — scx�
 to revisit). `vblank_if_timing` (wb) round5 = the LY-after-event read (item-1/2 LY model, §24.14). `boot_hwio-dmg0`
 (mooneye) — boot handoff, separate. **NEXT item-2 batch:** land the validated base fix + the 12 mechanical test rewrites,
 then take the sprites (mode3-length) and scx (gate) sub-issues one at a time against the oracle.
+
+**LANDED (item-2 batch-1, 2026-06-16):** the mode0-earlier override + the 12 test rewrites (option (a): the
+`cpu_stat_read_*` tests now assert the reorder-correct CPU read — `0x00`/HBlank at `mode0_start_dot-1` — and were
+renamed `keeps_mode3/keeps_drawing` → `reads_mode0_one_dot_early`/`switches_to_hblank_one_dot_before_mode0_start`; the
+§245 mode3 terminal-tail length stays verified by their untouched `current_mode0_start_dot()` asserts). Gate green:
+**wilbertpol 110→111, mooneye 109→110** (both close `intr_2_mode0_timing`), blargg 58/58, mealybug 13-fail (m3_scy_change
+DMG still closed), lib back to the 9 pre-existing reorder reds, integration/trace-fixture failure sets unchanged,
+fmt-check + lint clean. Canon self-audit: the fix is a scoped published-STAT-readback override mirroring the already-canon
+mode2→mode3 one (CPU-pre-tick observation), not a new manual table; net manual-seam count does not rise. Remaining
+intr_2_* cluster (sprites/oam/scx/timing) + vblank_if + boot_hwio are the subsequent batches.
