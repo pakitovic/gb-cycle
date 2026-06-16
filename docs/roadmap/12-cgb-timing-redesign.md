@@ -1404,3 +1404,63 @@ fmt/lint/tests/blargg + m3_* no-regress + wilbertpol 117 + mooneye 113. Then L2-
   read delta) is the right inner loop; full ROM suites are the outer gate. Remaining: STAT pretrigger family (mode2/
   mode0/vblank-entry), the LCD-reenable family (off-by-1 in the IF-visibility boundary), line-153 LYC, hide cleanup,
   OAM-DMA startup, then rewrite the 7 lcd_restart tests, regen fixtures, ROM-gate.
+
+### 24.10 RESUME BRIEF — STAT-pretrigger + hide batch (cold-start handoff, 2026-06-16)
+
+**State:** branch `ppu/fetcher-lead-hardening`, HEAD `a37d7779`, working tree CLEAN. Two L2-a.1 commits landed:
+`4f0b04e4` (scheduler CPU→PPU reorder + `refresh_ppu_bus_state_snapshot_with_observer` cache fix), `a37d7779`
+(`LY_READ_ADVANCE_START_DOT` 451→450). Tree is INTENTIONALLY red — this batch finishes L2-a.1. Read §24.8 (blast-radius
+map) + §24.9 (diagnosis + progress) first.
+
+**EXACT RED SET to clear (run `cargo test -p gb-core --test ppu --no-fail-fast`):** 9 behavioural ppu.rs tests:
+- 7 `ppu_lcd_restart::*` — `lcd_reenable_{first_frame_mode0_stat_suppresses_pretrigger_and_keeps_scx_seams,
+  arming_mode2_stat_during_oam_waits_for_the_next_oam_edge, line0_mode0_stat_uses_scx_grouped_irq_dots,
+  line0_mode0_halt_wake_uses_the_scx_aligned_aperture, mode0_edge_is_not_visible_to_same_cycle_if_reads,
+  mode2_pretrigger_is_not_visible_to_same_cycle_if_reads, prearmed_mode2_stat_services_on_the_first_oam_pretrigger}`.
+- `ppu_mode_edges::mode2_to_mode3_stat_probe_matches_mooneye_counts`.
+- `ppu_oam_dma::cpu_inc_hl_inside_fe_range_reaches_the_same_mode2_corruption_controller`.
+PLUS ~17 MECHANICAL trace-fixture regens (phase2 5 / phase4 5 / phase5 2 / machine 2 / dma 2 / `scheduler_cycle_trace.txt`
+hand-edit) — these are NOT behaviour, do them LAST via the env-var bless (below).
+
+**VALIDATED METHOD (transferable):** the reorder makes the CPU observe the PPU `line_dot` exactly ONE behind for a
+DIRECT register read (CPU runs in CpuMicroOperation, before the PPU tick) ⇒ −1 on that CPU-comparison threshold
+(PROVEN on LY-read; restores the exact pre-reorder/oracle observation, doesn't break the slack cases). BUT the
+STAT-visibility/pretrigger cases are NOT a uniform −1 and the hide is NOT a no-op — each needs per-case grounding
+against its probe. The curated probes encode the mooneye thresholds = the oracle; inner loop = `cargo test -p gb-core
+--test ppu <probe>` (~4s). DO NOT guess constants globally (the scx asymmetry + the 8 prior refutations are the trap).
+
+**STARTING PROBE DELTAS (evidence captured this session):** `mode2_to_mode3_stat_probe` count actual (2,2) vs expected
+(1,2) — the STAT-edge→mode3 spacing is 1 too wide at delay3. `lcd_reenable_mode0_if_probe(59)` returns 0xE2 (IF-visible)
+but must be 0xE0 — the mode0 STAT edge goes IF-visible 1 delay-unit too EARLY (so same-cycle visibility shifted, not
+vanished). `lcd_reenable_mode2_if_probe(109/110)` analogous (expect 0xE0/0xE2).
+
+**EDIT POINTS (ready to act):**
+- *Retire the hide* (do FIRST — structural before constants, or you tune twice): set both call sites to `true` —
+  irq.rs:503 (`refresh_stat_irq_line`) + registers.rs:185 (the STAT-write edge path); then DELETE the 4 predicates
+  `mode0/mode2/mode1/lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if` (irq.rs:265-302 / 377-385 / 387-393 / 395-420) +
+  `stat_request_hidden_from_same_cycle_cpu_if` (irq.rs:579-584). **KEEP** the shared source helpers
+  `ordinary_mode2_stat_pretrigger_{edge,source}` / `mode2_vblank_entry_stat_source` / `line_153_lyc0_stat_irq_pretrigger_source`
+  (used by the REAL IRQ-line calc at irq.rs:130/161-162/401/454/499/541, not just the hide). NOTE: after retiring, the
+  cpu-if-visibility mask `pending_interrupts_hidden_from_cpu_if` may itself become dead → check `cpu_visible_pending_interrupt_request_mask`
+  (ppu/api.rs:~1537) and `cpu_interrupt_mask_for_if_read` (step.rs:135) and simplify if so.
+- *STAT pretrigger leads* (the `+4` family — re-derive per-case vs the probes): irq.rs:286 (mode0 `line_dot + 4 >=
+  current_mode0_start_dot`), irq.rs:308/315 (`ordinary_mode2_stat_pretrigger_{source,edge}` `line_dot + 4`), irq.rs:339
+  (vblank-entry via `mode2_vblank_entry_stat_pretrigger_dots`), the halt-wake deferreds irq.rs:454/463/472/481 (also
+  `+4`). Constants: `DMG_MODE2_VBLANK_ENTRY_STAT_PRETRIGGER_DOTS`/`CGB_COMPAT_…` (ppu.rs:82-83),
+  `LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS` (ppu.rs:81).
+- *Line-153 LYC*: `LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT` + `CGB_LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT` and the compare
+  windows (ppu.rs:72-79).
+- *LCD-reenable family*: `LCD_REENABLE_LINE0_LY_READ_ADVANCE_START_DOT` (ppu.rs:63, likely −1 like its sibling) + the
+  reenable mode0/mode2 IRQ dots (`lcd_reenable_line0_mode0_irq_dot`, irq.rs).
+- *LCD enable delay* (L2-c-adjacent but cheap): `CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES` 5→4 (ppu.rs:67) — armed by the
+  CPU commit, decremented inside the PPU tick; the reorder gives it one extra decrement. Validate vs lcd-on-timing.
+
+**ORDER OF ATTACK:** (1) retire hide → re-measure all 9; (2) re-derive STAT pretrigger constants per-case vs
+`mode2_to_mode3` + the lcd_reenable_if probes; (3) LCD-reenable family vs the other lcd_restart tests; (4) line-153 LYC;
+(5) OAM-DMA mode2-corruption (`ppu_oam_dma::cpu_inc_hl_inside_fe_range_…`); (6) REWRITE the 7 lcd_restart tests to the
+canonical behaviour (they ASSERT the removed mechanism — rewrite, don't force-green); (7) regen the ~17 trace fixtures:
+`GB_CYCLE_ACCEPT_{MACHINE,PHASE2,PHASE4,PHASE5,PHASE6,PRINTER}_FIXTURES=1 cargo test -p gb-core` + hand-edit
+`crates/gb-core/tests/fixtures/traces/scheduler_cycle_trace.txt` (reorder its phase lines); (8) ROM-GATE: `cargo
+fmt-check` + `cargo lint` + `cargo tests` + `cargo rom-report blargg` + mooneye 113 / wilbertpol 117 / m3_* no-regress.
+Then L2-b (per-register write latch, §24.8 corrected spec) + L2-c (LCD enable 456). Oracle for hard cases: DocBoy
+`build-trace-cgb` + `GBCYCLE_SCY_PROBE_LY` at /Users/pakitovic/workspace/DocBoy.
