@@ -1667,3 +1667,35 @@ the wilbertpol sources) AND DocBoy `build-trace-cgb`.
 mode-from-delayed-registers (base `intr_2_*` + `scx_nops`); (3) vblank IF-read-vs-dispatch skew (still a design item,
 §24.12). The unit tests pinned to the old seam (the ~9 `mode_edges::*` reds + others) get rewritten to the canonical
 behaviour as part of each replacement, not before. Keep the reorder; keep E1 until the LYC model lands.
+
+### 24.14 LANDED — item (3) VBlank-entry IF-read-vs-dispatch skew (commit `d461621a`, 2026-06-16)
+
+Done out of sequence (it was the §24.12 batch-4 target before the §24.13 direction change) but it is a **structural
+design fix, not a seam constant** — exactly the "1-cycle-skewed IF-register read value vs dispatch-pending state" §24.12
+called for — and is independent of the observation-tables/mode0-publish seams (touches `interrupts.rs` + `step.rs` only,
+not `irq.rs`/`ppu.rs`). Kept interim like E1.
+
+**Mechanism (differential-oracle confirmed, main worktree + `oracle_sweep_vblank`):** under CPU-first, the VBlank-entry
+PPU IRQ (VBlank `0x01` + the co-committed mode1 / LYC=144 STAT) is committed to the scheduler IF in InterruptAggregation
+(phase 7) of the crossing T-cycle `T*`; the next cycle's PRE-tick CPU `ldh a,(IF)` (phase 4) observes it one read
+position too early vs main (main's POST-tick read landed in the same cycle as the commit, i.e. before it). Both VBlank
+and the STAT bit flip together at the same read position (probe + ROM confirm), so they must defer together.
+
+**Fix:** `InterruptController.cpu_if_read_suppress_mask`, applied ONLY in `read_if_with_pending_requests` (the FF0F memory
+read). Dispatch/service/halt-wake read `pending_mask()`/`highest_pending()` (raw `interrupt_flags`), so commit + dispatch
+stay at `T*` — the "leave commit/dispatch at ly144 dot0" requirement. Armed in `step_interrupt_aggregation` over the
+just-committed PPU bits **iff the VBlank bit is among them** (VBlank only ever commits at ly144 dot0, so this exactly
+scopes to the vblank entry and never over-suppresses an on-time STAT edge — verified algebraically), cleared
+unconditionally at the top of every InterruptAggregation so it lasts exactly one read position. Serialized in the
+interrupt save-state (`#[serde(default)]`).
+
+**Result:** wilbertpol 104→**107/117** (closes `intr_1_timing`, `ly_lyc_144-GS`, `ly_lyc_144-C`). mooneye 109, mealybug
+13-fail (m3_scy_change DMG still closed), blargg 58/58 — all unchanged. Full `cargo test -p gb-core` diff vs clean HEAD =
+exactly ONE intended unit change (`ppu_mode_edges::entering_vblank_can_raise_vblank_and_mode1_stat_together` rewritten to
+the canonical E0-then-E3 observation), ZERO regressions; the 9 `mode_edges::*` + ~17 trace-fixture reds are unchanged.
+3-lens adversarial static review (dispatch-leak / scoping / lifecycle+save-state) all returned no flaw.
+
+**Not fully closed — `vblank_if_timing` (still 1 wilbertpol fail).** E1-style IF edge (round1) now passes, but it ALSO
+asserts `round5` = LY read after `wait_vblank_irq`+97 nops = 145 (branch reads 144, 1 late). That is the **LY-after-event
+read**, NOT the IF skew — it belongs to the canonical LY-delayed-register / mode0-publish work (items 1–2), unaffected by
+this fix. So `vblank_if_timing` closes when the canonical `last_ly` model lands. NEXT: item (1), the DocBoy LYC model.
