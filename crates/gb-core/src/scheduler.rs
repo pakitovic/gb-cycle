@@ -70,10 +70,10 @@ impl SchedulerPhase {
         Self::ExternalEventIngress,
         Self::MasterClockTick,
         Self::DerivedEdgeResolution,
-        Self::AutonomousPeripheralTicks,
         Self::BusArbitration,
         Self::CpuMicroOperation,
         Self::MmioSideEffectCommit,
+        Self::AutonomousPeripheralTicks,
         Self::InterruptAggregation,
         Self::CpuWakeInterruptEvaluation,
     ];

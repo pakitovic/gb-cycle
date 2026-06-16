@@ -1233,3 +1233,136 @@ as always-false dead state — `BgFetcherState::cgb_dmg_scy_high_plane_uses_low_
 and `BgPushState::terminal_placeholder_tail_extra_hold_remaining` (vestigial). Remove them + their reads when
 re-greening the 5 ignored tests. Layer 2 (scheduler CPU→PPU order, per-register write observation, canonical LCD
 enable) is unstarted.
+
+### 24.8 L2-a blast-radius MAP + EXECUTION PLAN (5-agent map, 2026-06-16, user chose "map first")
+
+Five parallel oracle/code maps (DMA+bus interlock, pinned timing constants, IRQ/bus-owner timing, tests+fixtures,
+DocBoy/SameBoy oracle grounding) settled the L2 surface. The reorder itself is data-driven: edit
+`SchedulerPhase::ORDER` (scheduler.rs:69); dispatch is a pure `match context.phase()` (step.rs:332), so changing ORDER
+reorders both execution AND the emitted trace lines with no dispatch edit. Target order: `ExternalEventIngress,
+MasterClockTick, DerivedEdgeResolution, BusArbitration, CpuMicroOperation, MmioSideEffectCommit,
+AutonomousPeripheralTicks, InterruptAggregation, CpuWakeInterruptEvaluation` (CPU+commit move ahead of the PPU/DMA/APU
+tick).
+
+**KEY REFRAMING — L2-a is NOT a standalone scheduler reorder.** Moving CPU before the PPU tick ALONE would *double-delay*
+the Mode2 STAT IRQ and regress the ~10 `m3_*` tests sharing the Mode2-STAT handler, because the
+`*_hidden_from_same_cycle_cpu_if` family (irq.rs:265 mode0, :377 mode2, :387 mode1, :395 lyc; + the
+`pending_interrupts_hidden_from_cpu_if` mask ppu/api.rs:1539, set via `stat_request_hidden_from_same_cycle_cpu_if`
+irq.rs:579) is a same-cycle-VISIBILITY correction that EXISTS to compensate for PPU-before-CPU. Under CPU-first it is
+redundant/inverted and must be RETIRED in the same pass. The STAT pretrigger constants (the hard-coded `+4` mode0/mode2
+lead irq.rs:286/308/315, `DMG_MODE2_VBLANK_ENTRY_STAT_PRETRIGGER_DOTS`/`CGB_COMPAT_…`=4, `LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT`=8
+via −4, `CGB_…`=8 via −1) collapse by ~1 dot. So **L2-a bundles four moves:** (1) ORDER reorder; (2) retire the
+hidden-from-cpu-if visibility layer; (3) re-derive the pretrigger / LY-read-advance / line-153 LYC-compare constants
+against the oracle; (4) a DMA "armed-this-cycle → tickable-next-cycle" latch so OAM-DMA startup delay survives the
+peripheral tick now running AFTER the CPU write.
+
+**Oracle target CONFIRMED (DocBoy `/Users/pakitovic/workspace/DocBoy/src/docboy/docboy/`; design-note line numbers were
+stale, mechanism TRUE):** within each T-cycle `Core::cycle()` drives `tick_t0..t3`, each `gb.cpu.tick_t*()` BEFORE
+`gb.ppu.tick()` (core.cpp:55/63, 96/114, 154/161, 195/216), DMA after both (`gb.dma.tick()` tick_t1:131/tick_t3:234,
++t0/t2 on CGB double-speed). SameBoy corroborates (SM83 access, then `GB_advance_cycles`→`GB_display_run` flushes the
+PPU clock; timing.c:513).
+
+**L2-b spec CORRECTED — NOT a uniform countdown=2** (§24.1/§24.2 stated it incompletely). DocBoy truth
+(ppu.cpp `tick_pending_write` :712-738 runs at the END of `Ppu::tick()` :569 → committed value visible NEXT dot;
+setters write_scy/scx/wx/lcdc :3516-3585; bus wiring cpubus.cpp:180-198):
+- **DMG:** SCY/SCX/WX/LCDC-non-enable-bits/BGP/OBP/WY/LYC are IMMEDIATE (direct bus pointers / `write_*_real`). ONLY
+  STAT is delayed (`pending_write.stat.countdown=1`, with STAT IE bits forced high for that 1 T-cycle).
+- **CGB:** countdown=2 for LCDC-non-enable bits, SCY, SCX, WX. STAT immediate. LCDC.enable ALWAYS immediate
+  (turn_on/turn_off applied before the latch). WY/BGP/OBP/LYC immediate.
+- No double-speed branch — the countdown constant is fixed (2, or DMG-STAT 1) regardless of speed.
+- CGB additionally freezes SCY into `bwf.scy` at GetTile0 (ppu.cpp:2021) — gb-cycle ALREADY keeps this as the
+  always-on use-B latch (§24.7). So L2-b's job is the per-register countdown=2 store-latch, NOT the GetTile0 freeze.
+⇒ gb-cycle's `commit_delay_t_cycles` (LYC=FF45 CGB normal-speed only, step.rs:808) is the WRONG shape: replace with a
+per-register PpuRegisterWrite latch {LCDC-bits/SCY/SCX/WX → countdown=2 on CGB; STAT → countdown=1 on DMG}, decremented
+at end of PPU tick, local to the PPU and serialized in save-state.
+
+**Per-frente findings (condensed; cite the agent maps in session log):**
+- *DMA/bus interlock.* Caches `cached_cpu_bus_arbitration_states`/`cached_ppu_bus_state_snapshot` memoize the FIRST
+  read per T-cycle (reset step.rs:1146/1185). Today AutonomousPeripheralTicks reads first (post-tick PPU mode); under
+  L2-a CpuMicroOperation reads first (PRE-tick mode) — this one-dot-earlier CPU view of PPU mode is the INTENDED effect
+  (#1, leave it, validate). HIGH-RISK side-effects: HDMA HBlank-window (`VramDmaRuntimeContext` step.rs:462,
+  dma.rs:616) and OAM-DMA FF46 arm (dma.rs:1049) — a transfer armed THIS cycle now ticks one T-cycle earlier,
+  collapsing the startup delay; `dma.cpu_stall_active()` (step.rs:744/1005) stall edge shifts. Containment: freeze
+  ppu.owner_bus_state/ly/dma.bus_state/cpu_stall_active in a per-cycle PRE-CPU snapshot + DMA armed-this-cycle latch.
+  Gate on mooneye `oam_dma_*`, HDMA timing, VRAM/OAM-block.
+- *Pinned constants.* WILL-SHIFT (re-derive vs oracle): the whole STAT-pretrigger family (above);
+  `CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES`=5→almost-certainly 4 (countdown armed by CPU commit, decremented in PPU tick;
+  reorder gives it one extra decrement); `LY_READ_ADVANCE_START_DOT`=451 + `LCD_REENABLE_LINE0_LY_READ_ADVANCE_START_DOT`=444;
+  all `LINE_153_LYC*`/`CGB_LINE_153_LYC*` compare windows + `*_LY_READ_ZERO_DOT` (4/8) + `CGB_LINE_END_LYC_COMPARE_BLANK_DOTS`=3;
+  `LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS`=4. NEEDS-ORACLE-CHECK: boot/LCD-restart `line_dot` seeds
+  (`LCD_REENABLE_INITIAL_LINE_DOT`, `DMG_REAL_BOOT…`=92, `CGB_BOOT_ENTRY_LINE_DOT`=173, boot bases 36/3992/235),
+  `MODE3_INITIAL_SCX_CAPTURE_DOT`=3, and **speed.rs:52 double-speed tick parity** `t_cycle & 1 == 0` (may need to flip —
+  the one item plain dot-offset reasoning doesn't cover; needs a CGB double-speed oracle run). STABLE: pure mode
+  lengths/geometry (DOTS_PER_SCANLINE, MODE2/MODE3 lengths, MODE0_START_DOT base, internal fetcher windows).
+- *IRQ/bus-owner.* Two channels: A = deferred scheduler buffer (Timer DerivedEdge:2 stays before CPU → NO shift;
+  Serial AutonomousPeripheral → moves after CPU → IF-visible one cycle later). B = direct PPU state read (VBlank/STAT):
+  commit-to-IF in InterruptAggregation (stays index 7, after PPU) is unchanged, but the CPU's LIVE in-cycle IF read
+  (`cpu_visible_pending_interrupt_request_mask` step.rs:135 / ppu/api.rs:1537) now runs BEFORE this cycle's PPU tick →
+  same-cycle visibility flips. Timer + Joypad are control anchors (no shift). The Mode2-STAT handler is the crux
+  (m3_scy_change). `step_cpu_wake_interrupt_evaluation` deferral tables (step.rs:1016-1025) read post-PPU-tick state in
+  BOTH orders → unaffected by the reorder, but may over/under-correct once the STAT-edge dot shifts (validate
+  wilbertpol lcd_restart / mooneye intr_2_*).
+- *Tests/fixtures.* Hand-edit: `scheduler/tests.rs:6-18` (order array), `machine/tests.rs:732-741` regions
+  `[Timer,Apu,Ppu,Cpu,Cpu]`→`[Cpu,Cpu,Timer,Apu,Ppu]`, rename `machine/tests.rs:2758`
+  (`…during_phase_7…`), `scheduler_cycle_trace.txt` (NOT auto-blessed; reorder its phase lines). Auto-bless (env
+  `GB_CYCLE_ACCEPT_{MACHINE,PHASE2,PHASE4,PHASE5,PHASE6,PRINTER}_FIXTURES`, helper tests/common/fixtures.rs:16): all
+  machine_*/phase2/4/5/6 traces (expect substantive PPU/DMA-column diffs, not just line moves). Save-state: NO impact
+  (only `next_t_cycle` serialized; `pending_ppu_mmio_write` reset to None on restore machine.rs:715). `tests/scheduler.rs`
+  order assertion is self-referential (passes after reorder).
+
+**EXECUTION PLAN (each checkpoint compiles; ROM-gated this time — Layer 2's goal IS to re-green, unlike Layer 1):**
+- **L2-a.0 — pre-CPU peripheral snapshot + DMA armed-latch (containment FIRST, BEFORE the reorder, behaviour-neutral).**
+  Freeze the per-cycle pre-CPU PPU/DMA picture and add the DMA "armed-this-cycle → tickable-next-cycle" latch while the
+  order is still PPU-first (so it's a no-op now), so step L2-a.1 doesn't collapse OAM-DMA startup. Gate: full `cargo
+  tests` still green (no behaviour change yet).
+- **L2-a.1 — reorder ORDER + retire hidden-from-cpu-if + re-derive pretrigger/LY/LYC constants, together.** This is the
+  coherent structural cut. Land it, then re-derive each WILL-SHIFT constant against the DocBoy/SameBoy oracle trace
+  (NOT by chasing red tests blindly). Gate: `cargo fmt-check` + `cargo lint` + `cargo tests` + `cargo rom-report
+  blargg`; then the dashboards — DMG `m3_scy_change` stays closed, the ~10 shared `m3_*` do not regress, wilbertpol
+  117/117, mooneye 113/113. Regen fixtures last (env vars above) once behaviour is settled.
+- **L2-b — per-register write-observation latch** (corrected spec above): replace `commit_delay_t_cycles` with the
+  per-register countdown. Re-pins the fresh CGB SCY value → re-greens the 5 §24.7 `#[ignore]` tests and closes the CGB
+  `m3_scy_change` VisibleTile2 bands (121px). Gate: the 5 ignored tests un-ignored + green, m3_* register-change green.
+- **L2-c — canonical LCD enable** (instant turn_on; re-enable line0 = 456, not 448). Re-validate wilbertpol
+  `lcd_restart`/`intr_2_*` against the oracle (currently pinned to 448).
+
+Orthogonality: L2-a is foundational for L2-b (same-cycle observation) but L2-c can land independently. **To resume:**
+read §24.8 + the 5 agent maps; start at L2-a.0 (containment), then the L2-a.1 coherent cut. Do NOT attempt the reorder
+without retiring the hidden-from-cpu-if layer in the same change — proven (this map) to double-delay the Mode2 STAT IRQ.
+
+### 24.9 L2-a.1 IN PROGRESS — reorder LANDED + damage measured (2026-06-16, branch ppu/fetcher-lead-hardening, UNCOMMITTED WIP, tree RED on purpose)
+
+**L2-a.0 was DROPPED as a separate step** — closer reading proved it is not cleanly separable (mirrors the L1-b "not
+separable" finding): (1) the "pre-CPU snapshot unification" IS the L2-a.1 behavioural change (it flips the CPU's view of
+PPU mode from post-tick to pre-tick), not a no-op; (2) the DMA armed-latch is only verifiable post-reorder
+(`elapsed_t_cycles` startup-delay is explicit at dma.rs:333, but the `pending_restart` path is order-coupled), so
+pre-installing it blind gives false comfort. ⇒ L2-a is a single coherent verde→rojo→verde cut; the right first action
+is "reorder + measure" to convert the §24.8 predictions into the real damage list.
+
+**LANDED so far (uncommitted):**
+- Reorder: `SchedulerPhase::ORDER` (scheduler.rs:69) now `…DerivedEdge, BusArbitration, CpuMicroOperation,
+  MmioSideEffectCommit, AutonomousPeripheralTicks, Interrupt…` (enum decl left intact — only ORDER drives execution, so
+  Ord/Serialize unchanged). Updated `scheduler/tests.rs` order array + `machine/tests.rs` regions
+  `[Timer,Apu,Ppu,Cpu,Cpu]`→`[Timer,Cpu,Apu,Ppu,Cpu]`.
+- **Cache-coherence bug FIXED (real, not cosmetic):** the end-of-PPU-tick snapshot (step.rs:683,
+  `sync_video_domain_ownership` with the POST-tick owner) was hitting `cached_ppu_bus_state_snapshot` now PRE-populated
+  by the CPU phase with the PRE-tick view. Added `refresh_ppu_bus_state_snapshot_with_observer` (resets the cache, takes
+  a fresh post-tick snapshot). No-op under the old order (cache was None there); required under the new order. The
+  `step_t_cycle_with_observer_reports_regions_*` ppu_regions list confirms it (BusSnapshot×2+PublishedAccess restored).
+
+**MEASURED DAMAGE (full `cargo test -p gb-core --tests --no-fail-fast`):** lib 1472/0 GREEN; snapshots GREEN (mode3
+internals unaffected by the reorder — the §24.7 fetcher work holds). Integration failures = exactly the §24.8 prediction:
+- *Mechanical (trace-fixture regen — phase lines reorder):* phase2 (5), phase4 (5; verify OAM-state cols unchanged),
+  phase5 (2), machine (2), dma (2 arbitration-trace), scheduler_cycle_trace.txt (1, hand-edit). ~17 tests.
+- *Behavioural (the real fix work) — ppu.rs 11:* `ppu_lcd_restart::*` (7, incl. the literal
+  `..._mode0_edge_is_not_visible_to_same_cycle_if_reads` / `..._mode2_pretrigger_is_not_visible_to_same_cycle_if_reads`
+  — the hidden-from-cpu-if family), `ppu_mode_edges::{mode2_to_mode3_stat_probe, hblank_ly_scx_probe_*}` (3, the
+  pretrigger/mode-edge constants), `ppu_oam_dma::...mode2_corruption_controller` (1). ROM suites
+  (mooneye/wilbertpol/m3_*) NOT yet run.
+
+**NEXT (the L2-a.1 fix phase, the substantive part):** (1) retire the `*_hidden_from_same_cycle_cpu_if` family
+(irq.rs:265/377/387/395 + `pending_interrupts_hidden_from_cpu_if` api.rs:1539) — addresses the 7 lcd_restart visibility
+tests + the Mode2-STAT handler dot; (2) re-derive the pretrigger / LY-read-advance / line-153 LYC constants vs the
+DocBoy oracle (addresses ppu_mode_edges); (3) handle OAM-DMA startup (latch vs +1 constant, verified against
+`oam_dma_*`); (4) regen the trace fixtures (env vars above) once behaviour settles; (5) ROM-gate
+fmt/lint/tests/blargg + m3_* no-regress + wilbertpol 117 + mooneye 113. Then L2-b, L2-c.

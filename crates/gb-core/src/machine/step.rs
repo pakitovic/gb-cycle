@@ -680,7 +680,7 @@ impl MachinePhaseRunner<'_> {
             observer,
         );
         let ppu_bus_states_after =
-            self.ppu_bus_state_snapshot_with_observer(observer, records_ppu_regions);
+            self.refresh_ppu_bus_state_snapshot_with_observer(observer, records_ppu_regions);
         let ppu_owner_bus_state_after = ppu_bus_states_after.owner;
         if records_ppu_regions {
             observer.begin_ppu_region(PpuStepRegion::BusSync);
@@ -1074,6 +1074,18 @@ impl MachinePhaseRunner<'_> {
             .bus_state_snapshot_with_observer(observer, records_ppu_regions);
         self.cached_ppu_bus_state_snapshot = Some(snapshot);
         snapshot
+    }
+
+    fn refresh_ppu_bus_state_snapshot_with_observer<O>(
+        &mut self,
+        observer: &mut O,
+        records_ppu_regions: bool,
+    ) -> PpuBusStateSnapshot
+    where
+        O: MachineStepObserver,
+    {
+        self.cached_ppu_bus_state_snapshot = None;
+        self.ppu_bus_state_snapshot_with_observer(observer, records_ppu_regions)
     }
 
     fn cpu_bus_arbitration_states(&mut self) -> CpuBusArbitrationStates {

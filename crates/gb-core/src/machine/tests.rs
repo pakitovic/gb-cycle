@@ -733,9 +733,9 @@ fn step_t_cycle_with_observer_reports_regions_in_scheduler_order() {
         observer.regions,
         vec![
             MachineStepRegion::Timer,
+            MachineStepRegion::Cpu,
             MachineStepRegion::Apu,
             MachineStepRegion::Ppu,
-            MachineStepRegion::Cpu,
             MachineStepRegion::Cpu,
         ]
     );

@@ -8,10 +8,10 @@ fn scheduler_phases_follow_the_documented_order() {
             SchedulerPhase::ExternalEventIngress,
             SchedulerPhase::MasterClockTick,
             SchedulerPhase::DerivedEdgeResolution,
-            SchedulerPhase::AutonomousPeripheralTicks,
             SchedulerPhase::BusArbitration,
             SchedulerPhase::CpuMicroOperation,
             SchedulerPhase::MmioSideEffectCommit,
+            SchedulerPhase::AutonomousPeripheralTicks,
             SchedulerPhase::InterruptAggregation,
             SchedulerPhase::CpuWakeInterruptEvaluation,
         ]
