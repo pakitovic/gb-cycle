@@ -14,7 +14,7 @@ When ROM-suite output influences a go/no-go decision, compare status/artifacts a
 
 `crates/gb-test-runner/data/reports.toml` is the registry for `cargo rom-fetch`, `cargo rom-suite`, and `cargo rom-suite-link`. It defines report IDs, store roots, source manifests, shared status/artifact defaults, optional family order, and `local = true` reports that do not fetch upstream sources.
 
-Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`. Each source manifest pins upstream Git repositories or ZIP release archives, fetch roots where applicable, target paths, and SHA-256 hashes for every materialized ROM or fixture. The local `linked` report has no source manifest because its ROMs and fixtures are committed under `crates/gb-test-runner/data/linked/`.
+Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`. Each source manifest pins upstream Git repositories, ZIP release archives, or file-base release asset URLs, fetch roots where applicable, target paths, and SHA-256 hashes for every materialized ROM or fixture. The local `linked` report has no source manifest because its ROMs and fixtures are committed under `crates/gb-test-runner/data/linked/`.
 
 | Report | Runner | Purpose |
 | --- | --- | --- |
@@ -32,6 +32,8 @@ The standalone `blargg` report is archive-backed by the c-sp `game-boy-test-roms
 
 The standalone `mooneye` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `mooneye-test-suite/` under `/test/mooneye/mooneye/`. Its upstream `utils/` directory is excluded because those ROMs are helper utilities rather than pass/fail tests.
 
+The standalone `magen` report materializes the official alloncm/MagenTests 0.5.0 release assets under `/test/magen/magen/` and uses the committed local framebuffer fixtures under `crates/gb-test-runner/data/magen/fixtures/`. Magen uses `file_base_url` source fetching because the official release publishes each `.gbc` as an individual asset rather than a single ZIP archive or committed build output.
+
 The standalone `mealybug-tearoom-tests` report materializes the complete c-sp `game-boy-test-roms` v7.0 `mealybug-tearoom-tests/` archive inventory under `/test/mealybug-tearoom-tests/mealybug-tearoom-tests/`. The c-sp import is split into one suite manifest per upstream folder: `dma` and `mbc` use the Fibonacci pass/fail signature, while `ppu` uses strict framebuffer fixtures for active DMG-CPU-C and CPU CGB C/D lanes, three source-tracked DocBoy `cgb_dmg_mode` CPU-CGB-D fixtures for the `m3_wx_4/5/6_change` rows not shipped with c-sp CGB fixtures, and CPU-CGB-C/D rows for `m3_lcdc_win_en_change_multiple_wx` that temporarily use the source-tracked DocBoy fixture because upstream Mealybug `expected/CPU CGB C/D` PNG files are placeholders. DocBoy targets are materialized under `ppu/` alongside the c-sp ROMs and fixtures inside the report store so the suite has a single PPU asset root. DMG-CPU-B fixture lanes and `ppu/win_without_bg.gb` remain listed as disabled cases with comments because the current runner does not expose DMG-CPU-B as an active Game Boy revision and the window-without-BG ROM has no compatible framebuffer fixture in the archive.
 
 The standalone `samesuite` report materializes only the c-sp `game-boy-test-roms` v7.0 `same-suite/` archive under the `samesuite` family using the upstream folder structure. The c-sp v7 SameSuite rows are split into folder-scoped manifests and use `fibonacci-result` because upstream finishes on opcode `0x40` with the standard Fibonacci pass registers; the former DocBoy/GBEmulatorShootout framebuffer-only rows and local framebuffer fixtures have been retired after validation. The CGB-A/B-specific rows stay disabled until those revisions are explicit active runner targets.
@@ -48,7 +50,7 @@ cargo rom-fetch gb-emulator-shootout blargg acid
 cargo rom-fetch docboy
 ```
 
-`cargo rom-fetch <report> [family ...]` materializes all report families when no family is provided, or only the explicit families otherwise. It rejects `local = true` reports, uses temporary pinned `git` checkouts or verified ZIP archives, verifies hashes, and preserves report runtime directories such as `.status` and `.artifacts`. Remote ZIP sources use `curl` for the download step before archive-hash validation.
+`cargo rom-fetch <report> [family ...]` materializes all report families when no family is provided, or only the explicit families otherwise. It rejects `local = true` reports, uses temporary pinned `git` checkouts, verified ZIP archives, or hashed file-base release assets, verifies hashes, and preserves report runtime directories such as `.status` and `.artifacts`. Remote ZIP and file-base sources use `curl` for the download step before file-hash validation.
 
 `cargo rom-suite` and `cargo rom-suite-link` auto-fetch missing or stale assets for fetchable reports before running selected cases, so explicit `cargo rom-fetch` is only needed when you want a separate materialization step.
 

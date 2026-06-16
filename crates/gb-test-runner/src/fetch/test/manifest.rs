@@ -304,6 +304,51 @@ fn source_manifest_accepts_zip_archive_without_sparse_paths() {
 }
 
 #[test]
+fn source_manifest_accepts_file_base_url_without_sparse_paths() {
+    let workspace_root = unique_temp_dir("file-base-source");
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"sample-report\"\n",
+            "store_dir = \"sample-report\"\n",
+            "sources = \"sources.report.toml\"\n",
+        ),
+    );
+    write_source_manifest(
+        &workspace_root,
+        "sources.report.toml",
+        concat!(
+            "[[source]]\n",
+            "id = \"file-base-source\"\n",
+            "file_base_url = \"https://example.invalid/test-roms\"\n",
+            "\n",
+            "[[source.family]]\n",
+            "id = \"family-a\"\n",
+            "target_root = \"family-a\"\n",
+            "\n",
+            "[[source.family.file]]\n",
+            "path = \"roms/family-a/test.gb\"\n",
+            "target = \"test.gb\"\n",
+            "sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+        ),
+    );
+    let reports = load_report_manifest(&workspace_root).expect("report should load");
+    let report = reports.reports.first().expect("report should exist");
+    let source_manifest =
+        load_source_manifest(&workspace_root, report).expect("file base source should load");
+    assert_eq!(
+        report_families(report, &source_manifest).expect("families should resolve"),
+        vec!["family-a"]
+    );
+    let _ = fs::remove_dir_all(workspace_root);
+}
+
+#[test]
 fn source_manifest_rejects_mixed_git_and_archive_location() {
     let workspace_root = unique_temp_dir("mixed-source");
     write_basic_reports(&workspace_root, "sources.report.toml");
@@ -323,6 +368,41 @@ fn source_manifest_rejects_mixed_git_and_archive_location() {
             "id = \"family-a\"\n",
             "target_root = \"family-a\"\n",
             "sparse_paths = [\"roms/family-a\"]\n",
+            "\n",
+            "[[source.family.file]]\n",
+            "path = \"roms/family-a/test.gb\"\n",
+            "target = \"test.gb\"\n",
+            "sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+        ),
+    );
+    let reports = load_report_manifest(&workspace_root).expect("report should load");
+    let report = reports.reports.first().expect("report should exist");
+    assert!(
+        load_source_manifest(&workspace_root, report)
+            .expect_err("mixed source location should fail")
+            .contains("must define exactly one fetch location")
+    );
+    let _ = fs::remove_dir_all(workspace_root);
+}
+
+#[test]
+fn source_manifest_rejects_mixed_file_base_and_archive_location() {
+    let workspace_root = unique_temp_dir("mixed-file-base-source");
+    write_basic_reports(&workspace_root, "sources.report.toml");
+    write_source_manifest(
+        &workspace_root,
+        "sources.report.toml",
+        concat!(
+            "[[source]]\n",
+            "id = \"source\"\n",
+            "file_base_url = \"https://example.invalid/test-roms\"\n",
+            "archive_url = \"https://example.invalid/test-roms.zip\"\n",
+            "archive_sha256 = \"1111111111111111111111111111111111111111111111111111111111111111\"\n",
+            "archive_format = \"zip\"\n",
+            "\n",
+            "[[source.family]]\n",
+            "id = \"family-a\"\n",
+            "target_root = \"family-a\"\n",
             "\n",
             "[[source.family.file]]\n",
             "path = \"roms/family-a/test.gb\"\n",

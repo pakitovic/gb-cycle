@@ -61,6 +61,7 @@ pub(super) struct Source {
     pub(super) id: String,
     pub(super) git_url: Option<String>,
     pub(super) git_rev: Option<String>,
+    pub(super) file_base_url: Option<String>,
     pub(super) archive_url: Option<String>,
     pub(super) archive_sha256: Option<String>,
     pub(super) archive_format: Option<SourceArchiveFormat>,
@@ -85,6 +86,9 @@ pub(super) enum SourceLocation<'a> {
         archive_sha256: &'a str,
         archive_format: SourceArchiveFormat,
     },
+    FileBase {
+        file_base_url: &'a str,
+    },
 }
 
 impl Source {
@@ -92,14 +96,18 @@ impl Source {
         match (
             self.git_url.as_deref(),
             self.git_rev.as_deref(),
+            self.file_base_url.as_deref(),
             self.archive_url.as_deref(),
             self.archive_sha256.as_deref(),
             self.archive_format,
         ) {
-            (Some(git_url), Some(git_rev), None, None, None) => {
+            (Some(git_url), Some(git_rev), None, None, None, None) => {
                 Ok(SourceLocation::Git { git_url, git_rev })
             }
-            (None, None, Some(archive_url), Some(archive_sha256), Some(archive_format)) => {
+            (None, None, Some(file_base_url), None, None, None) => {
+                Ok(SourceLocation::FileBase { file_base_url })
+            }
+            (None, None, None, Some(archive_url), Some(archive_sha256), Some(archive_format)) => {
                 Ok(SourceLocation::Archive {
                     archive_url,
                     archive_sha256,
@@ -107,7 +115,7 @@ impl Source {
                 })
             }
             _ => Err(format!(
-                "source {:?} must define exactly one fetch location: git_url + git_rev, or archive_url + archive_sha256 + archive_format",
+                "source {:?} must define exactly one fetch location: git_url + git_rev, file_base_url, or archive_url + archive_sha256 + archive_format",
                 self.id
             )),
         }
@@ -304,6 +312,14 @@ fn validate_source_manifest(report: &Report, manifest: &SourceManifestFile) -> R
                     return Err(format!(
                         "invalid archive_sha256 {:?} for source {:?} in report {:?}",
                         archive_sha256, source.id, report.id
+                    ));
+                }
+            }
+            SourceLocation::FileBase { file_base_url } => {
+                if file_base_url.is_empty() {
+                    return Err(format!(
+                        "source {:?} in report {:?} must define file_base_url",
+                        source.id, report.id
                     ));
                 }
             }

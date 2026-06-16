@@ -1,49 +1,47 @@
 [[source]]
-id = "docboy"
-git_url = "https://github.com/Docheinstein/docboy.git"
-git_rev = "214905562590c35ba2bc41f36da3a5d636d99378"
+id = "magentests"
+file_base_url = "https://github.com/alloncm/MagenTests/releases/download/0.5.0"
 
 [[source.family]]
 id = "magen"
 target_root = "magen"
-sparse_paths = ["tests/roms/cgb/magen"]
 
 [[source.family.file]]
-path = "tests/roms/cgb/magen/bg_oam_priority.gbc"
+path = "bg_oam_priority.gbc"
 target = "bg_oam_priority.gbc"
-sha256 = "62c760a423b93f70d85156e15a5a58a1e0e43ee1c9d8b9cb62991f7429c4ba91"
+sha256 = "1b2132b354370b1eff22d867da67d8f59eb94872fdad00c277203d8d8b67b84c"
 
 [[source.family.file]]
-path = "tests/roms/cgb/magen/hblank_vram_dma.gbc"
+path = "hblank_vram_dma.gbc"
 target = "hblank_vram_dma.gbc"
-sha256 = "b18966905281db41d9ec5d18917a03144958e478dd5705fa379efca8a1d7ef00"
+sha256 = "e8124ce687d37a2402e20af92af1299610bfbda0871d605084c0bba2bf57135c"
 
 [[source.family.file]]
-path = "tests/roms/cgb/magen/key0_lock_after_boot.gbc"
+path = "key0_lock_after_boot.gbc"
 target = "key0_lock_after_boot.gbc"
-sha256 = "c307bd43ffe6c2e9560071ee60242794832b7b1b3c820eb3b494928d1c28340d"
+sha256 = "5f71946a80bb4d52b3e9c88cd8634beac6a490ff78c74c3a28f956b24c0c542c"
 
 [[source.family.file]]
-path = "tests/roms/cgb/magen/mbc_oob_sram_mbc1.gbc"
+path = "mbc_oob_sram_mbc1.gbc"
 target = "mbc_oob_sram_mbc1.gbc"
 sha256 = "83f1fc44cc26581163b58fe3df426f119dd5813c2e94a187ee0909d6ace1a8bb"
 
 [[source.family.file]]
-path = "tests/roms/cgb/magen/mbc_oob_sram_mbc3.gbc"
+path = "mbc_oob_sram_mbc3.gbc"
 target = "mbc_oob_sram_mbc3.gbc"
 sha256 = "03e13fa796a9e06fa90f9b396b728c1de9f6e7351aa47a038e33c11d3a8df7dd"
 
 [[source.family.file]]
-path = "tests/roms/cgb/magen/mbc_oob_sram_mbc5.gbc"
+path = "mbc_oob_sram_mbc5.gbc"
 target = "mbc_oob_sram_mbc5.gbc"
 sha256 = "e99f526386f72a8992a72137d0bd9a431b380807b551747bb3baa03421d6f54b"
 
 [[source.family.file]]
-path = "tests/roms/cgb/magen/oam_internal_priority.gbc"
+path = "oam_internal_priority.gbc"
 target = "oam_internal_priority.gbc"
-sha256 = "b8b96eed08c3f59193141af2a6c84ef53498315d33463b1bc4b7aadb3172af9f"
+sha256 = "f54fb6366b3ea8597d07917729aeb358d961ae6ece7cecd003fe9c45dcb97fe7"
 
 [[source.family.file]]
-path = "tests/roms/cgb/magen/ppu_disabled_state.gbc"
+path = "ppu_disabled_state.gbc"
 target = "ppu_disabled_state.gbc"
 sha256 = "4808fe834ea6a6344d74f007a45628c405aca5acd13d6c25f76d02f442f1eea6"

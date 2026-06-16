@@ -1749,7 +1749,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 ("little-things-gb-cgb", 1, "little-things-gb"),
             ][..],
         ),
-        ("magen", &[("magen-cgb", 8, "magen")][..]),
+        ("magen", &[("magen", 8, "magen")][..]),
         (
             "mealybug-tearoom-tests",
             &[
@@ -1903,7 +1903,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             );
         }
         if report_id == "magen" {
-            let suites = load_selected_suites(&workspace, report, Some("magen-cgb"), None)
+            let suites = load_selected_suites(&workspace, report, Some("magen"), None)
                 .expect("magen suite should load");
             assert!(suites[0].cases.iter().all(|case| case.timeout_frames == 72));
         }
