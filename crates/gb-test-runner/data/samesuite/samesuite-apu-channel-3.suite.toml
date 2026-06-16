@@ -1,0 +1,74 @@
+family = "samesuite"
+suite_name = "samesuite-apu-channel-3"
+report = "samesuite"
+model = "cgb"
+revision = "cpu-cgb-c"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-stop-delay"
+rom = "apu/channel_3/channel_3_stop_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-restart-stop-delay"
+rom = "apu/channel_3/channel_3_restart_stop_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-extra-length-clocking-cgb0"
+rom = "apu/channel_3/channel_3_extra_length_clocking-cgb0.gb"
+revision = "cpu-cgb-0"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-wave-ram-sync"
+rom = "apu/channel_3/channel_3_wave_ram_sync.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-wave-ram-locked-write"
+rom = "apu/channel_3/channel_3_wave_ram_locked_write.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-wave-ram-dac-on-rw"
+rom = "apu/channel_3/channel_3_wave_ram_dac_on_rw.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-and-glitch"
+rom = "apu/channel_3/channel_3_and_glitch.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-shift-skip-delay"
+rom = "apu/channel_3/channel_3_shift_skip_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-freq-change-delay"
+rom = "apu/channel_3/channel_3_freq_change_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-restart-during-delay"
+rom = "apu/channel_3/channel_3_restart_during_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-stop-div"
+rom = "apu/channel_3/channel_3_stop_div.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-extra-length-clocking-cgbb"
+rom = "apu/channel_3/channel_3_extra_length_clocking-cgbB.gb"
+disabled = true
+comment = "Disabled because SameSuite targets a CGB-B timing signature, but gb-cycle currently exposes active CGB0/CGB-C/CGB-D/CGB-E runner revisions only."
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-first-sample"
+rom = "apu/channel_3/channel_3_first_sample.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-restart-delay"
+rom = "apu/channel_3/channel_3_restart_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-delay"
+rom = "apu/channel_3/channel_3_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-3-channel-3-shift-delay"
+rom = "apu/channel_3/channel_3_shift_delay.gb"

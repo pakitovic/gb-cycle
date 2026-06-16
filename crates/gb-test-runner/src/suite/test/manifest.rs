@@ -1761,8 +1761,15 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         (
             "samesuite",
             &[
-                ("samesuite-dmg", 3, "samesuite"),
-                ("samesuite-cgb", 9, "samesuite"),
+                ("samesuite-apu", 5, "samesuite"),
+                ("samesuite-apu-channel-1", 20, "samesuite"),
+                ("samesuite-apu-channel-2", 15, "samesuite"),
+                ("samesuite-apu-channel-3", 15, "samesuite"),
+                ("samesuite-apu-channel-4", 13, "samesuite"),
+                ("samesuite-dma", 4, "samesuite"),
+                ("samesuite-interrupt", 1, "samesuite"),
+                ("samesuite-ppu", 1, "samesuite"),
+                ("samesuite-sgb", 2, "samesuite"),
             ][..],
         ),
     ];
@@ -1802,21 +1809,88 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         }
 
         if report_id == "samesuite" {
-            let suites = load_selected_suites(&workspace, report, Some("samesuite-cgb"), None)
-                .expect("samesuite CGB suite should load");
-            let cgb_d = suites[0]
-                .cases
-                .iter()
-                .find(|case| {
-                    case.id == "samesuite-cgb-apu-channel-1-channel-1-freq-change-timing-cgbde"
-                })
-                .expect("CGB-D row should exist");
-            assert_eq!(cgb_d.hardware_revision, gb_core::HardwareRevision::CpuCgbD);
+            let apu = load_selected_suites(&workspace, report, Some("samesuite-apu"), None)
+                .expect("samesuite APU suite should load");
             assert!(
-                suites[0]
+                apu[0]
                     .cases
                     .iter()
-                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgbE)
+                    .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
+            );
+            assert!(
+                apu[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.console_model == gb_core::ConsoleModel::GameBoy)
+            );
+            assert!(
+                apu[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgbC)
+            );
+            let channel_1 =
+                load_selected_suites(&workspace, report, Some("samesuite-apu-channel-1"), None)
+                    .expect("samesuite APU CH1 suite should load");
+            assert!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
+            );
+            assert!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgb0)
+            );
+            assert!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgbD)
+            );
+            assert_eq!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-1-channel-1-volume-div")
+                    .expect("CH1 volume DIV row should exist")
+                    .timeout_frames,
+                300
+            );
+            assert_eq!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-1-channel-1-nrx2-speed-change")
+                    .expect("CH1 NRX2 speed row should exist")
+                    .timeout_frames,
+                420
+            );
+            let channel_2 =
+                load_selected_suites(&workspace, report, Some("samesuite-apu-channel-2"), None)
+                    .expect("samesuite APU CH2 suite should load");
+            assert_eq!(
+                channel_2[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-2-channel-2-nrx2-speed-change")
+                    .expect("CH2 NRX2 speed row should exist")
+                    .timeout_frames,
+                420
+            );
+            let channel_4 =
+                load_selected_suites(&workspace, report, Some("samesuite-apu-channel-4"), None)
+                    .expect("samesuite APU CH4 suite should load");
+            assert_eq!(
+                channel_4[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-4-channel-4-volume-div")
+                    .expect("CH4 volume DIV row should exist")
+                    .timeout_frames,
+                300
             );
         }
         if report_id == "little-things-gb" {

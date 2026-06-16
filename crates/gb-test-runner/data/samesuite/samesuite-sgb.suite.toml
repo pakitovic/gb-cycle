@@ -1,0 +1,15 @@
+family = "samesuite"
+suite_name = "samesuite-sgb"
+report = "samesuite"
+model = "sgb"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-sgb-command-mlt-req"
+rom = "sgb/command_mlt_req.gb"
+timeout_frames = 300
+
+[[case]]
+id = "samesuite-sgb-command-mlt-req-1-incrementing"
+rom = "sgb/command_mlt_req_1_incrementing.gb"

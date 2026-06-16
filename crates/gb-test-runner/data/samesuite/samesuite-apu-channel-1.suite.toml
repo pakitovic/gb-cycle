@@ -1,0 +1,98 @@
+family = "samesuite"
+suite_name = "samesuite-apu-channel-1"
+report = "samesuite"
+model = "cgb"
+revision = "cpu-cgb-e"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-freq-change"
+rom = "apu/channel_1/channel_1_freq_change.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-freq-change-timing-cgb0bc"
+rom = "apu/channel_1/channel_1_freq_change_timing-cgb0BC.gb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-duty-delay"
+rom = "apu/channel_1/channel_1_duty_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-align"
+rom = "apu/channel_1/channel_1_align.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-restart-nrx2-glitch"
+rom = "apu/channel_1/channel_1_restart_nrx2_glitch.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-delay"
+rom = "apu/channel_1/channel_1_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-stop-div"
+rom = "apu/channel_1/channel_1_stop_div.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-align-cpu"
+rom = "apu/channel_1/channel_1_align_cpu.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-sweep-restart-2"
+rom = "apu/channel_1/channel_1_sweep_restart_2.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-volume-div"
+rom = "apu/channel_1/channel_1_volume_div.gb"
+timeout_frames = 300
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-freq-change-timing-a"
+rom = "apu/channel_1/channel_1_freq_change_timing-A.gb"
+disabled = true
+comment = "Disabled because SameSuite targets a CGB-A/B timing signature, but gb-cycle currently exposes active CGB0/CGB-C/CGB-D/CGB-E runner revisions only."
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-sweep-restart"
+rom = "apu/channel_1/channel_1_sweep_restart.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-volume"
+rom = "apu/channel_1/channel_1_volume.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-restart"
+rom = "apu/channel_1/channel_1_restart.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-stop-restart"
+rom = "apu/channel_1/channel_1_stop_restart.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-freq-change-timing-cgbde"
+rom = "apu/channel_1/channel_1_freq_change_timing-cgbDE.gb"
+revision = "cpu-cgb-d"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-sweep"
+rom = "apu/channel_1/channel_1_sweep.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-duty"
+rom = "apu/channel_1/channel_1_duty.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-nrx2-speed-change"
+rom = "apu/channel_1/channel_1_nrx2_speed_change.gb"
+timeout_frames = 420
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-nrx2-glitch"
+rom = "apu/channel_1/channel_1_nrx2_glitch.gb"
+
+[[case]]
+id = "samesuite-apu-channel-1-channel-1-extra-length-clocking-cgb0b"
+rom = "apu/channel_1/channel_1_extra_length_clocking-cgb0B.gb"
+revision = "cpu-cgb-0"

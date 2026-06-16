@@ -22,7 +22,7 @@ Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`.
 | `docboy` | `cargo rom-suite`, `cargo rom-suite-link` | DocBoy single-machine suites plus DocBoy DMG linked session suite. |
 | `gbmicrotest` | `cargo rom-suite` | Flat gbmicrotest report. |
 | `blargg` | `cargo rom-suite` | Standalone exploratory Blargg channel archive-backed by c-sp `game-boy-test-roms` v7.0, with GB Emulator Shootout framebuffer fixtures where the promoted Blargg manifests already use them. |
-| `mooneye`, `ax6`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `samesuite` | `cargo rom-suite` | Standalone exploratory report channels used by `test-roms-extra`; `mooneye` and `mealybug-tearoom-tests` are archive-backed by c-sp `game-boy-test-roms`, with Mealybug temporarily removed from the workflow matrix while its v7 inventory is validated manually. |
+| `mooneye`, `ax6`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `samesuite` | `cargo rom-suite` | Standalone exploratory report channels; `mooneye` and `mealybug-tearoom-tests` are archive-backed by c-sp `game-boy-test-roms`, with Mealybug and SameSuite temporarily removed from `test-roms-extra` while their v7 inventories are validated manually. |
 | `wilbertpol` | `cargo rom-suite` | Archive-backed standalone Mooneye-derived Wilbertpol channel; it is intentionally not mirrored by `test-roms-extra` until it has a verified green local baseline. |
 | `linked` | `cargo rom-suite-link` | Repo-local synthetic linked-session fixtures. |
 
@@ -33,6 +33,8 @@ The standalone `blargg` report is archive-backed by the c-sp `game-boy-test-roms
 The standalone `mooneye` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `mooneye-test-suite/` under `/test/mooneye/mooneye/`. Its upstream `utils/` directory is excluded because those ROMs are helper utilities rather than pass/fail tests.
 
 The standalone `mealybug-tearoom-tests` report materializes the complete c-sp `game-boy-test-roms` v7.0 `mealybug-tearoom-tests/` archive inventory under `/test/mealybug-tearoom-tests/mealybug-tearoom-tests/`. The c-sp import is split into one suite manifest per upstream folder: `dma` and `mbc` use the Fibonacci pass/fail signature, while `ppu` uses strict framebuffer fixtures for active DMG-CPU-C and CPU CGB C/D lanes, three source-tracked DocBoy `cgb_dmg_mode` CPU-CGB-D fixtures for the `m3_wx_4/5/6_change` rows not shipped with c-sp CGB fixtures, and CPU-CGB-C/D rows for `m3_lcdc_win_en_change_multiple_wx` that temporarily use the source-tracked DocBoy fixture because upstream Mealybug `expected/CPU CGB C/D` PNG files are placeholders. DocBoy targets are materialized under `ppu/` alongside the c-sp ROMs and fixtures inside the report store so the suite has a single PPU asset root. DMG-CPU-B fixture lanes and `ppu/win_without_bg.gb` remain listed as disabled cases with comments because the current runner does not expose DMG-CPU-B as an active Game Boy revision and the window-without-BG ROM has no compatible framebuffer fixture in the archive.
+
+The standalone `samesuite` report materializes only the c-sp `game-boy-test-roms` v7.0 `same-suite/` archive under the `samesuite` family using the upstream folder structure. The c-sp v7 SameSuite rows are split into folder-scoped manifests and use `fibonacci-result` because upstream finishes on opcode `0x40` with the standard Fibonacci pass registers; the former DocBoy/GBEmulatorShootout framebuffer-only rows and local framebuffer fixtures have been retired after validation. The CGB-A/B-specific rows stay disabled until those revisions are explicit active runner targets.
 
 Wilbertpol's upstream `utils/` directory contains helper utilities rather than pass/fail tests. Do not add `utils/dump_boot_hwio.gb` to the Wilbertpol source manifest or suites, because it jumps to the memory-dump helper and terminates without the Fibonacci pass signature.
 
@@ -94,7 +96,7 @@ oracle = { type = "serial-hex-exact", target_participant = "receiver", expected 
 oracle = { type = "trace" }
 ```
 
-`fibonacci-result` defaults to the current Mooneye-style `0x40` breakpoint or terminal loop signal, including the `0x40 0x00 0x18 0xFD` loop used by older promoted assets and the compact `0x40 0x18 0xFE` loop used by the c-sp Mooneye ZIP. Set `legacy = true` only for old Mooneye-derived ROMs such as Wilbertpol that finish on undefined opcode `0xED` with the same Fibonacci register signature; when legacy mode observes `0xED` without the pass signature, the case fails immediately instead of running until timeout.
+`fibonacci-result` defaults to the current Mooneye/SameSuite-style `0x40` breakpoint or terminal signal, including the `0x40 0x00 0x18 0xFD` loop used by older promoted assets, the compact `0x40 0x18 0xFE` loop used by the c-sp Mooneye ZIP, and the `0x40 0x76` breakpoint-then-HALT sequence used by c-sp v7 SameSuite. Set `legacy = true` only for old Mooneye-derived ROMs such as Wilbertpol that finish on undefined opcode `0xED` with the same Fibonacci register signature; when legacy mode observes `0xED` without the pass signature, the case fails immediately instead of running until timeout.
 
 Framebuffer defaults are `mode = "final"`, `source = "dmg"`, `projection = "palette-rank"`, and `compare = "exact"`. Use `mode = "until-match"` with `check_interval_tcycles` or `check_at_tcycles` for polling/point-in-time checks, `source = "cgb"` for RGB555 output, `projection = "grayscale"` plus `compare = "grayscale-tolerance"` only for explicitly tolerated fixtures, and `mode = "info"` for CI-successful captures that do not compare.
 
@@ -152,7 +154,7 @@ Same-ROM model variants are ordered DMG before MGB before GBC before AGB before 
 - Local pre-commit checks and `make coverage` do not fetch or run external ROM suites.
 - GitHub `ci` mirrors Rust checks and coverage.
 - GitHub `test-roms` runs the promoted `gb-emulator-shootout` matrix with `cargo rom-suite gb-emulator-shootout --suite <suite>`.
-- GitHub `test-roms-extra` runs explicitly promoted standalone report lanes with `cargo rom-suite <report>`; `mealybug-tearoom-tests` is temporarily commented out while the c-sp v7 inventory is validated manually, and `wilbertpol` stays out of this workflow until a green local baseline is verified and promotion is intentional.
+- GitHub `test-roms-extra` runs explicitly promoted standalone report lanes with `cargo rom-suite <report>`; `mealybug-tearoom-tests` and `samesuite` are temporarily commented out while their c-sp v7 inventories are validated manually, and `wilbertpol` stays out of this workflow until a green local baseline is verified and promotion is intentional.
 - RealBoot, commercial, red, linked, and local-only lanes stay outside GitHub ROM workflows unless promoted intentionally.
 
 ## Private and commercial ROMs
