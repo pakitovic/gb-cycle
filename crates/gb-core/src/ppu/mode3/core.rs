@@ -219,12 +219,12 @@ impl Ppu {
     }
 
     fn maybe_retune_previsible_live_scx_discard(&mut self) {
+        // Canonical pre-visible SCX retune window: while still in startup with no visible pixel
+        // emitted (the inner retune_previsible_scx_discard guards on visible_pixels_output/
+        // current_transfer_x). No seam state — the startup is a plain junk-drain.
         if !self.operating_mode.uses_dmg_software_contract()
             || self.runtime.bg_pipeline_state.window_started_this_line
-            || !self
-                .runtime
-                .bg_pipeline_state
-                .startup_alignment_seed_pending()
+            || self.runtime.bg_pipeline_state.fifo_contains_real_pixels()
         {
             return;
         }

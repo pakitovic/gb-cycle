@@ -370,7 +370,6 @@ fn wx_zero_last_scx_discard_shortening_is_applied_from_the_served_transfer_dot()
     ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT + 2;
     ppu.bg_pipeline_state.window_wy_latch = true;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT + 3;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state.initial_scx_discard = 3;
     ppu.bg_pipeline_state.scx_discard_remaining = 1;

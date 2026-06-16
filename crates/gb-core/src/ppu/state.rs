@@ -691,6 +691,7 @@ impl BgFifo {
         self.entries.len()
     }
 
+    #[cfg(test)]
     pub(super) fn cached_front(&self) -> Option<Option<BgFifoPixelCached>> {
         self.entries.front().map(|pixel| pixel.cached)
     }
@@ -776,8 +777,6 @@ pub(super) struct BgPipelineState {
     pub(super) push: BgPushState,
     pub(super) fill: BgFifoFillState,
     pub(super) fifo: BgFifo,
-    pub(super) startup_fetch_seam: BgStartupFetchSeamState,
-    pub(super) startup_fifo_placeholders: u8,
     pub(super) mode3_started: bool,
     pub(super) initial_scx_capture_pending: bool,
     pub(super) mode0_start_dot: u16,
@@ -791,12 +790,6 @@ pub(super) struct BgPipelineState {
     pub(super) saw_right_edge_visible_same_x_cluster_this_line: bool,
     #[serde(default)]
     pub(super) obj_alignment_paid_tile: Option<u16>,
-    // CGB startup: a left-edge (sprite.x == 0) object fetch that stalls the BG before the
-    // seed tile is pushed delays the seed, leaving the first continuation tile's canonical
-    // GetTile0 one dot early relative to the steady cadence. Holds the continuation fetch one
-    // extra dot so its data-stage register read lands on the oracle dot. See docs/roadmap/12 §22.
-    #[serde(default)]
-    pub(super) cgb_startup_seed_obj_stall_extra_continuation_dot: bool,
     pub(super) window_wy_latch: bool,
     pub(super) window_lcdc5_latch: bool,
     pub(super) window_force_x0_this_line: bool,
@@ -805,10 +798,6 @@ pub(super) struct BgPipelineState {
     pub(super) window_start_count_this_line: u8,
     pub(super) wx0_scx_shortening_applied: bool,
     pub(super) wx166_armed_this_line: bool,
-    pub(super) startup_visible_tile3_scx_boundary_next_slice_previous_scx: Option<u8>,
-    pub(super) startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: u8,
-    pub(super) startup_scy_tiledata_latch: Option<BgStartupScyTiledataLatch>,
-    pub(super) cgb_dmg_scy_startup_retarget_active: bool,
     pub(super) window_activation_tilemap_select_latch: Option<bool>,
     pub(super) dmg_wx0_window_disable_prefix_state: Option<DmgWx0WindowDisablePrefixState>,
     pub(super) dmg_late_window_enable_override: Option<DmgLateWindowEnableOverride>,
@@ -1198,31 +1187,6 @@ impl DmgWindowRestartState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(super) struct BgStartupScyTiledataLatch {
-    lcdc: u8,
-    tile_data_row: u16,
-    tile_map_row_address: Option<u16>,
-}
-
-impl BgStartupScyTiledataLatch {
-    pub(super) const fn new(
-        lcdc: u8,
-        tile_data_row: u16,
-        tile_map_row_address: Option<u16>,
-    ) -> Self {
-        Self {
-            lcdc,
-            tile_data_row,
-            tile_map_row_address,
-        }
-    }
-
-    pub(super) const fn tile_map_row_address(self) -> Option<u16> {
-        self.tile_map_row_address
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct PerPlane<T> {
     pub(super) low: T,
@@ -1260,105 +1224,8 @@ impl BgTileDataSelect {
 pub(in crate::ppu) type BgTileDataSelectOverride = PerPlane<Option<BgTileDataSelect>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub(super) struct StartupContinuationSliceOverrides<T> {
-    pub(super) visible_tile2: T,
-    pub(super) visible_tile3: T,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(super) enum BgVisibleStartupSlice {
-    VisibleTile2,
-    VisibleTile3,
-}
-
-impl<T: Copy> StartupContinuationSliceOverrides<T> {
-    pub(super) fn set_for_slice(&mut self, slice: BgVisibleStartupSlice, value: T) {
-        match slice {
-            BgVisibleStartupSlice::VisibleTile2 => self.visible_tile2 = value,
-            BgVisibleStartupSlice::VisibleTile3 => self.visible_tile3 = value,
-        }
-    }
-
-    pub(super) const fn for_visible_slice(self, slice: BgVisibleStartupSlice) -> T {
-        match slice {
-            BgVisibleStartupSlice::VisibleTile2 => self.visible_tile2,
-            BgVisibleStartupSlice::VisibleTile3 => self.visible_tile3,
-        }
-    }
-}
-
-impl<T: Copy + Default> StartupContinuationSliceOverrides<T> {
-    pub(super) fn for_optional_visible_slice(self, slice: Option<BgVisibleStartupSlice>) -> T {
-        slice.map_or_else(T::default, |slice| self.for_visible_slice(slice))
-    }
-}
-
-type DmgLcdc3StartupTilemapSelectOverrides = StartupContinuationSliceOverrides<Option<bool>>;
-type DmgLcdc4StartupTileDataSelectOverrides =
-    StartupContinuationSliceOverrides<BgTileDataSelectOverride>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub(super) struct DmgStartupContinuationOverrides {
-    pub(super) lcdc3_tilemap_select: DmgLcdc3StartupTilemapSelectOverrides,
-    pub(super) lcdc4_tiledata_select: DmgLcdc4StartupTileDataSelectOverrides,
-}
-
-impl DmgStartupContinuationOverrides {
-    pub(super) fn latch_lcdc3_tilemap_select(
-        &mut self,
-        tilemap_select: bool,
-        applies_to_visible_tile2: bool,
-        applies_to_visible_tile3: bool,
-    ) {
-        self.lcdc3_tilemap_select.set_for_slice(
-            BgVisibleStartupSlice::VisibleTile2,
-            applies_to_visible_tile2.then_some(tilemap_select),
-        );
-        self.lcdc3_tilemap_select.set_for_slice(
-            BgVisibleStartupSlice::VisibleTile3,
-            applies_to_visible_tile3.then_some(tilemap_select),
-        );
-    }
-
-    pub(super) fn lcdc3_tilemap_select_for_cached_slice(
-        self,
-        cached: BgCachedSlice,
-    ) -> Option<bool> {
-        if !cached.is_background() {
-            return None;
-        }
-
-        self.lcdc3_tilemap_select
-            .for_optional_visible_slice(cached.visible_startup_continuation_slice())
-    }
-
-    pub(super) fn clear_lcdc3_tilemap_select_for_slice(&mut self, slice: BgVisibleStartupSlice) {
-        self.lcdc3_tilemap_select.set_for_slice(slice, None);
-    }
-
-    pub(super) fn latch_lcdc4_tiledata_select(
-        &mut self,
-        slice: BgVisibleStartupSlice,
-        override_select: BgTileDataSelectOverride,
-    ) {
-        self.lcdc4_tiledata_select
-            .set_for_slice(slice, override_select);
-    }
-
-    pub(super) fn for_cached_slice(self, cached: BgCachedSlice) -> BgTileDataSelectOverride {
-        if !cached.is_background() {
-            return PerPlane::new(None, None);
-        }
-
-        self.lcdc4_tiledata_select
-            .for_optional_visible_slice(cached.visible_startup_continuation_slice())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct DmgMode3LiveLcdcBgState {
     pub(super) lcdc3_current_line_bg_tilemap_write_count: u8,
-    pub(super) startup_continuation_overrides: DmgStartupContinuationOverrides,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -1612,8 +1479,6 @@ impl BgPipelineState {
         self.push.reset();
         self.fill.reset();
         self.fifo.clear();
-        self.startup_fetch_seam = BgStartupFetchSeamState::Inactive;
-        self.startup_fifo_placeholders = 0;
         self.mode3_started = false;
         self.initial_scx_capture_pending = false;
         self.mode0_start_dot = MODE0_START_DOT;
@@ -1626,7 +1491,6 @@ impl BgPipelineState {
         self.visible_pixels_output = 0;
         self.saw_right_edge_visible_same_x_cluster_this_line = false;
         self.obj_alignment_paid_tile = None;
-        self.cgb_startup_seed_obj_stall_extra_continuation_dot = false;
         self.window_wy_latch = false;
         self.window_lcdc5_latch = false;
         self.window_force_x0_this_line = false;
@@ -1635,10 +1499,6 @@ impl BgPipelineState {
         self.window_start_count_this_line = 0;
         self.wx0_scx_shortening_applied = false;
         self.wx166_armed_this_line = false;
-        self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
-        self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
-        self.startup_scy_tiledata_latch = None;
-        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
@@ -1653,16 +1513,12 @@ impl BgPipelineState {
         self.mode0_start_dot = MODE0_START_DOT;
         self.scx_discard_remaining = 0;
         self.fifo.clear();
-        self.startup_fetch_seam = BgStartupFetchSeamState::AlignmentSeedPending;
-        self.startup_scy_tiledata_latch = None;
-        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_mode3_live_lcdc_bg_state = Default::default();
         // Canonical startup (SameBoy `mode_3_start`, DocBoy): the BG FIFO is pre-filled with real
-        // junk pixels that drain before the first real tile pushes — NOT an abstract count
-        // materialized late. `startup_fifo_placeholders` now tracks how many of those leading FIFO
-        // entries are still junk. See docs/roadmap/12 §24.
-        self.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
+        // junk pixels that drain before the first real tile pushes; the first real tile then PUSH-
+        // blocks on those junk pixels until they drain. There is no abstract seam/placeholder count
+        // — the junk are real FIFO entries (cached = None). See docs/roadmap/12 §24.
         self.push_dummy_fifo_pixels(MODE3_ABSTRACT_SOURCE_WINDOW_DOTS);
         self.startup_source_state = Mode3StartupSourceState::EntryDelay {
             remaining: MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT as u8,
@@ -1672,7 +1528,6 @@ impl BgPipelineState {
         self.current_transfer_x = 0;
         self.saw_right_edge_visible_same_x_cluster_this_line = false;
         self.obj_alignment_paid_tile = None;
-        self.cgb_startup_seed_obj_stall_extra_continuation_dot = false;
         self.push.reset();
         self.fill.reset();
         self.fetcher.start_background();
@@ -1737,10 +1592,6 @@ impl BgPipelineState {
         self.window_started_this_line = false;
         self.wx0_scx_shortening_applied = false;
         self.wx166_armed_this_line = false;
-        self.startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
-        self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
-        self.startup_scy_tiledata_latch = None;
-        self.cgb_dmg_scy_startup_retarget_active = false;
         self.window_activation_tilemap_select_latch = None;
         self.dmg_wx0_window_disable_prefix_state = None;
         self.dmg_late_window_enable_override = None;
@@ -1807,16 +1658,7 @@ impl BgPipelineState {
     }
 
     pub(super) fn fifo_contains_real_pixels(&self) -> bool {
-        self.fifo.len() > self.startup_fifo_placeholders as usize
-    }
-
-    pub(super) fn consume_effective_fifo_pixel(&mut self) -> Option<u8> {
-        if self.startup_fifo_placeholders > 0 {
-            self.startup_fifo_placeholders -= 1;
-            self.pop_fifo_pixel().map(BgFifoPixel::color).or(Some(0))
-        } else {
-            self.pop_real_fifo_pixel()
-        }
+        self.fifo.first_cached().is_some()
     }
 
     pub(super) fn pop_real_fifo_pixel(&mut self) -> Option<u8> {
@@ -1828,14 +1670,6 @@ impl BgPipelineState {
     }
 
     pub(super) fn pop_visible_fifo_pixel(&mut self) -> Option<BgFifoPixel> {
-        if self.startup_fifo_placeholders == 1
-            && self.fifo.len() > self.startup_fifo_placeholders as usize
-            && matches!(self.fifo.cached_front(), Some(None))
-        {
-            self.startup_fifo_placeholders -= 1;
-            let _ = self.pop_fifo_pixel();
-        }
-
         self.pop_fifo_pixel()
     }
 
@@ -2014,18 +1848,6 @@ impl BgPipelineState {
         f(&mut self.fill.cached);
     }
 
-    fn for_each_mut_background_startup_continuation_slice(
-        &mut self,
-        slice: BgVisibleStartupSlice,
-        mut f: impl FnMut(&mut BgCachedSlice),
-    ) {
-        self.for_each_mut_cached_slice(|cached| {
-            if cached.matches_background_startup_continuation_slice(slice) {
-                f(cached);
-            }
-        });
-    }
-
     pub(super) fn take_next_dmg_lcdc3_current_line_bg_tilemap_write_index(&mut self) -> usize {
         let write_index = self
             .dmg_mode3_live_lcdc_bg_state
@@ -2036,208 +1858,6 @@ impl BgPipelineState {
             .lcdc3_current_line_bg_tilemap_write_count
             .saturating_add(1);
         write_index
-    }
-
-    pub(super) fn latch_dmg_lcdc3_startup_continuation_tilemap_select_override(
-        &mut self,
-        tilemap_select: bool,
-        applies_to_visible_tile2: bool,
-        applies_to_visible_tile3: bool,
-    ) {
-        self.dmg_mode3_live_lcdc_bg_state
-            .startup_continuation_overrides
-            .latch_lcdc3_tilemap_select(
-                tilemap_select,
-                applies_to_visible_tile2,
-                applies_to_visible_tile3,
-            );
-
-        if applies_to_visible_tile2 {
-            self.for_each_mut_background_startup_continuation_slice(
-                BgVisibleStartupSlice::VisibleTile2,
-                |cached| cached.latch_dmg_lcdc3_tilemap_select_override(tilemap_select),
-            );
-        }
-        if applies_to_visible_tile3 {
-            self.for_each_mut_background_startup_continuation_slice(
-                BgVisibleStartupSlice::VisibleTile3,
-                |cached| cached.latch_dmg_lcdc3_tilemap_select_override(tilemap_select),
-            );
-        }
-    }
-
-    pub(super) fn maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill(
-        &mut self,
-    ) {
-        let Some(tilemap_select) = self
-            .dmg_mode3_live_lcdc_bg_state
-            .startup_continuation_overrides
-            .lcdc3_tilemap_select_for_cached_slice(self.fill.cached)
-        else {
-            return;
-        };
-
-        self.fill
-            .cached
-            .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
-    }
-
-    pub(super) fn clear_dmg_lcdc3_startup_visible_tile2_live_refetch(&mut self) {
-        self.dmg_mode3_live_lcdc_bg_state
-            .startup_continuation_overrides
-            .clear_lcdc3_tilemap_select_for_slice(BgVisibleStartupSlice::VisibleTile2);
-        self.for_each_mut_background_startup_continuation_slice(
-            BgVisibleStartupSlice::VisibleTile2,
-            |cached| {
-                cached.needs_live_tilemap_refetch = false;
-                cached.dmg_lcdc3_tilemap_select_override = None;
-            },
-        );
-    }
-
-    pub(super) fn maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_push(
-        &mut self,
-    ) {
-        let Some(tilemap_select) = self
-            .dmg_mode3_live_lcdc_bg_state
-            .startup_continuation_overrides
-            .lcdc3_tilemap_select_for_cached_slice(self.push.cached)
-        else {
-            return;
-        };
-
-        self.push
-            .cached
-            .latch_dmg_lcdc3_tilemap_select_override(tilemap_select);
-    }
-
-    pub(super) fn latch_and_apply_dmg_lcdc4_startup_tiledata_select_override(
-        &mut self,
-        slice: BgVisibleStartupSlice,
-        override_select: BgTileDataSelectOverride,
-    ) {
-        self.dmg_mode3_live_lcdc_bg_state
-            .startup_continuation_overrides
-            .latch_lcdc4_tiledata_select(slice, override_select);
-
-        let overrides = self
-            .dmg_mode3_live_lcdc_bg_state
-            .startup_continuation_overrides;
-        self.for_each_mut_cached_slice(|cached| {
-            apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
-                &mut *cached,
-                overrides,
-            );
-        });
-    }
-
-    pub(super) fn maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_fill(
-        &mut self,
-    ) {
-        apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
-            &mut self.fill.cached,
-            self.dmg_mode3_live_lcdc_bg_state
-                .startup_continuation_overrides,
-        );
-    }
-
-    pub(super) fn maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_push(
-        &mut self,
-    ) {
-        apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
-            &mut self.push.cached,
-            self.dmg_mode3_live_lcdc_bg_state
-                .startup_continuation_overrides,
-        );
-    }
-
-    pub(super) fn mark_live_scy_write_while_startup_alignment_fifo_visible(
-        &mut self,
-        write_context: PpuMode3LiveRegisterWriteContext,
-        ly: u8,
-        seed_pending_tracks_live_tiledata_row: bool,
-    ) {
-        if !write_context.bg_scy_tile_data_row_changed(ly) {
-            return;
-        }
-
-        if seed_pending_tracks_live_tiledata_row
-            && matches!(
-                self.startup_fetch_seam,
-                BgStartupFetchSeamState::AlignmentSeedPending
-            )
-        {
-            let tile_map_row_address = if write_context.bg_scy_tilemap_row_changed(ly)
-                && matches!(self.fetcher.stage, PpuBgFetcherStage::TileIndex)
-            {
-                Some(write_context.current_bg_tile_index_address(self.fetcher.fetch_x, ly))
-            } else {
-                self.startup_scy_tiledata_latch
-                    .and_then(BgStartupScyTiledataLatch::tile_map_row_address)
-            };
-            self.startup_scy_tiledata_latch = Some(BgStartupScyTiledataLatch::new(
-                write_context.current_lcdc(),
-                write_context.current_scy_tile_data_row(ly),
-                tile_map_row_address,
-            ));
-            return;
-        }
-
-        let fifo_has_unlatched_startup_alignment_pixel = self.fifo.cached_pixels().any(|cached| {
-            matches!(
-                cached.cached.origin,
-                BgCachedSliceOrigin::StartupAlignmentFill
-            ) && !cached.cached.needs_live_tile_data_refetch
-        });
-        let fill_has_unlatched_startup_alignment_pixel = self.fill.pending
-            && self.fill.includes_real_tile_pixels
-            && matches!(
-                self.fill.cached.origin,
-                BgCachedSliceOrigin::StartupAlignmentFill
-            )
-            && !self.fill.cached.needs_live_tile_data_refetch;
-        if !fifo_has_unlatched_startup_alignment_pixel
-            && !fill_has_unlatched_startup_alignment_pixel
-        {
-            return;
-        }
-
-        self.latch_startup_scy_tiledata_row(write_context, ly);
-        let Some(latch) = self.startup_scy_tiledata_latch else {
-            return;
-        };
-
-        for cached in self.fifo.cached_pixels_mut() {
-            apply_startup_scy_tiledata_latch_to_cached(&mut cached.cached, latch);
-        }
-        apply_startup_scy_tiledata_latch_to_cached(&mut self.push.cached, latch);
-        apply_startup_scy_tiledata_latch_to_cached(&mut self.fill.cached, latch);
-    }
-
-    pub(super) fn latch_startup_scy_tiledata_row(
-        &mut self,
-        write_context: PpuMode3LiveRegisterWriteContext,
-        ly: u8,
-    ) {
-        if self.startup_scy_tiledata_latch.is_some()
-            || matches!(self.startup_fetch_seam, BgStartupFetchSeamState::Inactive)
-            || !write_context.bg_scy_tile_data_row_changed(ly)
-        {
-            return;
-        }
-
-        self.startup_scy_tiledata_latch = Some(BgStartupScyTiledataLatch::new(
-            write_context.current_lcdc(),
-            write_context.current_scy_tile_data_row(ly),
-            None,
-        ));
-    }
-
-    pub(super) fn apply_startup_scy_tiledata_latch_to_fill(&mut self) {
-        let Some(latch) = self.startup_scy_tiledata_latch else {
-            return;
-        };
-        apply_startup_scy_tiledata_latch_to_cached(&mut self.fill.cached, latch);
     }
 
     pub(super) fn push_dummy_fifo_pixels(&mut self, count: u8) {
@@ -2270,155 +1890,6 @@ impl BgPipelineState {
         self.wx0_scx_shortening_applied = true;
         self.mode0_start_dot -= 1;
     }
-
-    pub(super) fn peek_startup_background_fetch_origin(&self) -> BgCachedSliceOrigin {
-        match self.startup_fetch_seam {
-            BgStartupFetchSeamState::PostAlignment {
-                next_startup_continuation_slice,
-                startup_continuation_visible_tiles_remaining,
-                ..
-            } if startup_continuation_visible_tiles_remaining > 0 => {
-                BgCachedSliceOrigin::from_startup_continuation_slice(
-                    next_startup_continuation_slice,
-                )
-            }
-            BgStartupFetchSeamState::Inactive
-            | BgStartupFetchSeamState::AlignmentSeedPending
-            | BgStartupFetchSeamState::PostAlignment { .. } => BgCachedSliceOrigin::Ordinary,
-        }
-    }
-
-    pub(super) fn startup_alignment_seed_pending(&self) -> bool {
-        matches!(
-            self.startup_fetch_seam,
-            BgStartupFetchSeamState::AlignmentSeedPending
-        )
-    }
-
-    pub(super) fn startup_background_tilemap_uses_pipeline_snapshot(&self) -> bool {
-        match self.startup_fetch_seam {
-            BgStartupFetchSeamState::Inactive => false,
-            BgStartupFetchSeamState::AlignmentSeedPending => true,
-            BgStartupFetchSeamState::PostAlignment {
-                delayed_background_tilemap_tiles_remaining,
-                ..
-            } => delayed_background_tilemap_tiles_remaining > 0,
-        }
-    }
-
-    pub(super) fn startup_background_tiledata_uses_pipeline_snapshot(&self) -> bool {
-        match self.startup_fetch_seam {
-            BgStartupFetchSeamState::Inactive => false,
-            BgStartupFetchSeamState::AlignmentSeedPending => true,
-            BgStartupFetchSeamState::PostAlignment {
-                delayed_background_tileindex_read_tiles_remaining: _,
-                delayed_background_tiledata_tiles_remaining,
-                ..
-            } => delayed_background_tiledata_tiles_remaining > 0,
-        }
-    }
-
-    pub(super) fn startup_background_tileindex_reads_on_stage_one(&self) -> bool {
-        match self.startup_fetch_seam {
-            BgStartupFetchSeamState::Inactive | BgStartupFetchSeamState::AlignmentSeedPending => {
-                false
-            }
-            BgStartupFetchSeamState::PostAlignment {
-                delayed_background_tileindex_read_tiles_remaining,
-                ..
-            } => delayed_background_tileindex_read_tiles_remaining > 0,
-        }
-    }
-
-    pub(super) fn begin_post_alignment_followup(&mut self) {
-        self.startup_fetch_seam = BgStartupFetchSeamState::PostAlignment {
-            first_real_push_skips_entry_delay: true,
-            next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile2,
-            startup_continuation_visible_tiles_remaining: 2,
-            delayed_background_tileindex_read_tiles_remaining: 1,
-            delayed_background_tilemap_tiles_remaining: 0,
-            delayed_background_tiledata_tiles_remaining: 1,
-        };
-    }
-
-    pub(super) fn take_startup_first_real_push_skip_entry_delay(&mut self) -> bool {
-        let skip_entry_delay = match &mut self.startup_fetch_seam {
-            BgStartupFetchSeamState::PostAlignment {
-                first_real_push_skips_entry_delay,
-                ..
-            } => {
-                let skip = *first_real_push_skips_entry_delay;
-                *first_real_push_skips_entry_delay = false;
-                skip
-            }
-            BgStartupFetchSeamState::Inactive | BgStartupFetchSeamState::AlignmentSeedPending => {
-                false
-            }
-        };
-        self.maybe_finish_startup_fetch_seam();
-        skip_entry_delay
-    }
-
-    pub(super) fn advance_startup_background_fetch_tile(&mut self) {
-        if let BgStartupFetchSeamState::PostAlignment {
-            next_startup_continuation_slice,
-            startup_continuation_visible_tiles_remaining,
-            delayed_background_tileindex_read_tiles_remaining,
-            delayed_background_tilemap_tiles_remaining,
-            delayed_background_tiledata_tiles_remaining,
-            ..
-        } = &mut self.startup_fetch_seam
-        {
-            if *startup_continuation_visible_tiles_remaining > 0 {
-                *next_startup_continuation_slice = next_startup_continuation_slice.next();
-                *startup_continuation_visible_tiles_remaining -= 1;
-            }
-            if *delayed_background_tileindex_read_tiles_remaining > 0 {
-                *delayed_background_tileindex_read_tiles_remaining -= 1;
-            }
-            if *delayed_background_tilemap_tiles_remaining > 0 {
-                *delayed_background_tilemap_tiles_remaining -= 1;
-            }
-            if *delayed_background_tiledata_tiles_remaining > 0 {
-                *delayed_background_tiledata_tiles_remaining -= 1;
-            }
-        }
-        self.maybe_finish_startup_fetch_seam();
-    }
-
-    pub(super) fn maybe_finish_startup_fetch_seam(&mut self) {
-        if let BgStartupFetchSeamState::PostAlignment {
-            first_real_push_skips_entry_delay: false,
-            next_startup_continuation_slice: _,
-            startup_continuation_visible_tiles_remaining: 0,
-            delayed_background_tileindex_read_tiles_remaining: 0,
-            delayed_background_tilemap_tiles_remaining: 0,
-            delayed_background_tiledata_tiles_remaining: 0,
-        } = self.startup_fetch_seam
-        {
-            self.startup_fetch_seam = BgStartupFetchSeamState::Inactive;
-        }
-    }
-
-    pub(super) fn maybe_attach_startup_visible_tile3_scx_boundary_next_slice_to_fetcher(&mut self) {
-        if self.fetcher.source != PpuBgFetcherSource::Background
-            || self.fetcher.cached_origin != BgCachedSliceOrigin::Ordinary
-        {
-            return;
-        }
-
-        let Some(previous_scx) = self
-            .startup_visible_tile3_scx_boundary_next_slice_previous_scx
-            .take()
-        else {
-            return;
-        };
-        let prefix_pixels = self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels;
-        self.startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
-
-        self.fetcher
-            .arm_startup_visible_tile3_scx_boundary_old_prefix(previous_scx, prefix_pixels);
-    }
 }
 
 fn preserved_window_current_tail_pixel_index(
@@ -2441,34 +1912,6 @@ fn preserved_window_current_tail_pixel_index(
     }
 }
 
-fn apply_startup_scy_tiledata_latch_to_cached(
-    cached: &mut BgCachedSlice,
-    latch: BgStartupScyTiledataLatch,
-) {
-    if cached.source != PpuBgFetcherSource::Background
-        || !matches!(cached.origin, BgCachedSliceOrigin::StartupAlignmentFill)
-        || cached.needs_live_tile_data_refetch
-    {
-        return;
-    }
-
-    let tile_data_base = bg_tile_data_base(latch.lcdc, cached.tile_index);
-    cached.tile_low_address = tile_data_base + latch.tile_data_row * TILE_ROW_BYTES;
-    cached.tile_high_address = tile_data_base + latch.tile_data_row * TILE_ROW_BYTES + 1;
-    cached.needs_live_tile_data_refetch = true;
-    if let Some(tile_map_row_address) = latch.tile_map_row_address {
-        cached.tile_map_address = tile_map_row_address;
-        cached.needs_live_tilemap_refetch = true;
-    }
-}
-
-fn apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_cached_slice(
-    cached: &mut BgCachedSlice,
-    overrides: DmgStartupContinuationOverrides,
-) {
-    cached.latch_dmg_lcdc4_tiledata_select_override(overrides.for_cached_slice(*cached));
-}
-
 impl Default for BgPipelineState {
     fn default() -> Self {
         Self {
@@ -2476,8 +1919,6 @@ impl Default for BgPipelineState {
             push: BgPushState::default(),
             fill: BgFifoFillState::default(),
             fifo: BgFifo::default(),
-            startup_fetch_seam: BgStartupFetchSeamState::Inactive,
-            startup_fifo_placeholders: 0,
             mode3_started: false,
             initial_scx_capture_pending: false,
             mode0_start_dot: MODE0_START_DOT,
@@ -2490,7 +1931,6 @@ impl Default for BgPipelineState {
             visible_pixels_output: 0,
             saw_right_edge_visible_same_x_cluster_this_line: false,
             obj_alignment_paid_tile: None,
-            cgb_startup_seed_obj_stall_extra_continuation_dot: false,
             window_wy_latch: false,
             window_lcdc5_latch: false,
             window_force_x0_this_line: false,
@@ -2499,10 +1939,6 @@ impl Default for BgPipelineState {
             window_start_count_this_line: 0,
             wx0_scx_shortening_applied: false,
             wx166_armed_this_line: false,
-            startup_visible_tile3_scx_boundary_next_slice_previous_scx: None,
-            startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels: 0,
-            startup_scy_tiledata_latch: None,
-            cgb_dmg_scy_startup_retarget_active: false,
             window_activation_tilemap_select_latch: None,
             dmg_wx0_window_disable_prefix_state: None,
             dmg_late_window_enable_override: None,
@@ -2513,52 +1949,10 @@ impl Default for BgPipelineState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub(super) enum BgStartupFetchSeamState {
-    #[default]
-    Inactive,
-    AlignmentSeedPending,
-    PostAlignment {
-        first_real_push_skips_entry_delay: bool,
-        next_startup_continuation_slice: BgStartupContinuationSlice,
-        startup_continuation_visible_tiles_remaining: u8,
-        delayed_background_tileindex_read_tiles_remaining: u8,
-        delayed_background_tilemap_tiles_remaining: u8,
-        delayed_background_tiledata_tiles_remaining: u8,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub(super) enum BgStartupContinuationSlice {
-    #[default]
-    None,
-    VisibleTile2,
-    VisibleTile3,
-}
-
-impl BgStartupContinuationSlice {
-    pub(super) const fn next(self) -> Self {
-        match self {
-            Self::None => Self::None,
-            Self::VisibleTile2 => Self::VisibleTile3,
-            Self::VisibleTile3 => Self::None,
-        }
-    }
-
-    pub(super) const fn visible_slice(self) -> Option<BgVisibleStartupSlice> {
-        match self {
-            Self::None => None,
-            Self::VisibleTile2 => Some(BgVisibleStartupSlice::VisibleTile2),
-            Self::VisibleTile3 => Some(BgVisibleStartupSlice::VisibleTile3),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgFetcherState {
     pub(super) source: PpuBgFetcherSource,
     pub(super) stage: PpuBgFetcherStage,
     pub(super) stage_dot: u8,
-    pub(super) cached_origin: BgCachedSliceOrigin,
     pub(super) window_activation_first_pixel_previous_tilemap_select: Option<bool>,
     pub(super) same_cycle_window_tilemap_lcdc_hold: bool,
     pub(super) dmg_lcdc4_previous_tiledata_select_on_next_low: Option<BgTileDataSelect>,
@@ -2572,14 +1966,9 @@ pub(super) struct BgFetcherState {
     pub(super) needs_live_tile_high_current_row_refetch_on_push: bool,
     pub(super) cgb_dmg_scy_high_plane_uses_low_row: bool,
     pub(super) cgb_startup_seed_get_tile_scy_row: Option<u16>,
-    pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
-    pub(super) startup_visible_tile3_scx_boundary_previous_scx: Option<u8>,
-    pub(super) startup_visible_tile3_scx_boundary_old_tail_start_pixel: u8,
-    pub(super) startup_visible_tile3_scx_boundary_old_prefix_pixels: u8,
     pub(super) fetch_x: u16,
     pub(super) next_fetch_pixel: u16,
     pub(super) startup_fetch_idle_dots: u8,
-    pub(super) post_alignment_fetch_restart_delay_dots: u8,
     pub(super) window_tilemap_x: u8,
     pub(super) bg_resume_fetch_pixel: u16,
     pub(super) rewind_bg_resume_after_first_tile_index_dot: bool,
@@ -2619,7 +2008,6 @@ impl BgFetcherState {
         self.source = PpuBgFetcherSource::Window;
         self.stage = PpuBgFetcherStage::WindowActivating;
         self.stage_dot = 0;
-        self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.window_activation_first_pixel_previous_tilemap_select = None;
         self.same_cycle_window_tilemap_lcdc_hold = false;
         self.dmg_lcdc4_previous_tiledata_select_on_next_low = None;
@@ -2632,11 +2020,8 @@ impl BgFetcherState {
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
         self.cgb_dmg_scy_high_plane_uses_low_row = false;
-        self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
-        self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = aligned_fetch_x;
         self.next_fetch_pixel = aligned_fetch_x;
-        self.post_alignment_fetch_restart_delay_dots = 0;
         self.window_tilemap_x = (window_pixel_offset / tile_width) as u8;
         self.bg_resume_fetch_pixel = bg_resume_fetch_pixel;
         self.rewind_bg_resume_after_first_tile_index_dot = true;
@@ -2655,7 +2040,6 @@ impl BgFetcherState {
     pub(super) fn start_common(&mut self, bg_resume_fetch_pixel: u16) {
         self.stage = PpuBgFetcherStage::TileIndex;
         self.stage_dot = 0;
-        self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.window_activation_first_pixel_previous_tilemap_select = None;
         self.same_cycle_window_tilemap_lcdc_hold = false;
         self.dmg_lcdc4_previous_tiledata_select_on_next_low = None;
@@ -2668,11 +2052,8 @@ impl BgFetcherState {
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
         self.cgb_dmg_scy_high_plane_uses_low_row = false;
-        self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
-        self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = 0;
         self.next_fetch_pixel = 0;
-        self.post_alignment_fetch_restart_delay_dots = 0;
         self.window_tilemap_x = 0;
         self.bg_resume_fetch_pixel = bg_resume_fetch_pixel;
         self.rewind_bg_resume_after_first_tile_index_dot = false;
@@ -2694,7 +2075,6 @@ impl BgFetcherState {
         }
 
         self.source = PpuBgFetcherSource::Background;
-        self.cached_origin = BgCachedSliceOrigin::Ordinary;
         self.window_activation_first_pixel_previous_tilemap_select = None;
         self.same_cycle_window_tilemap_lcdc_hold = false;
         self.dmg_lcdc4_previous_tiledata_select_on_next_low = None;
@@ -2707,11 +2087,8 @@ impl BgFetcherState {
         self.needs_live_tile_low_current_row_refetch_on_push = false;
         self.needs_live_tile_high_current_row_refetch_on_push = false;
         self.cgb_dmg_scy_high_plane_uses_low_row = false;
-        self.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
-        self.clear_startup_visible_tile3_scx_boundary_old_pixel_window();
         self.fetch_x = self.bg_resume_fetch_pixel;
         self.next_fetch_pixel = self.bg_resume_fetch_pixel;
-        self.post_alignment_fetch_restart_delay_dots = 0;
         self.window_tilemap_x = 0;
         self.first_window_tile_after_activation = false;
         self.first_window_tile_leading_pixel_skip = 0;
@@ -2789,26 +2166,6 @@ impl BgFetcherState {
         )
         .apply_to_fetcher(self);
     }
-
-    pub(super) fn clear_startup_visible_tile3_scx_boundary_old_pixel_window(&mut self) {
-        self.startup_visible_tile3_scx_boundary_previous_scx = None;
-        self.startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
-        self.startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
-    }
-
-    pub(super) fn arm_startup_visible_tile3_scx_boundary_old_prefix(
-        &mut self,
-        previous_scx: u8,
-        prefix_pixels: u8,
-    ) {
-        if prefix_pixels == 0 {
-            return;
-        }
-
-        self.startup_visible_tile3_scx_boundary_previous_scx = Some(previous_scx);
-        self.startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
-        self.startup_visible_tile3_scx_boundary_old_prefix_pixels = prefix_pixels;
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -2847,22 +2204,6 @@ impl BgPushState {
         self.cached = BgCachedSlice::from_fetcher(fetcher);
     }
 
-    pub(super) fn queue_startup_alignment_seed_from_fetcher(&mut self, fetcher: BgFetcherState) {
-        self.pending = true;
-        self.disposition = BgPushDisposition::Ready;
-        self.terminal_placeholder_tail_extra_hold_remaining = 0;
-        self.just_activated_window_tile = fetcher.first_window_tile_after_activation;
-        self.leading_pixel_skip = if self.just_activated_window_tile {
-            fetcher.first_window_tile_leading_pixel_skip
-        } else {
-            0
-        };
-        self.entry_delay_remaining = 0;
-        self.next_fetch_pixel = fetcher.fetch_x.wrapping_add(BG_TILE_WIDTH as u16);
-        self.cached = BgCachedSlice::from_fetcher(fetcher)
-            .with_origin(BgCachedSliceOrigin::StartupAlignmentSeed);
-    }
-
     pub(super) fn interrupt_for_object_fetch(&mut self) {
         if !self.pending {
             return;
@@ -2899,66 +2240,17 @@ impl BgFifoFillState {
         self.includes_real_tile_pixels = true;
         self.cached = push.cached;
     }
-
-    pub(super) fn queue_startup_alignment_from_push(
-        &mut self,
-        push: BgPushState,
-        startup_dummy_pixels: u8,
-    ) {
-        self.pending = true;
-        self.startup_dummy_pixels = startup_dummy_pixels;
-        self.leading_pixel_skip = push.leading_pixel_skip;
-        self.includes_real_tile_pixels = true;
-        self.cached = push.cached.with_origin(push.cached.queued_fill_origin());
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub(super) enum BgCachedSliceOrigin {
-    #[default]
-    Ordinary,
-    StartupAlignmentSeed,
-    StartupAlignmentFill,
-    StartupContinuation(BgStartupContinuationSlice),
-}
-
-impl BgCachedSliceOrigin {
-    pub(super) const fn from_startup_continuation_slice(slice: BgStartupContinuationSlice) -> Self {
-        match slice {
-            BgStartupContinuationSlice::None => Self::Ordinary,
-            slice => Self::StartupContinuation(slice),
-        }
-    }
-
-    pub(super) const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
-        match self {
-            Self::StartupContinuation(slice) => slice,
-            Self::Ordinary | Self::StartupAlignmentSeed | Self::StartupAlignmentFill => {
-                BgStartupContinuationSlice::None
-            }
-        }
-    }
-
-    pub(super) const fn visible_startup_continuation_slice(self) -> Option<BgVisibleStartupSlice> {
-        self.startup_continuation_slice().visible_slice()
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct BgCachedSlice {
     pub(super) source: PpuBgFetcherSource,
-    pub(super) origin: BgCachedSliceOrigin,
     pub(super) fetch_x: u16,
     pub(super) dmg_lcdc3_tilemap_select_override: Option<bool>,
     pub(super) dmg_lcdc4_tiledata_select_override: BgTileDataSelectOverride,
     pub(super) dmg_lcdc4_previous_tiledata_select_for_output_override: Option<BgTileDataSelect>,
     pub(super) window_activation_first_pixel_previous_tilemap_select: Option<bool>,
     pub(super) same_cycle_live_tilemap_refetch_window_open: bool,
-    pub(super) startup_visible_tile3_scx_boundary_full_refetch_next_tile: bool,
-    pub(super) startup_visible_tile3_scx_boundary_next_tile_output_retarget_scx: Option<u8>,
-    pub(super) startup_visible_tile3_scx_boundary_previous_scx: Option<u8>,
-    pub(super) startup_visible_tile3_scx_boundary_old_tail_start_pixel: u8,
-    pub(super) startup_visible_tile3_scx_boundary_old_prefix_pixels: u8,
     pub(super) needs_live_tilemap_refetch: bool,
     pub(super) needs_live_tilemap_full_refetch: bool,
     pub(super) needs_live_tile_data_refetch: bool,
@@ -2984,7 +2276,6 @@ impl BgCachedSlice {
     pub(super) fn from_fetcher(fetcher: BgFetcherState) -> Self {
         Self {
             source: fetcher.source,
-            origin: fetcher.cached_origin,
             fetch_x: fetcher.fetch_x,
             dmg_lcdc3_tilemap_select_override: None,
             dmg_lcdc4_tiledata_select_override: PerPlane::new(None, None),
@@ -2993,15 +2284,6 @@ impl BgCachedSlice {
             window_activation_first_pixel_previous_tilemap_select: fetcher
                 .window_activation_first_pixel_previous_tilemap_select,
             same_cycle_live_tilemap_refetch_window_open: false,
-            startup_visible_tile3_scx_boundary_full_refetch_next_tile: fetcher
-                .startup_visible_tile3_scx_boundary_full_refetch_next_tile,
-            startup_visible_tile3_scx_boundary_next_tile_output_retarget_scx: None,
-            startup_visible_tile3_scx_boundary_previous_scx: fetcher
-                .startup_visible_tile3_scx_boundary_previous_scx,
-            startup_visible_tile3_scx_boundary_old_tail_start_pixel: fetcher
-                .startup_visible_tile3_scx_boundary_old_tail_start_pixel,
-            startup_visible_tile3_scx_boundary_old_prefix_pixels: fetcher
-                .startup_visible_tile3_scx_boundary_old_prefix_pixels,
             needs_live_tilemap_refetch: fetcher.needs_live_tilemap_refetch_on_push,
             needs_live_tilemap_full_refetch: fetcher.needs_live_tilemap_full_refetch_on_push,
             needs_live_tile_data_refetch: fetcher.needs_live_tile_data_refetch_on_push,
@@ -3025,59 +2307,8 @@ impl BgCachedSlice {
         }
     }
 
-    pub(super) fn with_origin(mut self, origin: BgCachedSliceOrigin) -> Self {
-        self.origin = origin;
-        self
-    }
-
-    pub(super) fn latch_dmg_lcdc3_tilemap_select_override(&mut self, tilemap_select: bool) {
-        self.dmg_lcdc3_tilemap_select_override = Some(tilemap_select);
-        self.needs_live_tilemap_refetch = true;
-    }
-
-    pub(super) fn latch_dmg_lcdc4_tiledata_select_override(
-        &mut self,
-        override_select: BgTileDataSelectOverride,
-    ) {
-        if !matches!(
-            self.origin,
-            BgCachedSliceOrigin::StartupContinuation(
-                BgStartupContinuationSlice::VisibleTile2 | BgStartupContinuationSlice::VisibleTile3
-            )
-        ) || !self.is_background()
-        {
-            return;
-        }
-
-        self.dmg_lcdc4_tiledata_select_override = override_select;
-        if override_select.low.is_some() || override_select.high.is_some() {
-            self.needs_live_tile_data_refetch = true;
-        }
-    }
-
     pub(super) const fn is_background(self) -> bool {
         matches!(self.source, PpuBgFetcherSource::Background)
-    }
-
-    pub(super) const fn matches_background_startup_continuation_slice(
-        self,
-        slice: BgVisibleStartupSlice,
-    ) -> bool {
-        self.is_background()
-            && matches!(
-                (self.origin.visible_startup_continuation_slice(), slice),
-                (
-                    Some(BgVisibleStartupSlice::VisibleTile2),
-                    BgVisibleStartupSlice::VisibleTile2,
-                ) | (
-                    Some(BgVisibleStartupSlice::VisibleTile3),
-                    BgVisibleStartupSlice::VisibleTile3,
-                )
-            )
-    }
-
-    pub(super) const fn is_startup_alignment_seed(self) -> bool {
-        matches!(self.origin, BgCachedSliceOrigin::StartupAlignmentSeed)
     }
 
     pub(super) const fn cgb_bg_attrs_or_default(self) -> CgbBgTileAttributes {
@@ -3093,31 +2324,6 @@ impl BgCachedSlice {
             self.tile_high,
             pixel_index,
             self.cgb_bg_attrs_or_default(),
-        )
-    }
-
-    pub(super) const fn queued_fill_origin(self) -> BgCachedSliceOrigin {
-        match self.origin {
-            BgCachedSliceOrigin::StartupAlignmentSeed => BgCachedSliceOrigin::StartupAlignmentFill,
-            origin => origin,
-        }
-    }
-
-    pub(super) const fn startup_continuation_slice(self) -> BgStartupContinuationSlice {
-        self.origin.startup_continuation_slice()
-    }
-
-    pub(super) const fn visible_startup_continuation_slice(self) -> Option<BgVisibleStartupSlice> {
-        self.origin.visible_startup_continuation_slice()
-    }
-
-    pub(super) const fn is_second_or_third_visible_post_startup_push(self) -> bool {
-        matches!(
-            (self.startup_continuation_slice(), self.fetch_x),
-            (BgStartupContinuationSlice::VisibleTile2, x) if x == BG_TILE_WIDTH as u16
-        ) || matches!(
-            (self.startup_continuation_slice(), self.fetch_x),
-            (BgStartupContinuationSlice::VisibleTile3, x) if x == BG_TILE_WIDTH as u16 * 2
         )
     }
 
@@ -3223,44 +2429,6 @@ impl BgCachedSlice {
 
         self.dmg_lcdc4_previous_tiledata_select_for_output_override = Some(previous_select);
     }
-
-    pub(super) fn arm_startup_visible_tile3_scx_boundary_old_tail(
-        &mut self,
-        previous_scx: u8,
-        current_scx: u8,
-    ) {
-        let tail_pixels = startup_visible_tile3_scx_boundary_old_tail_pixels(current_scx);
-        if tail_pixels == 0 {
-            return;
-        }
-
-        self.startup_visible_tile3_scx_boundary_previous_scx = Some(previous_scx);
-        self.startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH - tail_pixels;
-        self.startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
-    }
-
-    pub(super) fn arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(
-        &mut self,
-        scx: u8,
-    ) {
-        self.startup_visible_tile3_scx_boundary_next_tile_output_retarget_scx = Some(scx);
-    }
-
-    pub(super) fn preserve_old_startup_visible_tile3_scx_boundary_pixel(
-        self,
-        pixel_index: u8,
-    ) -> Option<u8> {
-        let previous_scx = self.startup_visible_tile3_scx_boundary_previous_scx?;
-        let preserve_old_tail =
-            pixel_index >= self.startup_visible_tile3_scx_boundary_old_tail_start_pixel;
-        let preserve_old_prefix =
-            pixel_index < self.startup_visible_tile3_scx_boundary_old_prefix_pixels;
-        if preserve_old_tail || preserve_old_prefix {
-            Some(previous_scx)
-        } else {
-            None
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -3338,12 +2506,7 @@ pub(super) fn recompute_live_background_cached_slice(
     let mut cgb_bg_attrs = cached.cgb_bg_attrs;
     if cached.needs_live_tilemap_refetch {
         let tilemap_select_override = cached.dmg_lcdc3_tilemap_select_override;
-        let full_refetch_fetch_x =
-            if cached.startup_visible_tile3_scx_boundary_full_refetch_next_tile {
-                cached.fetch_x + BG_TILE_WIDTH as u16
-            } else {
-                cached.fetch_x
-            };
+        let full_refetch_fetch_x = cached.fetch_x;
         tile_map_address = if cached.needs_live_tilemap_full_refetch {
             match cached.source {
                 PpuBgFetcherSource::Background => PpuMode3BackgroundFetchContext::new(
@@ -3456,7 +2619,6 @@ pub(super) fn recompute_live_background_cached_slice(
     cached.cgb_bg_attrs = cgb_bg_attrs;
     cached.tile_low = tile_low;
     cached.tile_high = tile_high;
-    cached.startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
     cached.needs_live_tilemap_refetch = false;
     cached.needs_live_tilemap_full_refetch = false;
     cached.needs_live_tile_data_refetch = false;
@@ -3487,13 +2649,6 @@ const fn cached_tile_high_address(cached: BgCachedSlice) -> u16 {
         cached.tile_data_address | 1
     } else {
         cached.tile_high_address
-    }
-}
-
-const fn startup_visible_tile3_scx_boundary_old_tail_pixels(scx: u8) -> u8 {
-    match scx & 0x07 {
-        0 => 0,
-        low_bits => low_bits.saturating_sub(1),
     }
 }
 

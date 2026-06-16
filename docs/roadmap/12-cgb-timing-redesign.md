@@ -1125,3 +1125,111 @@ do not peel pieces (peeling churns the same startup tests twice, proven this ses
 **Status: write-observation core mapped to the machine scheduler; a scoped causal observation is proven blocked by the
 PPU-before-CPU phase order. The clean SCY +1 increment stands; closing lcdc_tile_sel needs (A) the canonical restructure
 or (C) a fetch-time observation reorder — a console-timing decision, not a lever.**
+
+### 24.6 L1-b structural — BLAST-RADIUS MAP + SCOPE DECISION (5-agent map, 2026-06-15)
+
+A 5-agent blast-radius map (bg_fetch / state / bg_push / transfer-policies-snapshot / tests) settled the exact
+edit points. Constant check: `MODE3_ABSTRACT_SOURCE_WINDOW_DOTS = MODE3_BG_FETCH_PRIMING_DOTS(12) -
+MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT(4) = 8` (start_line pushes 8 real junk pixels; snapshot tests that expect 7 are
+"8 minus 1 consumed", NOT the constant). Junk pixels are real FIFO entries with `cached = None`; real pixels carry
+`cached = Some(..)` — so the COUNT has a positional replacement (leading `cached==None` run).
+
+**KEY FINDING — the seam is NOT cleanly separable from M6 (CGB SCY seed-fix = L1-d).** Four entanglement points:
+(1) `StartupContinuation(VisibleTile2/3)` origin feeds `scy_uses_startup_visible_tile2_tilemap_row` in
+`mode3_policies::for_push/for_fill_pending_slice`, reached by BOTH the CGB and the **non-CGB** `live_scy_write_routing`
+path (api.rs:703+) — i.e. it touches DMG live-write SCY retarget, not only CGB; (2) `StartupAlignmentFill` origin is
+read by `mark_live_scy_write_while_startup_alignment_fifo_visible` + `apply_startup_scy_tiledata_latch` (the M6 SCY
+latch); (3) `cgb_startup_seed_get_tile_scy_row` has use-A (seed-specific freeze, gated `AlignmentSeedPending`, goes
+with the seam) and use-B (canonical CGB-D data-stage row latch, gated `!AlignmentSeedPending`, the §16-§17 latch that
+STAYS — when the seam is gone its guard simplifies to always-on = the canonical "latch SCY once at GetTile0");
+(4) `scy_obj_phase_owner/policy` (M6) reads `startup_fetch_seam != Inactive` and the count.
+
+**SCOPE DECISION (user, 2026-06-15): "remove whole + adelantar L1-d".** Combined L1-b+L1-d pass — delete the seed-push
+(M4) + the COUNT (M1) + the CGB SCY seed-fix tables (M6) + M7 levers together. Accept CGB `m3_scy_change` churn +
+observability-unit-test rewrite; **preserve ONLY the DMG static gates** (next paragraph). NO ROM-gating during the pass
+(per §24). The canonical end state: 8 junk drain via the kept entry-delay (`startup_fetch_idle_dots=3` +
+`startup_source_state=EntryDelay{4}` + per-push `entry_delay_remaining=1`), first real tile = Ordinary canonical
+`queue_bg_push_from_fetcher`, no seam enum, no count, plain CGB SCY-once-at-GetTile0 (the kept use-B latch).
+
+**DMG static gates that MUST stay byte-identical (the oracle; all in tests/mode3/startup_core.rs unless noted):**
+- dot-89 BG FIFO == `[0,0,0,1,2,3,0,1,2,3]`; dot-80 FIFO == `[0;8]` (`:403/:417`).
+- first visible pixel @ `line_dot == 92`, SCX=0 (`:430`).
+- `mode0_start_dot == 252` SCX=0 (`:396`); SCX=N → 252+N; SCX=3 → 255 (terminal.rs:88).
+- 3 visible tiles in order 0,1,2 (`:467`); SCX shift SCX=2 → `[2,3,0,1,2,3,0,1]` (`:507`).
+- fetcher 3-dummy-dot idle then first tile-index read @ dot 83 (`:397/:407`).
+- per-sprite Mode-3 cost: LCDC1-off-mid-objfetch keeps timing (obj/render.rs:268); x160 terminal sprite still +1
+  (obj/arbitration.rs:470); obj fetch start window (obj/fetch.rs:112).
+
+**CADENCE RISK (the one empirical unknown):** removing the seed's `entry_delay=0`+immediate-advance, the +1
+`post_alignment_fetch_restart_delay_dots`, and the first-continuation `take_startup_first_real_push_skip_entry_delay`
+(entry_delay=0) nets to a tuned cadence; naive removal drifts ~+1 dot and would break dot-89/first-visible@92. Resolve
+against the oracle: re-distribute the kept 12-dot setup (e.g. trim a dummy/entry-delay dot, or land the first push
+immediate) so the static gates stay byte-identical. mode0_start_dot is a CONSTANT (80+172), unaffected by fetch cadence.
+
+**DELETION LIST (confirmed by the map; success = all gone):** M4 — `BgStartupFetchSeamState` (whole enum) +
+`AlignmentSeedPending`/`PostAlignment` + `BgStartupContinuationSlice` + `begin_post_alignment_followup` +
+`advance_startup_background_fetch_tile` + `take_startup_first_real_push_skip_entry_delay` +
+`maybe_finish_startup_fetch_seam` + `peek_startup_background_fetch_origin` + `startup_background_tile{index,map,data}_*`
++ `startup_alignment_seed_pending` + `post_alignment_fetch_restart_delay_dots`
+(+`consume_bg_fetcher_post_alignment_restart_delay_dot`) + `queue_bg_startup_alignment_seed_from_fetcher` +
+`queue_startup_alignment_seed_from_fetcher` + `queue_startup_alignment_from_push` + `is_startup_alignment_seed` +
+origins `StartupAlignmentSeed`/`StartupAlignmentFill`/`StartupContinuation` + `queued_fill_origin` +
+`startup_dummy_pixels`. M1 — `startup_fifo_placeholders` + `fifo_contains_real_pixels` (→`!fifo.is_empty()`) +
+`consume_effective_fifo_pixel` (→`pop_real_fifo_pixel`) + `pop_visible_fifo_pixel` skip-block + the bg_push.rs:105
+`+placeholders` window + mode2.rs:147 + the `PpuMode3ScyObjPhaseContext.startup_fifo_placeholders` field. M6 —
+`cgb_startup_seed_get_tile_scy_row` use-A + `cgb_dmg_software_startup_visible_tile2/3` tables (transfer.rs ~329-462,
+mode3_policies ~983/1009) + `cgb_dmg_scy_startup_retarget_active` + `scy_obj_phase_owner/policy` +
+`apply_startup_scy_tiledata_latch*` + `startup_scy_tiledata_latch` + `mark_live_scy_write_while_startup_alignment_fifo_visible`
++ `compute_startup_visible_*` + `startup_visible_tile3_scx_boundary_*`. M7 —
+`cgb_startup_continuation_fetch_blocked_on_fifo_room` + `cgb_startup_seed_obj_stall_extra_continuation_dot`. KEEP —
+`push_dummy_fifo_pixels` (the canonical 8-junk pre-fill), the entry-delay machinery (`startup_fetch_idle_dots`,
+`startup_source_state=EntryDelay`, per-push `entry_delay_remaining`), the CGB-D use-B SCY data-stage latch (now
+always-on), `bg_current_transfer_backing` diagnostic.
+
+**Tests:** delete pure-seam tests (startup_post_alignment_seam_*); rewrite ~30 files that set
+`startup_fifo_placeholders`/`startup_fetch_seam`/`PostAlignment`/`StartupAlignmentFill` to canonical (real junk via
+`push_dummy_fifo_pixels`, FIFO-length-driven ownership, Ordinary origin). Snapshot/trace schema changes
+(`PpuBgStartupFetchSeamSnapshot`, `bg_startup_fifo_placeholders`, `bg_fetcher_post_alignment_restart_delay_dots`,
+`startup_dummy_pixels`) → regen 18 trace fixtures + snapshot via `FIXTURE_ACCEPT_ENV`. Gate at the end:
+`cargo test -p gb-core --lib ppu::` + `--test snapshots ppu` (CGB m3_scy churn allowed; re-green later).
+
+### 24.7 LANDED — L1-b + L1-d remove-whole pass (2026-06-16, branch ppu/fetcher-lead-hardening)
+
+The combined pass is DONE and the full CI is GREEN: `cargo fmt-check` clean, `cargo lint` clean, `cargo tests` 0
+failed across all 48 binaries (14 ignored = 5 new canonical-pending below + 9 pre-existing), `cargo rom-report
+blargg` 58/58. The mode3 startup is now the canonical model: 8 real junk pixels pre-filled at `start_line`, the first
+real BG tile pushes through the ordinary `queue_bg_push_from_fetcher` path (entry_delay=1, no seed), the junk drains
+one per dot, no seam / no `BgCachedSliceOrigin` / no placeholder count / no CGB SCY seed-fix retarget / no continuation
+labeling / no scx-boundary-on-tile3. The kept canonical pieces: the explicit startup entry-delay
+(`startup_fetch_idle_dots=3` + `startup_source_state=EntryDelay{4}` + per-push `entry_delay_remaining=1`), the 8-junk
+pre-fill, the CGB-D "SCY-once at the data stage" latch (`cgb_startup_seed_get_tile_scy_row`, now always-on for
+cgb+dmg-software, replacing the deleted seed retarget), and `bg_current_transfer_backing` (diagnostic).
+
+**DMG static gates held byte-identical** (validated, untouched): dot-80 FIFO `[0;8]`, **first visible @ dot 92**,
+`mode0_start_dot=252` (SCX-shifted +N), the 3 visible tiles in order, the SCX low-bit pixel-phase shift, fetcher
+3-dummy-dot idle. The cadence self-compensated: removing the seed's immediate-advance + the +1 restart + the
+entry-delay skip shifted the FIRST real fill from dot 89→90, but the junk drain absorbs it so first-visible stays @92.
+The only intermediate change is the dot-89 FIFO snapshot (`[0,0,0,1,2,3,0,1,2,3]` → `[0,0]`) — updated in the gate
+test. Fixture regen verified behavior-neutral: across all 18 trace fixtures the ONLY differing retained fields are the
+internal BG-fetcher/FIFO mode3-startup state (`bg_fifo_len`/`bg_stage`/`bg_push_pending`/`bg_fill_pending` — the
+canonical junk-drain) plus the dropped diagnostic fields; NO mode-boundary / `line_dot` / `mode0_start_dot` /
+`visible_pixels_output` / bus / CPU field changed (so the CPU/OAM-bug fixtures these traces serve are unaffected).
+
+**`PpuMode3ScyObjPhasePolicy`/`scy_obj_phase_*` were KEPT** (not deleted): they are live beyond the seam — the surviving
+`pending_refetch_prefers_*` obj-match-phase routing flows through them. Only the seam-specific bits
+(`startup_visible_tile2_*`, the `startup_fifo_placeholders` context field, the dead route accessors) were removed.
+
+**5 tests `#[ignore]`'d as canonical-pending (re-pin via ROM after L1-d/L2 fresh value, NOT regressions):**
+`cgb_fetch::cgb_dmg_software_bg_high_plane_reuses_low_plane_scy_tiledata_row` +
+`..._low_dot_scy_write_reuses_low_plane_row_for_high_plane` (CGB-DMG live-SCY high-plane row-reuse, subsumed by /
+removed with the use-B latch & M6); `lcdc_bg_toggles::sprite_coupled_tile_sel_replay_matches_curated_background_windows`
++ `..._line10_tile_sel_replay_matches_trace_signature` (observed LCDC3/4 startup phase-table replay removed with M6);
+`terminal::saturated_placeholder_backed_terminal_bg_tail_holds_one_extra_dot_after_push_entry_delay` (the
+`terminal_placeholder_tail_extra_hold` mechanism has had NO production trigger since before this pass — vestigial).
+
+**Remaining minor cleanup (deferred, harmless, noted for the re-green/polish pass):** two now-vestigial fields survive
+as always-false dead state — `BgFetcherState::cgb_dmg_scy_high_plane_uses_low_row` (its only setter,
+`maybe_latch_cgb_dmg_scy_low_row_for_high_plane`, went with M6; still read at bg_fetch.rs but the branch is never taken)
+and `BgPushState::terminal_placeholder_tail_extra_hold_remaining` (vestigial). Remove them + their reads when
+re-greening the 5 ignored tests. Layer 2 (scheduler CPU→PPU order, per-register write observation, canonical LCD
+enable) is unstarted.

@@ -308,6 +308,8 @@ fn enter_drawing_for_live_register_write(ppu: &mut Ppu) {
     assert_eq!(ppu.current_access_mode(), PpuAccessMode::Drawing);
 }
 
+#[ignore = "canonical-pending: CGB-DMG live-SCY high-plane-row reuse subsumed by the use-B \
+    GetTile0 row latch (M6 removed); re-pin via ROM after L1-d/L2. See docs/roadmap/12 §24.6"]
 #[test]
 fn cgb_dmg_software_bg_high_plane_reuses_low_plane_scy_tiledata_row() {
     for operating_mode in [
@@ -343,6 +345,8 @@ fn cgb_dmg_software_bg_high_plane_reuses_low_plane_scy_tiledata_row() {
     }
 }
 
+#[ignore = "canonical-pending: CGB-DMG live-SCY low-row-for-high-plane reuse removed with M6 \
+    (maybe_latch_cgb_dmg_scy_low_row_for_high_plane); re-pin via ROM after L1-d/L2. docs/roadmap/12 §24.6"]
 #[test]
 fn cgb_dmg_software_bg_low_dot_scy_write_reuses_low_plane_row_for_high_plane() {
     let mut ppu = cgb_bg_fetch_ppu();

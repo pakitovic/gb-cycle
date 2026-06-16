@@ -124,10 +124,8 @@ fn cpu_mmio_scx_write_during_alignment_seed_retunes_the_current_line_discard_bud
     assert_eq!(before.bg_current_transfer_x, 1);
     assert_eq!(before.visible_pixels_output, 0);
     assert_eq!(before.mode0_start_dot, MODE0_START_DOT);
-    assert!(matches!(
-        before.bg_startup_fetch_seam,
-        PpuBgStartupFetchSeamSnapshot::AlignmentSeedPending
-    ));
+    // Canonical pre-visible retune window: no real BG pixel has reached the FIFO yet.
+    assert!(!ppu.bg_pipeline_state.fifo_contains_real_pixels());
 
     ppu.write_register_with_source(0xFF43, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
 
@@ -230,27 +228,31 @@ fn cpu_mmio_scx_write_after_alignment_seed_does_not_retune_the_current_line_disc
         obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     });
 
-    ppu.tick_n(88);
+    // Canonical retune window closes once a real BG tile reaches the FIFO. Advance until the
+    // first real pixel is present, then a live SCX write no longer retunes the discard budget.
+    ppu.tick_n(80);
+    while !ppu.bg_pipeline_state.fifo_contains_real_pixels() {
+        assert!(ppu.t_cycle < 140);
+        ppu.tick();
+    }
 
     let before = ppu.snapshot();
     assert_eq!(before.mode, PpuAccessMode::Drawing);
     assert_eq!(before.visible_scx, 0x00);
-    assert_eq!(before.bg_current_transfer_x, 5);
     assert_eq!(before.visible_pixels_output, 0);
     assert_eq!(before.mode0_start_dot, MODE0_START_DOT);
-    assert!(matches!(
-        before.bg_startup_fetch_seam,
-        PpuBgStartupFetchSeamSnapshot::PostAlignment { .. }
-    ));
+    let before_transfer_x = before.bg_current_transfer_x;
 
     ppu.write_register_with_source(0xFF43, 0x02, PpuRegisterWriteSource::CpuMmioCommit);
     ppu.tick();
 
     let after = ppu.snapshot();
-    assert_eq!(after.line_dot, 89);
     assert_eq!(after.visible_scx, 0x02);
-    assert_eq!(after.bg_current_transfer_x, 6);
-    assert_eq!(after.visible_pixels_output, 0);
+    // No retune: the mode0 boundary stayed put and the transfer cursor advanced normally.
+    // With a real pixel already in the FIFO and SCX=0 (no discard), the served dot emits the
+    // first visible pixel as part of that ordinary advance.
+    assert_eq!(after.bg_current_transfer_x, before_transfer_x + 1);
+    assert_eq!(after.visible_pixels_output, 1);
     assert_eq!(after.mode0_start_dot, MODE0_START_DOT);
     assert_eq!(after.scx_discard_remaining, 0);
 }
@@ -341,13 +343,12 @@ fn startup_scx2_state_at_line84() {
     let mut scx0 = seeded_ppu(0x00);
     scx0.tick_n(84);
     println!(
-        "scx0 dot84 x={} vpo={} placeholders={} stage={:?} stage_dot={} seam={:?} discard={} mode0={}",
+        "scx0 dot84 x={} vpo={} fifo_real={} stage={:?} stage_dot={} discard={} mode0={}",
         scx0.snapshot().bg_current_transfer_x,
         scx0.snapshot().visible_pixels_output,
-        scx0.snapshot().bg_startup_fifo_placeholders,
+        scx0.bg_pipeline_state.fifo_contains_real_pixels(),
         scx0.snapshot().bg_fetcher_stage,
         scx0.snapshot().bg_fetcher_stage_dot,
-        scx0.snapshot().bg_startup_fetch_seam,
         scx0.snapshot().scx_discard_remaining,
         scx0.snapshot().mode0_start_dot,
     );
@@ -355,13 +356,12 @@ fn startup_scx2_state_at_line84() {
     let mut scx2 = seeded_ppu(0x02);
     scx2.tick_n(84);
     println!(
-        "scx2 dot84 x={} vpo={} placeholders={} stage={:?} stage_dot={} seam={:?} discard={} mode0={}",
+        "scx2 dot84 x={} vpo={} fifo_real={} stage={:?} stage_dot={} discard={} mode0={}",
         scx2.snapshot().bg_current_transfer_x,
         scx2.snapshot().visible_pixels_output,
-        scx2.snapshot().bg_startup_fifo_placeholders,
+        scx2.bg_pipeline_state.fifo_contains_real_pixels(),
         scx2.snapshot().bg_fetcher_stage,
         scx2.snapshot().bg_fetcher_stage_dot,
-        scx2.snapshot().bg_startup_fetch_seam,
         scx2.snapshot().scx_discard_remaining,
         scx2.snapshot().mode0_start_dot,
     );
@@ -408,18 +408,14 @@ fn mode3_startup_keeps_dummy_occupancy_out_of_the_fifo_until_alignment_push() {
     assert_eq!(ppu.snapshot().line_dot, 83);
     assert_eq!(ppu.snapshot().bg_fetcher_stage_dot, 1);
 
-    // The primed (discarded) tile is pushed into the FIFO at dot 89, carrying
-    // exactly the 3 leading dummy pixels of the startup occupancy.
+    // Canonical startup: the first real tile is fetched, then PUSH-blocks on its entry-delay while
+    // the 8 junk pixels drain one per dot. By dot 89 six junk have drained and the first real tile
+    // has not yet been appended (its push is still in the entry-delay), so only junk remains.
     ppu.tick_n(6);
 
     let after_first_push = ppu.snapshot();
     assert_eq!(after_first_push.line_dot, 89);
-    assert_eq!(
-        after_first_push.bg_fifo_pixels,
-        vec![0, 0, 0, 1, 2, 3, 0, 1, 2, 3]
-    );
-    assert!(!after_first_push.bg_push_pending);
-    assert!(!after_first_push.bg_fill_pending);
+    assert_eq!(after_first_push.bg_fifo_pixels, vec![0, 0]);
     assert_eq!(after_first_push.visible_pixels_output, 0);
 
     while ppu.snapshot().visible_pixels_output != 1 {
@@ -558,115 +554,6 @@ fn cpu_mmio_scx_write_during_alignment_seed_matches_startup_scx2_pixel_phase() {
 }
 
 #[test]
-fn startup_post_alignment_seam_labels_only_the_second_and_third_visible_tiles() {
-    let mut pipeline = BgPipelineState::default();
-
-    pipeline.begin_post_alignment_followup();
-    assert_eq!(
-        pipeline
-            .peek_startup_background_fetch_origin()
-            .startup_continuation_slice(),
-        BgStartupContinuationSlice::VisibleTile2
-    );
-    pipeline.advance_startup_background_fetch_tile();
-
-    assert_eq!(
-        pipeline
-            .peek_startup_background_fetch_origin()
-            .startup_continuation_slice(),
-        BgStartupContinuationSlice::VisibleTile3
-    );
-    assert!(pipeline.take_startup_first_real_push_skip_entry_delay());
-    pipeline.advance_startup_background_fetch_tile();
-
-    assert_eq!(
-        pipeline.peek_startup_background_fetch_origin(),
-        BgCachedSliceOrigin::Ordinary
-    );
-    assert_eq!(
-        pipeline.startup_fetch_seam,
-        BgStartupFetchSeamState::Inactive
-    );
-}
-
-#[test]
-fn startup_post_alignment_seam_skips_the_first_real_push_entry_delay_once() {
-    let mut pipeline = BgPipelineState::default();
-
-    pipeline.begin_post_alignment_followup();
-
-    assert_eq!(
-        pipeline.startup_fetch_seam,
-        BgStartupFetchSeamState::PostAlignment {
-            first_real_push_skips_entry_delay: true,
-            next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile2,
-            startup_continuation_visible_tiles_remaining: 2,
-            delayed_background_tileindex_read_tiles_remaining: 1,
-            delayed_background_tilemap_tiles_remaining: 0,
-            delayed_background_tiledata_tiles_remaining: 1,
-        }
-    );
-    assert!(pipeline.take_startup_first_real_push_skip_entry_delay());
-    assert_eq!(
-        pipeline.startup_fetch_seam,
-        BgStartupFetchSeamState::PostAlignment {
-            first_real_push_skips_entry_delay: false,
-            next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile2,
-            startup_continuation_visible_tiles_remaining: 2,
-            delayed_background_tileindex_read_tiles_remaining: 1,
-            delayed_background_tilemap_tiles_remaining: 0,
-            delayed_background_tiledata_tiles_remaining: 1,
-        }
-    );
-    assert!(!pipeline.take_startup_first_real_push_skip_entry_delay());
-}
-
-#[test]
-fn first_real_background_push_after_startup_alignment_skips_entry_delay() {
-    let mut ppu = Ppu::new(ConsoleModel::GameBoy);
-    let mut vram = crate::bus::VramDomain::from_bytes(&[0; TEST_VRAM_BYTES]);
-    vram.set_acquired(BusMaster::Ppu, true);
-
-    ppu.visible_registers.lcdc = 0x91;
-    ppu.bg_pipeline_state.begin_post_alignment_followup();
-    ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
-    ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
-    ppu.bg_pipeline_state.fetcher.stage_dot = 1;
-    ppu.bg_pipeline_state.fetcher.fetch_x = BG_TILE_WIDTH as u16;
-    ppu.bg_pipeline_state.fetcher.next_fetch_pixel = BG_TILE_WIDTH as u16;
-    ppu.bg_pipeline_state.fetcher.tile_map_address = 0x9801;
-    ppu.bg_pipeline_state.fetcher.tile_data_address = 0x8010;
-    ppu.bg_pipeline_state.fetcher.tile_index = 1;
-    ppu.bg_pipeline_state.fetcher.tile_low = 0x55;
-    ppu.bg_pipeline_state.fetcher.tile_high = 0x33;
-
-    assert!(!ppu.advance_bg_fetcher(&VramBusView::new(BusMaster::Ppu, &mut vram)));
-    assert!(ppu.bg_pipeline_state.fill.pending);
-    assert!(!ppu.bg_pipeline_state.push.pending);
-    assert_eq!(
-        ppu.bg_pipeline_state.fetcher.stage,
-        PpuBgFetcherStage::TileIndex
-    );
-    assert_eq!(ppu.bg_pipeline_state.fetcher.stage_dot, 0);
-    assert_eq!(
-        ppu.bg_pipeline_state.fetcher.fetch_x,
-        BG_TILE_WIDTH as u16 * 2
-    );
-    assert_eq!(ppu.bg_pipeline_state.push.entry_delay_remaining, 0);
-    assert_eq!(
-        ppu.bg_pipeline_state.startup_fetch_seam,
-        BgStartupFetchSeamState::PostAlignment {
-            first_real_push_skips_entry_delay: false,
-            next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile3,
-            startup_continuation_visible_tiles_remaining: 1,
-            delayed_background_tileindex_read_tiles_remaining: 0,
-            delayed_background_tilemap_tiles_remaining: 0,
-            delayed_background_tiledata_tiles_remaining: 0,
-        }
-    );
-}
-
-#[test]
 fn startup_dummy_fifo_pixels_do_not_block_the_first_real_bg_fill() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.visible_registers.lcdc = 0x82;
@@ -681,7 +568,6 @@ fn startup_dummy_fifo_pixels_do_not_block_the_first_real_bg_fill() {
     ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
     ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
     ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend([0, 0, 0, 0]);
 
     assert_eq!(
@@ -698,7 +584,6 @@ fn mode3_started_uses_explicit_startup_entry_delay_before_transfer_service() {
     ppu.line_dot = MODE2_DOTS + 1;
     ppu.bg_pipeline_state.mode3_started = true;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = MODE3_ABSTRACT_SOURCE_WINDOW_DOTS;
     ppu.bg_pipeline_state
         .push_dummy_fifo_pixels(MODE3_ABSTRACT_SOURCE_WINDOW_DOTS);
     ppu.bg_pipeline_state.startup_source_state =
@@ -740,7 +625,6 @@ fn mode3_started_keeps_an_explicit_abstract_source_window_before_fifo_backed_tra
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS;
     ppu.bg_pipeline_state.mode3_started = true;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 1 };
     ppu.bg_pipeline_state
@@ -823,7 +707,6 @@ fn late_hidden_dot_can_consume_a_startup_placeholder_before_the_first_real_fill(
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state
         .startup_pre_visible_transfer_dots_remaining = 0;
@@ -845,7 +728,6 @@ fn late_hidden_scx_discard_can_consume_a_startup_placeholder_before_real_fifo_ba
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_BG_FETCH_PRIMING_DOTS - 1;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state
         .startup_pre_visible_transfer_dots_remaining = 0;

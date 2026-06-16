@@ -1,9 +1,5 @@
 use super::super::*;
 
-mod lcdc0;
-mod lcdc3;
-mod lcdc4;
-mod live_refetch;
 mod snapshot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -32,10 +28,4 @@ fn dmg_observability_rig(config: ObservabilityRigConfig) -> PpuTestRig {
         wx: 0x00,
         obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
     })
-}
-
-fn advance_visible_output_step(ppu: &mut PpuTestRig) -> Mode3TransferDot {
-    ppu.maybe_recompute_pending_background_fill_with_ppu_vram();
-    ppu.flush_pending_bg_fifo_fill();
-    ppu.advance_mode3_output_phase_with_ppu_vram()
 }

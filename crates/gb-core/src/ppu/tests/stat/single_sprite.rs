@@ -83,7 +83,6 @@ fn cpu_stat_read_publishes_hblank_on_the_single_xa2_mode0_boundary() {
     ppu.bg_pipeline_state.current_transfer_x = 168;
     ppu.bg_pipeline_state.visible_pixels_output = SCREEN_WIDTH as u8;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
     ppu.line_dot = MODE0_START_DOT + 6;
 
     ppu.mode2_scan_state.push(PpuSelectedSprite {

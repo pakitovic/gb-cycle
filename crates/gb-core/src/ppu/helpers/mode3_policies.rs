@@ -335,9 +335,6 @@ pub(in crate::ppu) struct PpuMode3BgWinFetchPolicy {
     register_latches: PpuMode3RegisterLatches,
     console_model: ConsoleModel,
     dmg_software_contract: bool,
-    background_tilemap_uses_pipeline_snapshot: bool,
-    background_tiledata_uses_pipeline_snapshot: bool,
-    background_tileindex_reads_on_stage_one: bool,
     window_tilemap_uses_pipeline_snapshot: bool,
 }
 
@@ -346,18 +343,12 @@ impl PpuMode3BgWinFetchPolicy {
         register_latches: PpuMode3RegisterLatches,
         console_model: ConsoleModel,
         dmg_software_contract: bool,
-        background_tilemap_uses_pipeline_snapshot: bool,
-        background_tiledata_uses_pipeline_snapshot: bool,
-        background_tileindex_reads_on_stage_one: bool,
         window_tilemap_uses_pipeline_snapshot: bool,
     ) -> Self {
         Self {
             register_latches,
             console_model,
             dmg_software_contract,
-            background_tilemap_uses_pipeline_snapshot,
-            background_tiledata_uses_pipeline_snapshot,
-            background_tileindex_reads_on_stage_one,
             window_tilemap_uses_pipeline_snapshot,
         }
     }
@@ -368,10 +359,8 @@ impl PpuMode3BgWinFetchPolicy {
         ly: u8,
     ) -> PpuMode3BackgroundFetchContext {
         PpuMode3BackgroundFetchContext::new(
-            self.register_latches
-                .bg_fetch_registers(self.background_tilemap_uses_pipeline_snapshot),
-            self.register_latches
-                .bg_fetch_registers(self.background_tiledata_uses_pipeline_snapshot),
+            self.register_latches.bg_fetch_registers(false),
+            self.register_latches.bg_fetch_registers(false),
             next_fetch_pixel,
             ly,
         )
@@ -407,9 +396,9 @@ impl PpuMode3BgWinFetchPolicy {
 
     pub(in crate::ppu) fn should_delay_background_tileindex_read(
         self,
-        source: PpuBgFetcherSource,
+        _source: PpuBgFetcherSource,
     ) -> bool {
-        source == PpuBgFetcherSource::Background && self.background_tileindex_reads_on_stage_one
+        false
     }
 }
 
@@ -419,8 +408,6 @@ impl PpuMode3BgWinFetchPolicy {
 pub(in crate::ppu) struct PpuMode3LiveScyWriteRouting {
     pub(in crate::ppu) pending_high_plane_only: bool,
     pub(in crate::ppu) pending_tilemap_row_refetch: bool,
-    pub(in crate::ppu) startup_visible_tile2_tilemap_row_refetch: bool,
-    pub(in crate::ppu) startup_visible_tile2_phase6_tilemap_row_refetch: bool,
     pub(in crate::ppu) defers_current_tile_data_fetch_to_next: bool,
     pub(in crate::ppu) defers_current_tile_tilemap_row_to_next: bool,
 }
@@ -429,41 +416,12 @@ pub(in crate::ppu) struct PpuMode3LiveScyWriteRouting {
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
 pub(in crate::ppu) struct PpuMode3CgbDmgLiveScyWriteRoute {
-    pending_cached_slices: bool,
-    startup_alignment_fifo: bool,
-    current_fetch: bool,
     scy_routing: PpuMode3LiveScyWriteRouting,
 }
 
 impl PpuMode3CgbDmgLiveScyWriteRoute {
-    pub(in crate::ppu) const fn new(
-        pending_cached_slices: bool,
-        startup_alignment_fifo: bool,
-        current_fetch: bool,
-        scy_routing: PpuMode3LiveScyWriteRouting,
-    ) -> Self {
-        Self {
-            pending_cached_slices,
-            startup_alignment_fifo,
-            current_fetch,
-            scy_routing,
-        }
-    }
-
-    pub(in crate::ppu) const fn routes_anything(self) -> bool {
-        self.pending_cached_slices || self.startup_alignment_fifo || self.current_fetch
-    }
-
-    pub(in crate::ppu) const fn pending_cached_slices(self) -> bool {
-        self.pending_cached_slices
-    }
-
-    pub(in crate::ppu) const fn startup_alignment_fifo(self) -> bool {
-        self.startup_alignment_fifo
-    }
-
-    pub(in crate::ppu) const fn current_fetch(self) -> bool {
-        self.current_fetch
+    pub(in crate::ppu) const fn new(scy_routing: PpuMode3LiveScyWriteRouting) -> Self {
+        Self { scy_routing }
     }
 
     pub(in crate::ppu) const fn scy_routing(self) -> PpuMode3LiveScyWriteRouting {
@@ -498,32 +456,14 @@ impl PpuMode3LiveBackgroundWriteEffects {
         ly: u8,
         scy_routing: PpuMode3LiveScyWriteRouting,
     ) -> Self {
-        if cached.is_startup_alignment_seed() {
-            return Self::default();
-        }
-
         let background_cached = cached.is_background();
         let scy_pending_refetch_window = background_cached
-            && (entry_delay_active
-                || cached.same_cycle_live_tilemap_refetch_window_open
-                || cached.is_second_or_third_visible_post_startup_push());
+            && (entry_delay_active || cached.same_cycle_live_tilemap_refetch_window_open);
         let scy_tile_data_row_changed = background_cached
             && matches!(register, PpuMode3LiveBackgroundRegister::Scy)
             && scy_pending_refetch_window
             && write_context.bg_scy_tile_data_row_changed(ly);
-        let scy_uses_startup_visible_tile2_tilemap_row = scy_routing
-            .startup_visible_tile2_tilemap_row_refetch
-            && matches!(
-                cached.origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
-            );
-        let scy_startup_visible_tile2_tilemap_phase_matches = matches!(ly & 0x07, 7)
-            || scy_routing.startup_visible_tile2_phase6_tilemap_row_refetch
-                && matches!(ly & 0x07, 6);
         let scy_tilemap_row_changed = scy_routing.pending_tilemap_row_refetch
-            || scy_uses_startup_visible_tile2_tilemap_row
-                && scy_startup_visible_tile2_tilemap_phase_matches;
-        let scy_tilemap_row_changed = scy_tilemap_row_changed
             && background_cached
             && matches!(register, PpuMode3LiveBackgroundRegister::Scy)
             && scy_pending_refetch_window
@@ -531,9 +471,7 @@ impl PpuMode3LiveBackgroundWriteEffects {
         let lcdc_tilemap_refetch = background_cached
             && matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
             && write_context.bgwin_tilemap_select_changed(cached.source)
-            && (entry_delay_active
-                || cached.same_cycle_live_tilemap_refetch_window_open
-                || cached.is_second_or_third_visible_post_startup_push());
+            && (entry_delay_active || cached.same_cycle_live_tilemap_refetch_window_open);
         let lcdc_tiledata_refetch = matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
             && write_context.bg_window_tile_data_select_changed()
             && (background_cached || cached.fetch_x != 0);
@@ -572,25 +510,12 @@ impl PpuMode3LiveBackgroundWriteEffects {
         let background_cached = cached.is_background();
         let scy_pending_refetch_window = background_cached
             && startup_dummy_pixels == 0
-            && (cached.same_cycle_live_tilemap_refetch_window_open
-                || cached.is_second_or_third_visible_post_startup_push());
+            && cached.same_cycle_live_tilemap_refetch_window_open;
         let scy_tile_data_row_changed = background_cached
             && matches!(register, PpuMode3LiveBackgroundRegister::Scy)
             && scy_pending_refetch_window
             && write_context.bg_scy_tile_data_row_changed(ly);
-        let scy_uses_startup_visible_tile2_tilemap_row = scy_routing
-            .startup_visible_tile2_tilemap_row_refetch
-            && matches!(
-                cached.origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
-            );
-        let scy_startup_visible_tile2_tilemap_phase_matches = matches!(ly & 0x07, 7)
-            || scy_routing.startup_visible_tile2_phase6_tilemap_row_refetch
-                && matches!(ly & 0x07, 6);
         let scy_tilemap_row_changed = scy_routing.pending_tilemap_row_refetch
-            || scy_uses_startup_visible_tile2_tilemap_row
-                && scy_startup_visible_tile2_tilemap_phase_matches;
-        let scy_tilemap_row_changed = scy_tilemap_row_changed
             && background_cached
             && matches!(register, PpuMode3LiveBackgroundRegister::Scy)
             && scy_pending_refetch_window
@@ -599,8 +524,7 @@ impl PpuMode3LiveBackgroundWriteEffects {
             && matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
             && write_context.bgwin_tilemap_select_changed(cached.source)
             && startup_dummy_pixels == 0
-            && (cached.same_cycle_live_tilemap_refetch_window_open
-                || cached.is_second_or_third_visible_post_startup_push());
+            && cached.same_cycle_live_tilemap_refetch_window_open;
         let lcdc_tiledata_refetch = matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
             && write_context.bg_window_tile_data_select_changed()
             && (background_cached || cached.fetch_x != 0);
@@ -611,15 +535,13 @@ impl PpuMode3LiveBackgroundWriteEffects {
                     && matches!(register, PpuMode3LiveBackgroundRegister::Scx)
                     && write_context.bg_scx_tilemap_column_changed()
                     && startup_dummy_pixels == 0
-                    && (cached.same_cycle_live_tilemap_refetch_window_open
-                        || cached.is_second_or_third_visible_post_startup_push())
+                    && cached.same_cycle_live_tilemap_refetch_window_open
                 || scy_tilemap_row_changed,
             tilemap_full_refetch: background_cached
                 && matches!(register, PpuMode3LiveBackgroundRegister::Scx)
                 && write_context.bg_scx_tilemap_column_changed()
                 && startup_dummy_pixels == 0
-                && (cached.same_cycle_live_tilemap_refetch_window_open
-                    || cached.is_second_or_third_visible_post_startup_push())
+                && cached.same_cycle_live_tilemap_refetch_window_open
                 || scy_tilemap_row_changed,
             tile_data_refetch: lcdc_tiledata_refetch || scy_tile_data_row_changed,
             tile_data_current_row_refetch: scy_tile_data_row_changed
@@ -637,13 +559,11 @@ impl PpuMode3LiveBackgroundWriteEffects {
     }
 
     pub(in crate::ppu) fn for_visible_fifo_slice(
-        cached: BgCachedSlice,
-        write_context: PpuMode3LiveRegisterWriteContext,
+        _cached: BgCachedSlice,
+        _write_context: PpuMode3LiveRegisterWriteContext,
     ) -> Self {
         Self {
-            tilemap_refetch: cached.is_background()
-                && write_context.bg_tilemap_select_changed()
-                && cached.is_second_or_third_visible_post_startup_push(),
+            tilemap_refetch: false,
             tilemap_full_refetch: false,
             tile_data_refetch: false,
             tile_data_current_row_refetch: false,
@@ -666,20 +586,9 @@ impl PpuMode3LiveBackgroundWriteEffects {
         window_tile_row: u8,
         scy_routing: PpuMode3LiveScyWriteRouting,
     ) -> Self {
-        let scy_uses_startup_visible_tile2_tilemap_row = scy_routing
-            .startup_visible_tile2_tilemap_row_refetch
-            && matches!(
-                fetcher.cached_origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2)
-            );
-        let scy_startup_visible_tile2_tilemap_phase_matches = matches!(ly & 0x07, 7)
-            || scy_routing.startup_visible_tile2_phase6_tilemap_row_refetch
-                && matches!(ly & 0x07, 6);
         let background_coordinate_fetch = fetcher.source == PpuBgFetcherSource::Background
             && (fetcher.stage == PpuBgFetcherStage::TileIndex
-                || (scy_routing.pending_tilemap_row_refetch
-                    || scy_uses_startup_visible_tile2_tilemap_row
-                        && scy_startup_visible_tile2_tilemap_phase_matches)
+                || scy_routing.pending_tilemap_row_refetch
                     && matches!(
                         fetcher.stage,
                         PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
@@ -696,14 +605,7 @@ impl PpuMode3LiveBackgroundWriteEffects {
         let background_tile_low_plane_committed = fetcher.source == PpuBgFetcherSource::Background
             && (fetcher.stage == PpuBgFetcherStage::TileDataLow && fetcher.stage_dot >= 1
                 || fetcher.stage == PpuBgFetcherStage::TileDataHigh);
-        let scy_current_tile_defers = background_tile_low_plane_committed
-            && matches!(
-                fetcher.cached_origin,
-                BgCachedSliceOrigin::Ordinary
-                    | BgCachedSliceOrigin::StartupContinuation(
-                        BgStartupContinuationSlice::VisibleTile3
-                    )
-            );
+        let scy_current_tile_defers = background_tile_low_plane_committed;
         let scy_defers_current_tile_data =
             scy_current_tile_defers && scy_routing.defers_current_tile_data_fetch_to_next;
         let scy_defers_current_tile_tilemap_row =
@@ -733,21 +635,7 @@ impl PpuMode3LiveBackgroundWriteEffects {
             && write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT == 0;
 
         Self {
-            tilemap_refetch: matches!(register, PpuMode3LiveBackgroundRegister::Lcdc)
-                && write_context.bg_tilemap_select_changed()
-                && fetcher.source == PpuBgFetcherSource::Background
-                && matches!(
-                    fetcher.cached_origin,
-                    BgCachedSliceOrigin::StartupContinuation(
-                        BgStartupContinuationSlice::VisibleTile3
-                    )
-                )
-                && matches!(
-                    fetcher.stage,
-                    PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
-                )
-                || window_tilemap_changed
-                || scy_tilemap_row_changed,
+            tilemap_refetch: window_tilemap_changed || scy_tilemap_row_changed,
             tilemap_full_refetch: false,
             tile_data_refetch: window_tiledata_changed || scy_tile_data_row_changed,
             tile_data_current_row_refetch: scy_tile_data_row_changed,
@@ -755,22 +643,9 @@ impl PpuMode3LiveBackgroundWriteEffects {
             tile_high_current_row_refetch: false,
             fetcher_tilemap_refetch_on_push: matches!(
                 register,
-                PpuMode3LiveBackgroundRegister::Lcdc
-            ) && write_context.bg_tilemap_select_changed()
-                && fetcher.source == PpuBgFetcherSource::Background
-                && matches!(
-                    fetcher.cached_origin,
-                    BgCachedSliceOrigin::StartupContinuation(
-                        BgStartupContinuationSlice::VisibleTile3
-                    )
-                )
-                && matches!(
-                    fetcher.stage,
-                    PpuBgFetcherStage::TileDataLow | PpuBgFetcherStage::TileDataHigh
-                )
-                || matches!(register, PpuMode3LiveBackgroundRegister::Scx)
-                    && write_context.bg_scx_tilemap_column_changed()
-                    && background_scx_uncommitted_tile_index_fetch
+                PpuMode3LiveBackgroundRegister::Scx
+            ) && write_context.bg_scx_tilemap_column_changed()
+                && background_scx_uncommitted_tile_index_fetch
                 || window_tilemap_changed
                 || scy_tilemap_row_changed,
             fetcher_tilemap_full_refetch_on_push: matches!(
@@ -839,15 +714,8 @@ pub(in crate::ppu) struct PpuMode3ScyObjPhaseContext {
     pub(in crate::ppu) bg_fetcher_stage: PpuBgFetcherStage,
     pub(in crate::ppu) bg_fetcher_stage_dot: u8,
     pub(in crate::ppu) bg_fifo_len: usize,
-    pub(in crate::ppu) startup_fifo_placeholders: u8,
     pub(in crate::ppu) obj_fetcher_stage: PpuObjFetcherStage,
     pub(in crate::ppu) obj_fetcher_stage_dot: u8,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(in crate::ppu) struct PpuMode3ScyTilemapRetarget {
-    pub(in crate::ppu) tilemap_row_delta: i8,
-    pub(in crate::ppu) tiledata_row_delta: i8,
 }
 
 /// Observed DMG SCY/OBJ startup phase table that can perturb BG refetch routing.
@@ -879,63 +747,6 @@ impl PpuMode3ObservedScyObjPhaseTable {
         matches!(self.obj_match_tile_phase(), 0..=2)
     }
 
-    pub(in crate::ppu) const fn startup_visible_tile2_refetch_prefers_tilemap_row(self) -> bool {
-        matches!(self.obj_match_tile_phase(), 4..=7)
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile2_phase6_refetch_prefers_tilemap_row(
-        self,
-    ) -> bool {
-        matches!(self.obj_match_x(), 4..=7)
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile2_placeholder_uses_previous_tilemap_row(
-        self,
-        ly: u8,
-        visible_x: u8,
-    ) -> bool {
-        matches!(
-            (self.obj_match_x(), ly & (BG_TILE_WIDTH - 1), visible_x),
-            (16, 5, 16) | (17, 6, 8)
-        )
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile2_tilemap_retarget(
-        self,
-        ly: u8,
-        pixel_index: u8,
-    ) -> Option<PpuMode3ScyTilemapRetarget> {
-        let (tilemap_row_delta, tiledata_row_delta) =
-            match (self.obj_match_x(), ly & (BG_TILE_WIDTH - 1), pixel_index) {
-                (9, 6, 4 | 5 | 7) => (1, 0),
-                (9, 6, 6) => (1, -1),
-                (10, 6, 5..=7) => (-1, 0),
-                (11, 7, 5) => (0, 0),
-                (16, 6, 0) => (1, 0),
-                (16, 6, 7) => (0, -1),
-                _ => return None,
-            };
-
-        Some(PpuMode3ScyTilemapRetarget {
-            tilemap_row_delta,
-            tiledata_row_delta,
-        })
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile2_uses_previous_tiledata_row(self) -> bool {
-        matches!(self.obj_match_x(), 8..=15)
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile3_uses_previous_tiledata_row(self) -> bool {
-        matches!(self.obj_match_x(), 16..=17)
-    }
-
-    pub(in crate::ppu) const fn startup_alignment_seed_pending_tracks_live_tiledata_row(
-        self,
-    ) -> bool {
-        self.obj_match_x() == 0
-    }
-
     /// Observed CGB-family DMG-software SCY/OBJ startup phase table.
     /// This intentionally does not reuse the DMG startup-alignment FIFO route
     /// wholesale: CGB evidence keeps the write route and the row-retarget seams
@@ -946,69 +757,22 @@ impl PpuMode3ObservedScyObjPhaseTable {
         let tilemap_row_routing = PpuMode3LiveScyWriteRouting {
             pending_high_plane_only: false,
             pending_tilemap_row_refetch: true,
-            startup_visible_tile2_tilemap_row_refetch: false,
-            startup_visible_tile2_phase6_tilemap_row_refetch: false,
             defers_current_tile_data_fetch_to_next: true,
             defers_current_tile_tilemap_row_to_next: true,
         };
         let no_special_routing = PpuMode3LiveScyWriteRouting {
             pending_high_plane_only: false,
             pending_tilemap_row_refetch: false,
-            startup_visible_tile2_tilemap_row_refetch: false,
-            startup_visible_tile2_phase6_tilemap_row_refetch: false,
             defers_current_tile_data_fetch_to_next: false,
             defers_current_tile_tilemap_row_to_next: false,
         };
 
         match self.obj_match_x() {
-            0 | 8 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, true, tilemap_row_routing),
-            1 | 4..=7 | 10..=16 => {
-                PpuMode3CgbDmgLiveScyWriteRoute::new(false, false, true, tilemap_row_routing)
+            0 | 8 | 1 | 4..=7 | 10..=16 => {
+                PpuMode3CgbDmgLiveScyWriteRoute::new(tilemap_row_routing)
             }
-            2 => PpuMode3CgbDmgLiveScyWriteRoute::new(true, false, false, no_special_routing),
-            _ => PpuMode3CgbDmgLiveScyWriteRoute::new(false, false, false, no_special_routing),
+            _ => PpuMode3CgbDmgLiveScyWriteRoute::new(no_special_routing),
         }
-    }
-
-    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile2_tilemap_retarget(
-        self,
-        ly: u8,
-        pixel_index: u8,
-    ) -> Option<PpuMode3ScyTilemapRetarget> {
-        let ly_phase = ly & (BG_TILE_WIDTH - 1);
-        let (tilemap_row_delta, tiledata_row_delta) =
-            match (self.obj_match_x(), ly_phase, pixel_index) {
-                (2, 6, 7) | (2, 7, 6) => (0, 0),
-                (2, _, _) => (0, -1),
-                (3, _, _) => (0, 1),
-                (8, 5, 6 | 7) => (0, -1),
-                (8, _, _) => (0, -2),
-                (9, 7, 4..=7) => (0, 0),
-                (9, _, _) => (0, 1),
-                (17, 7, 0) => (0, 2),
-                (17, _, _) => (0, 1),
-                _ => return None,
-            };
-
-        Some(PpuMode3ScyTilemapRetarget {
-            tilemap_row_delta,
-            tiledata_row_delta,
-        })
-    }
-
-    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile3_tilemap_retarget(
-        self,
-        _ly: u8,
-        _pixel_index: u8,
-    ) -> Option<PpuMode3ScyTilemapRetarget> {
-        if !matches!(self.obj_match_x(), 16) {
-            return None;
-        }
-
-        Some(PpuMode3ScyTilemapRetarget {
-            tilemap_row_delta: 0,
-            tiledata_row_delta: 0,
-        })
     }
 }
 
@@ -1042,76 +806,11 @@ impl PpuMode3ScyObjPhasePolicy {
             .pending_refetch_prefers_tilemap_row()
     }
 
-    pub(in crate::ppu) const fn startup_visible_tile2_refetch_prefers_tilemap_row(self) -> bool {
-        self.observed_phase_table()
-            .startup_visible_tile2_refetch_prefers_tilemap_row()
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile2_phase6_refetch_prefers_tilemap_row(
-        self,
-    ) -> bool {
-        self.observed_phase_table()
-            .startup_visible_tile2_phase6_refetch_prefers_tilemap_row()
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile2_placeholder_uses_previous_tilemap_row(
-        self,
-        ly: u8,
-        visible_x: u8,
-    ) -> bool {
-        self.observed_phase_table()
-            .startup_visible_tile2_placeholder_uses_previous_tilemap_row(ly, visible_x)
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile2_tilemap_retarget(
-        self,
-        ly: u8,
-        pixel_index: u8,
-    ) -> Option<PpuMode3ScyTilemapRetarget> {
-        self.observed_phase_table()
-            .startup_visible_tile2_tilemap_retarget(ly, pixel_index)
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile2_uses_previous_tiledata_row(self) -> bool {
-        self.observed_phase_table()
-            .startup_visible_tile2_uses_previous_tiledata_row()
-    }
-
-    pub(in crate::ppu) const fn startup_visible_tile3_uses_previous_tiledata_row(self) -> bool {
-        self.observed_phase_table()
-            .startup_visible_tile3_uses_previous_tiledata_row()
-    }
-
-    pub(in crate::ppu) const fn startup_alignment_seed_pending_tracks_live_tiledata_row(
-        self,
-    ) -> bool {
-        self.observed_phase_table()
-            .startup_alignment_seed_pending_tracks_live_tiledata_row()
-    }
-
     pub(in crate::ppu) const fn cgb_dmg_software_live_scy_write_route(
         self,
     ) -> PpuMode3CgbDmgLiveScyWriteRoute {
         self.observed_phase_table()
             .cgb_dmg_software_live_scy_write_route()
-    }
-
-    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile2_tilemap_retarget(
-        self,
-        ly: u8,
-        pixel_index: u8,
-    ) -> Option<PpuMode3ScyTilemapRetarget> {
-        self.observed_phase_table()
-            .cgb_dmg_software_startup_visible_tile2_tilemap_retarget(ly, pixel_index)
-    }
-
-    pub(in crate::ppu) const fn cgb_dmg_software_startup_visible_tile3_tilemap_retarget(
-        self,
-        ly: u8,
-        pixel_index: u8,
-    ) -> Option<PpuMode3ScyTilemapRetarget> {
-        self.observed_phase_table()
-            .cgb_dmg_software_startup_visible_tile3_tilemap_retarget(ly, pixel_index)
     }
 }
 
@@ -1156,18 +855,6 @@ impl PpuMode3SingleSpritePhasePolicy {
         } else {
             None
         }
-    }
-
-    pub(in crate::ppu) const fn observed_lcdc3_phase_table(
-        self,
-    ) -> PpuMode3ObservedLcdc3PhaseTable {
-        PpuMode3ObservedLcdc3PhaseTable::new(self.sprite_x())
-    }
-
-    pub(in crate::ppu) const fn observed_lcdc4_phase_table(
-        self,
-    ) -> PpuMode3ObservedLcdc4PhaseTable {
-        PpuMode3ObservedLcdc4PhaseTable::new(self.sprite_x())
     }
 }
 
@@ -1214,268 +901,6 @@ impl PpuMode3ObservedLcdc0OnsetTable {
             3 if sprite_x < WRITE1_ONSETS.len() => Some(WRITE1_ONSETS[sprite_x] + 16),
             _ => None,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(in crate::ppu) struct PpuMode3Lcdc3StartupTilemapOverride {
-    pub(in crate::ppu) tilemap_select: bool,
-    pub(in crate::ppu) applies_to_visible_tile2: bool,
-    pub(in crate::ppu) applies_to_visible_tile3: bool,
-}
-
-impl PpuMode3Lcdc3StartupTilemapOverride {
-    pub(in crate::ppu) const fn has_effect(self) -> bool {
-        self.applies_to_visible_tile2 || self.applies_to_visible_tile3
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(in crate::ppu) struct PpuMode3Lcdc3LiveWriteDecision {
-    pub(in crate::ppu) clear_visible_tile2_live_refetch: bool,
-    pub(in crate::ppu) tilemap_override: Option<PpuMode3Lcdc3StartupTilemapOverride>,
-}
-
-impl PpuMode3Lcdc3LiveWriteDecision {
-    pub(in crate::ppu) const fn has_effect(self) -> bool {
-        self.clear_visible_tile2_live_refetch || self.tilemap_override.is_some()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(in crate::ppu) struct PpuMode3ObservedLcdc3PhaseTable {
-    sprite_x: u8,
-}
-
-impl PpuMode3ObservedLcdc3PhaseTable {
-    pub(in crate::ppu) const fn new(sprite_x: u8) -> Self {
-        Self { sprite_x }
-    }
-
-    pub(in crate::ppu) const fn live_write_decision(
-        self,
-        write_index: usize,
-        current_bg_tilemap_select: bool,
-    ) -> Option<PpuMode3Lcdc3LiveWriteDecision> {
-        let clear_visible_tile2_live_refetch = matches!(
-            (write_index, self.sprite_x),
-            (0, 3..=17) | (1, 16..=u8::MAX)
-        );
-
-        let tilemap_override = match write_index {
-            0 if current_bg_tilemap_select => {
-                let override_decision = PpuMode3Lcdc3StartupTilemapOverride {
-                    tilemap_select: true,
-                    applies_to_visible_tile2: self.sprite_x <= 2,
-                    applies_to_visible_tile3: matches!(self.sprite_x & 0x07, 3..=7),
-                };
-                if override_decision.has_effect() {
-                    Some(override_decision)
-                } else {
-                    None
-                }
-            }
-            1 if self.sprite_x <= 2 => Some(PpuMode3Lcdc3StartupTilemapOverride {
-                tilemap_select: true,
-                applies_to_visible_tile2: true,
-                applies_to_visible_tile3: false,
-            }),
-            _ => None,
-        };
-
-        let decision = PpuMode3Lcdc3LiveWriteDecision {
-            clear_visible_tile2_live_refetch,
-            tilemap_override,
-        };
-        if decision.has_effect() {
-            Some(decision)
-        } else {
-            None
-        }
-    }
-
-    pub(in crate::ppu) const fn cgb_dmg_software_live_write_decision(
-        self,
-        write_index: usize,
-        current_bg_tilemap_select: bool,
-    ) -> Option<PpuMode3Lcdc3LiveWriteDecision> {
-        let clear_visible_tile2_live_refetch = matches!(
-            (write_index, self.sprite_x),
-            (0, 1..=17) | (1, 1..=2 | 16..=u8::MAX)
-        );
-
-        let tilemap_override = match write_index {
-            0 if current_bg_tilemap_select => {
-                let override_decision = PpuMode3Lcdc3StartupTilemapOverride {
-                    tilemap_select: true,
-                    applies_to_visible_tile2: self.sprite_x == 0,
-                    applies_to_visible_tile3: matches!(self.sprite_x, 1..=7 | 9..=15),
-                };
-                if override_decision.has_effect() {
-                    Some(override_decision)
-                } else {
-                    None
-                }
-            }
-            1 if self.sprite_x == 0 => Some(PpuMode3Lcdc3StartupTilemapOverride {
-                tilemap_select: true,
-                applies_to_visible_tile2: true,
-                applies_to_visible_tile3: false,
-            }),
-            1 if matches!(self.sprite_x, 1..=2) => Some(PpuMode3Lcdc3StartupTilemapOverride {
-                tilemap_select: true,
-                applies_to_visible_tile2: false,
-                applies_to_visible_tile3: true,
-            }),
-            _ => None,
-        };
-
-        let decision = PpuMode3Lcdc3LiveWriteDecision {
-            clear_visible_tile2_live_refetch,
-            tilemap_override,
-        };
-        if decision.has_effect() {
-            Some(decision)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(in crate::ppu) struct PpuMode3Lcdc4StartupOverride {
-    pub(in crate::ppu) slice: BgVisibleStartupSlice,
-    pub(in crate::ppu) override_select: BgTileDataSelectOverride,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(in crate::ppu) struct PpuMode3ObservedLcdc4PhaseTable {
-    sprite_x: u8,
-}
-
-impl PpuMode3ObservedLcdc4PhaseTable {
-    pub(in crate::ppu) const fn new(sprite_x: u8) -> Self {
-        Self { sprite_x }
-    }
-
-    pub(in crate::ppu) const fn startup_override_for_target_select(
-        self,
-        target_select: BgTileDataSelect,
-    ) -> Option<PpuMode3Lcdc4StartupOverride> {
-        let (slice, override_select) = match (target_select, self.sprite_x) {
-            (BgTileDataSelect::Unsigned8000, 3 | 4) => (
-                BgVisibleStartupSlice::VisibleTile2,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Unsigned8000),
-                    Some(BgTileDataSelect::Unsigned8000),
-                ),
-            ),
-            (BgTileDataSelect::Unsigned8000, 5..=7) => (
-                BgVisibleStartupSlice::VisibleTile2,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Signed8800),
-                    Some(BgTileDataSelect::Unsigned8000),
-                ),
-            ),
-            (BgTileDataSelect::Unsigned8000, 8..=17) => (
-                BgVisibleStartupSlice::VisibleTile2,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Signed8800),
-                    Some(BgTileDataSelect::Signed8800),
-                ),
-            ),
-            (BgTileDataSelect::Signed8800, 2..=4 | 8..=12) => (
-                BgVisibleStartupSlice::VisibleTile3,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Signed8800),
-                    Some(BgTileDataSelect::Signed8800),
-                ),
-            ),
-            (BgTileDataSelect::Signed8800, 5..=7 | 13..=15) => (
-                BgVisibleStartupSlice::VisibleTile3,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Unsigned8000),
-                    Some(BgTileDataSelect::Signed8800),
-                ),
-            ),
-            (BgTileDataSelect::Signed8800, 16..=17) => (
-                BgVisibleStartupSlice::VisibleTile3,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Unsigned8000),
-                    Some(BgTileDataSelect::Unsigned8000),
-                ),
-            ),
-            _ => return None,
-        };
-
-        Some(PpuMode3Lcdc4StartupOverride {
-            slice,
-            override_select,
-        })
-    }
-
-    /// Observed CGB-family DMG-software LCDC.4 startup phase table.
-    ///
-    /// Compatibility-mode CGB keeps the DMG software-visible contract for the
-    /// startup BG slices, but its CGB pixel pipeline does not line up with the
-    /// monochrome DMG LCDC.4 phase table one-to-one. Keep the table separate
-    /// from the DMG one so later revision-specific evidence can refine it
-    /// without weakening either model.
-    pub(in crate::ppu) const fn cgb_dmg_software_startup_override_for_target_select(
-        self,
-        target_select: BgTileDataSelect,
-        ly: u8,
-    ) -> Option<PpuMode3Lcdc4StartupOverride> {
-        let (slice, override_select) = match (target_select, self.sprite_x) {
-            (BgTileDataSelect::Unsigned8000, 3 | 4) => (
-                BgVisibleStartupSlice::VisibleTile2,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Signed8800),
-                    Some(BgTileDataSelect::Unsigned8000),
-                ),
-            ),
-            (BgTileDataSelect::Unsigned8000, 5..=17) => (
-                BgVisibleStartupSlice::VisibleTile2,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Signed8800),
-                    Some(BgTileDataSelect::Signed8800),
-                ),
-            ),
-            (BgTileDataSelect::Signed8800, 1..=3 | 8..=11) => (
-                BgVisibleStartupSlice::VisibleTile3,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Signed8800),
-                    Some(BgTileDataSelect::Signed8800),
-                ),
-            ),
-            (BgTileDataSelect::Signed8800, 4..=7 | 12..=15) => (
-                BgVisibleStartupSlice::VisibleTile3,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Unsigned8000),
-                    Some(BgTileDataSelect::Signed8800),
-                ),
-            ),
-            (BgTileDataSelect::Signed8800, 16) if ly & 0x07 == 0 => (
-                BgVisibleStartupSlice::VisibleTile3,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Unsigned8000),
-                    Some(BgTileDataSelect::Unsigned8000),
-                ),
-            ),
-            (BgTileDataSelect::Signed8800, 16 | 17) => (
-                BgVisibleStartupSlice::VisibleTile3,
-                PerPlane::new(
-                    Some(BgTileDataSelect::Signed8800),
-                    Some(BgTileDataSelect::Unsigned8000),
-                ),
-            ),
-            _ => return None,
-        };
-
-        Some(PpuMode3Lcdc4StartupOverride {
-            slice,
-            override_select,
-        })
     }
 }
 

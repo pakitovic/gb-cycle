@@ -8,7 +8,6 @@ struct TerminalTailConfig {
     mode0_start_dot: u16,
     current_transfer_x: u8,
     visible_pixels_output: u8,
-    startup_fifo_placeholders: u8,
     fifo_len: usize,
     fetcher_stage: PpuBgFetcherStage,
     fetcher_stage_dot: u8,
@@ -26,7 +25,6 @@ impl Default for TerminalTailConfig {
             mode0_start_dot: MODE0_START_DOT + 60,
             current_transfer_x: 163,
             visible_pixels_output: 155,
-            startup_fifo_placeholders: 4,
             fifo_len: 5,
             fetcher_stage: PpuBgFetcherStage::Push,
             fetcher_stage_dot: 0,
@@ -61,7 +59,6 @@ fn terminal_tail_rig(config: TerminalTailConfig) -> PpuTestRig {
     ppu.bg_pipeline_state.current_transfer_x = config.current_transfer_x;
     ppu.bg_pipeline_state.visible_pixels_output = config.visible_pixels_output;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = config.startup_fifo_placeholders;
     ppu.bg_pipeline_state
         .fifo
         .extend(std::iter::repeat_n(0, config.fifo_len));
@@ -99,12 +96,11 @@ fn cpu_stat_read_logs_terminal_x162_placeholder_backed_tail_with_blank_frame_act
     });
 
     println!(
-        "blank_frame_active_case read={:#04X} mode0_start_dot={} current_transfer_x={} fifo_len={} placeholders={}",
+        "blank_frame_active_case read={:#04X} mode0_start_dot={} current_transfer_x={} fifo_len={}",
         cpu_visible_stat_mode(&ppu),
         ppu.current_mode0_start_dot(),
         ppu.bg_pipeline_state.current_transfer_x,
         ppu.bg_pipeline_state.fifo.len(),
-        ppu.bg_pipeline_state.startup_fifo_placeholders
     );
 }
 
@@ -152,7 +148,6 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x159_ready_tail_on_shorter_saturated_s
         stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
         current_transfer_x: 159,
         visible_pixels_output: 151,
-        startup_fifo_placeholders: 0,
         fifo_len: 1,
         selected_sprite_x: 17,
         ..TerminalTailConfig::default()
@@ -171,7 +166,6 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x151_ready_tail_on_unsaturated_sprite_
     let ppu = terminal_tail_rig(TerminalTailConfig {
         current_transfer_x: 151,
         visible_pixels_output: 143,
-        startup_fifo_placeholders: 0,
         fifo_len: 1,
         selected_sprite_count: 5,
         selected_sprite_x: 24,
@@ -195,7 +189,6 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x158_ready_tail_on_saturated_sprite_li
     let ppu = terminal_tail_rig(TerminalTailConfig {
         current_transfer_x: 158,
         visible_pixels_output: 150,
-        startup_fifo_placeholders: 0,
         fifo_len: 1,
         selected_sprite_x: 17,
         ..TerminalTailConfig::default()
@@ -218,7 +211,6 @@ fn cpu_stat_read_keeps_mode3_for_terminal_waiting_for_fifo_tail_on_unsaturated_s
     let ppu = terminal_tail_rig(TerminalTailConfig {
         current_transfer_x: 152,
         visible_pixels_output: 144,
-        startup_fifo_placeholders: 0,
         fifo_len: 0,
         fetcher_stage: PpuBgFetcherStage::TileIndex,
         selected_sprite_count: 5,

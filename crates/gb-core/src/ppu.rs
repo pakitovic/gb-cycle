@@ -21,11 +21,10 @@ use self::compat_palettes::*;
 use self::helpers::*;
 use self::palette_conflicts::*;
 pub use self::snapshot::{
-    PpuBgCachedSliceOriginSnapshot, PpuBgFifoCachedPixelSnapshot, PpuBgPushDispositionSnapshot,
-    PpuBgStartupContinuationSliceSnapshot, PpuBgStartupFetchSeamSnapshot,
-    PpuMode3StartupSourceStateSnapshot, PpuMode3TransferBackingSnapshot,
-    PpuMode3TransferDotKindSnapshot, PpuMode3TransferLaneSnapshot, PpuMode3TransferPhaseSnapshot,
-    PpuMode3TransferReadinessSnapshot, PpuMode3TransferSourceWindowSnapshot, PpuSnapshot,
+    PpuBgFifoCachedPixelSnapshot, PpuBgPushDispositionSnapshot, PpuMode3StartupSourceStateSnapshot,
+    PpuMode3TransferBackingSnapshot, PpuMode3TransferDotKindSnapshot, PpuMode3TransferLaneSnapshot,
+    PpuMode3TransferPhaseSnapshot, PpuMode3TransferReadinessSnapshot,
+    PpuMode3TransferSourceWindowSnapshot, PpuSnapshot,
 };
 pub(crate) use self::state::OamCorruptionEventKind;
 use self::state::*;

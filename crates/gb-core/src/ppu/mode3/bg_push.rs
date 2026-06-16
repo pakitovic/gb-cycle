@@ -47,9 +47,7 @@ impl Ppu {
             == PpuObjFetcherStage::Idle
             && !push.just_activated_window_tile
             && self.obj_enabled()
-            && self.current_dot_has_pending_obj_hit()
-            && (!push.cached.is_startup_alignment_seed()
-                || self.runtime.bg_pipeline_state.current_transfer_x < 8);
+            && self.current_dot_has_pending_obj_hit();
         if self.runtime.bg_pipeline_state.fifo_contains_real_pixels() {
             if push_can_start_object_fetch {
                 BgPushDotOwnership::FifoBackedTransferObjectFetch
@@ -101,9 +99,7 @@ impl Ppu {
                         == PpuBgFetcherSource::Background
                         && self.runtime.bg_pipeline_state.push.cached.fetch_x
                             == BG_TILE_WIDTH as u16
-                        && self.runtime.bg_pipeline_state.fifo.len()
-                            == self.runtime.bg_pipeline_state.startup_fifo_placeholders as usize
-                                + 2;
+                        && self.runtime.bg_pipeline_state.fifo.cached_pixels().count() == 2;
                 BgPushDotResult::WaitingForEmptyFifo
             }
             BgPushDotOwnership::FifoBackedTransferObjectFetch => {
@@ -140,39 +136,9 @@ impl Ppu {
 
     pub(in crate::ppu) fn queue_bg_fill_from_push(&mut self) {
         let push = self.runtime.bg_pipeline_state.push;
-        if push.cached.is_startup_alignment_seed() {
-            self.runtime
-                .bg_pipeline_state
-                .begin_post_alignment_followup();
-            // The leading junk pixels are already real FIFO entries (pre-filled at start_line), so
-            // the seed fill only appends its real tile pixels behind whatever junk remains — it no
-            // longer re-materializes the placeholder count as dummies. See docs/roadmap/12 §24.
-            self.runtime
-                .bg_pipeline_state
-                .fill
-                .queue_startup_alignment_from_push(push, 0);
-        } else {
-            self.runtime.bg_pipeline_state.fill.queue_from_push(push);
-        }
-        self.runtime
-            .bg_pipeline_state
-            .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill();
-        self.runtime
-            .bg_pipeline_state
-            .maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_fill();
-        self.runtime
-            .bg_pipeline_state
-            .apply_startup_scy_tiledata_latch_to_fill();
+        self.runtime.bg_pipeline_state.fill.queue_from_push(push);
         self.runtime.bg_pipeline_state.fetcher.fetch_x = push.next_fetch_pixel;
         self.runtime.bg_pipeline_state.fetcher.next_fetch_pixel = push.next_fetch_pixel;
-        self.runtime
-            .bg_pipeline_state
-            .fetcher
-            .post_alignment_fetch_restart_delay_dots = if push.cached.is_startup_alignment_seed() {
-            1
-        } else {
-            0
-        };
         self.runtime.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
         self.runtime.bg_pipeline_state.push.reset();
     }
@@ -182,18 +148,7 @@ impl Ppu {
             return;
         }
 
-        self.runtime
-            .bg_pipeline_state
-            .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_fill();
-        self.runtime
-            .bg_pipeline_state
-            .maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_fill();
         let fill = self.runtime.bg_pipeline_state.fill;
-        if fill.startup_dummy_pixels > 0 {
-            self.runtime
-                .bg_pipeline_state
-                .push_dummy_fifo_pixels(fill.startup_dummy_pixels);
-        }
         if fill.includes_real_tile_pixels {
             self.runtime
                 .bg_pipeline_state

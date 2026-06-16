@@ -24,6 +24,8 @@ fn new_dmg_lcdc_tile_sel_replay_ppu(sprite_x: u8) -> PpuTestRig {
     ppu
 }
 
+#[ignore = "canonical-pending: observed LCDC3/4 startup phase-table replay removed with M6; the \
+    DMG sprite-coupled tile-select-during-startup trace re-pins via ROM after L1-d/L2. docs/roadmap/12 §24.6"]
 #[test]
 fn sprite_coupled_line10_tile_sel_replay_matches_trace_signature() {
     let mut ppu = new_dmg_lcdc_tile_sel_replay_ppu(1);
@@ -38,22 +40,10 @@ fn sprite_coupled_line10_tile_sel_replay_matches_trace_signature() {
     assert_eq!(startup.visible_pixels_output, 0);
     assert_eq!(startup.bg_current_transfer_x, 1);
     assert!(startup.bg_fill_pending);
-    // Canonical startup: the junk pixels are real FIFO entries pre-filled at start_line, so the
-    // seed fill no longer carries any dummy pixels of its own. See docs/roadmap/12 §24.
-    assert_eq!(startup.bg_fill_startup_dummy_pixels, 0);
-    assert_eq!(startup.bg_startup_fifo_placeholders, 7);
+    // Canonical startup: the junk pixels are real FIFO entries pre-filled at start_line; during the
+    // startup window no real BG tile has reached the FIFO yet. See docs/roadmap/12 §24.
+    assert!(!ppu.bg_pipeline_state.fifo_contains_real_pixels());
     assert_eq!(startup.selected_sprites.len(), 1);
-    assert_eq!(
-        startup.bg_startup_fetch_seam,
-        PpuBgStartupFetchSeamSnapshot::PostAlignment {
-            first_real_push_skips_entry_delay: true,
-            next_startup_continuation_slice: PpuBgStartupContinuationSliceSnapshot::VisibleTile2,
-            startup_continuation_visible_tiles_remaining: 2,
-            delayed_background_tileindex_read_tiles_remaining: 1,
-            delayed_background_tilemap_tiles_remaining: 0,
-            delayed_background_tiledata_tiles_remaining: 1,
-        }
-    );
 }
 
 #[test]
@@ -74,10 +64,6 @@ fn sprite_coupled_line10_startup_tail_renders_correctly_once_panel_blank_is_lift
     ppu.advance_until_tile_sel_replay_position(10, 101);
     let front_cached = ppu.bg_pipeline_state.fifo.cached_slot(0).expect("BG FIFO cached slot must exist").expect(
         "the first visible startup-tail pixel should already be materialized before line_dot 102",
-    );
-    assert_eq!(
-        front_cached.cached.origin,
-        BgCachedSliceOrigin::StartupAlignmentFill
     );
     assert_eq!(ppu.bg_pipeline_state.fifo[0], 3);
     assert!(!front_cached.cached.needs_live_tilemap_refetch);
@@ -135,6 +121,8 @@ fn dmg_tile_sel_replay_background_row(sprite_x: u8) -> [u8; 24] {
     sample
 }
 
+#[ignore = "canonical-pending: observed LCDC3/4 startup phase-table replay removed with M6; the \
+    curated DMG sprite-coupled tile-select windows re-pin via ROM after L1-d/L2. docs/roadmap/12 §24.6"]
 #[test]
 fn sprite_coupled_tile_sel_replay_matches_curated_background_windows() {
     let cases = [

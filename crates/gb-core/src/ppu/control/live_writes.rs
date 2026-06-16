@@ -67,40 +67,10 @@ impl Ppu {
             return;
         }
 
-        let write_index = self
+        let _ = self
             .runtime
             .bg_pipeline_state
             .take_next_dmg_lcdc3_current_line_bg_tilemap_write_index();
-
-        let Some(policy) = self.dmg_single_selected_sprite_phase_policy() else {
-            return;
-        };
-
-        let current_bg_tilemap_select = write_context.current_lcdc() & LCDC_BG_TILE_MAP_BIT != 0;
-        let phase_table = policy.observed_lcdc3_phase_table();
-        let decision = if self.console_model.is_cgb_family() {
-            phase_table.cgb_dmg_software_live_write_decision(write_index, current_bg_tilemap_select)
-        } else {
-            phase_table.live_write_decision(write_index, current_bg_tilemap_select)
-        };
-        let Some(decision) = decision else {
-            return;
-        };
-        if decision.clear_visible_tile2_live_refetch {
-            self.runtime
-                .bg_pipeline_state
-                .clear_dmg_lcdc3_startup_visible_tile2_live_refetch();
-        }
-
-        if let Some(tilemap_override) = decision.tilemap_override {
-            self.runtime
-                .bg_pipeline_state
-                .latch_dmg_lcdc3_startup_continuation_tilemap_select_override(
-                    tilemap_override.tilemap_select,
-                    tilemap_override.applies_to_visible_tile2,
-                    tilemap_override.applies_to_visible_tile3,
-                );
-        }
     }
 
     pub(in crate::ppu) fn apply_dmg_lcdc4_live_bg_tiledata_write(
@@ -146,36 +116,6 @@ impl Ppu {
             self.runtime.panel.pending_dmg_window_lcdc4_output_repaint =
                 Some(BgTileDataSelect::Unsigned8000);
         }
-
-        let Some(policy) = self.dmg_single_selected_sprite_phase_policy() else {
-            return;
-        };
-
-        let target_select = if write_context.current_lcdc() & LCDC_BG_WINDOW_TILE_DATA_BIT != 0 {
-            BgTileDataSelect::Unsigned8000
-        } else {
-            BgTileDataSelect::Signed8800
-        };
-
-        let phase_table = policy.observed_lcdc4_phase_table();
-        let override_decision = if self.console_model.is_cgb_family()
-            && self.operating_mode.uses_dmg_software_contract()
-        {
-            phase_table.cgb_dmg_software_startup_override_for_target_select(target_select, self.ly)
-        } else {
-            phase_table.startup_override_for_target_select(target_select)
-        };
-
-        let Some(override_decision) = override_decision else {
-            return;
-        };
-
-        self.runtime
-            .bg_pipeline_state
-            .latch_and_apply_dmg_lcdc4_startup_tiledata_select_override(
-                override_decision.slice,
-                override_decision.override_select,
-            );
     }
 
     /// Models the coarse CGB-C-era `LCDC.4` same-T-cycle tile-data glitch.

@@ -93,7 +93,11 @@ fn bg_push_can_handoff_to_a_latched_object_fetch_without_losing_the_tile() {
     ppu.bg_pipeline_state.push.cached.tile_low = 0x55;
     ppu.bg_pipeline_state.push.cached.tile_high = 0x33;
     ppu.bg_pipeline_state.push.next_fetch_pixel = 8;
-    ppu.bg_pipeline_state.fifo.push_back(0);
+    // A REAL (cached) pixel still occupies the FIFO, so the push cannot queue its fill and
+    // must hand off to the object fetch while staying pending (canonical wait condition).
+    ppu.bg_pipeline_state
+        .fifo
+        .push_back_cached_slot(Some(BgFifoPixelCached::new(BgCachedSlice::default(), 0)));
 
     push_selected_sprite(&mut ppu, SelectedSpriteSpec::new(0, 16, 8, 0, 0));
     queue_current_obj_hit(&mut ppu, 0);
@@ -279,7 +283,6 @@ fn hidden_startup_dot_advances_pre_visible_match_x_without_bg_fifo_pop() {
     ppu.ly = 0;
     ppu.line_dot = MODE2_DOTS + MODE3_PRE_VISIBLE_OBJ_MATCH_START_DOT;
     ppu.bg_pipeline_state.mode0_start_dot = MODE0_START_DOT;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.push_dummy_fifo_pixels(1);
     ppu.bg_pipeline_state.current_transfer_x = 5;
 
@@ -451,7 +454,6 @@ fn late_visible_x160_obj_start_can_still_begin_from_fifo_backed_transfer() {
     ppu.bg_pipeline_state.visible_pixels_output = 152;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
     fill_bg_fifo(&mut ppu, 8);
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
     ppu.bg_pipeline_state.fetcher.stage_dot = 0;
 

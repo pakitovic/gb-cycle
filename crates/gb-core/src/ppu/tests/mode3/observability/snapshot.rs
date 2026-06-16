@@ -7,9 +7,6 @@ fn visible_fifo_sideband_keeps_full_cached_slice_metadata_for_future_closure_wor
     ppu.bg_pipeline_state
         .push_cached_slice_fifo_pixels(BgCachedSlice {
             source: PpuBgFetcherSource::Background,
-            origin: BgCachedSliceOrigin::StartupContinuation(
-                BgStartupContinuationSlice::VisibleTile3,
-            ),
             fetch_x: BG_TILE_WIDTH as u16 * 2,
             tile_map_address: 0x1802,
             tile_data_address: 0x0001,
@@ -26,10 +23,6 @@ fn visible_fifo_sideband_keeps_full_cached_slice_metadata_for_future_closure_wor
         .cached_slot(3)
         .expect("BG FIFO cached slot must exist")
         .expect("visible FIFO pixel should keep cached slice metadata");
-    assert_eq!(
-        cached.cached.origin,
-        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
-    );
     assert_eq!(cached.cached.fetch_x, BG_TILE_WIDTH as u16 * 2);
     assert_eq!(cached.cached.tile_map_address, 0x1802);
     assert_eq!(cached.cached.tile_data_address, 0x0001);
@@ -48,9 +41,6 @@ fn snapshot_exports_visible_fifo_cached_slice_metadata() {
         .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
-                origin: BgCachedSliceOrigin::StartupContinuation(
-                    BgStartupContinuationSlice::VisibleTile3,
-                ),
                 fetch_x: BG_TILE_WIDTH as u16 * 2,
                 tile_map_address: 0x1802,
                 tile_data_address: 0x0001,
@@ -69,10 +59,6 @@ fn snapshot_exports_visible_fifo_cached_slice_metadata() {
         .expect("snapshot should export visible FIFO sideband metadata");
 
     assert_eq!(snapshot.bg_fifo_pixels, vec![2]);
-    assert_eq!(
-        cached.origin,
-        PpuBgCachedSliceOriginSnapshot::StartupContinuationVisibleTile3
-    );
     assert_eq!(cached.fetch_x, BG_TILE_WIDTH as u16 * 2);
     assert_eq!(cached.pixel_index, 5);
     assert!(cached.same_cycle_live_tilemap_refetch_window_open);
@@ -83,16 +69,10 @@ fn snapshot_exports_visible_fifo_cached_slice_metadata() {
 }
 
 #[test]
-fn snapshot_exports_mode3_startup_seam_observability() {
+fn snapshot_exports_mode3_startup_observability() {
     let mut ppu = PpuTestRig::dmg();
     ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 3 };
-    ppu.bg_pipeline_state.begin_post_alignment_followup();
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
     ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
-    ppu.bg_pipeline_state.fill.startup_dummy_pixels = 4;
-    ppu.bg_pipeline_state
-        .fetcher
-        .post_alignment_fetch_restart_delay_dots = 1;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
     ppu.bg_pipeline_state.current_transfer_x = 12;
 
@@ -102,21 +82,7 @@ fn snapshot_exports_mode3_startup_seam_observability() {
         snapshot.bg_startup_source_state,
         PpuMode3StartupSourceStateSnapshot::Abstract { remaining: 3 }
     );
-    assert_eq!(
-        snapshot.bg_startup_fetch_seam,
-        PpuBgStartupFetchSeamSnapshot::PostAlignment {
-            first_real_push_skips_entry_delay: true,
-            next_startup_continuation_slice: PpuBgStartupContinuationSliceSnapshot::VisibleTile2,
-            startup_continuation_visible_tiles_remaining: 2,
-            delayed_background_tileindex_read_tiles_remaining: 1,
-            delayed_background_tilemap_tiles_remaining: 0,
-            delayed_background_tiledata_tiles_remaining: 1,
-        }
-    );
-    assert_eq!(snapshot.bg_startup_fifo_placeholders, 2);
     assert_eq!(snapshot.bg_push_entry_delay_remaining, 1);
-    assert_eq!(snapshot.bg_fill_startup_dummy_pixels, 4);
-    assert_eq!(snapshot.bg_fetcher_post_alignment_restart_delay_dots, 1);
     assert_eq!(
         snapshot.bg_transfer_phase,
         PpuMode3TransferPhaseSnapshot::Output
@@ -131,37 +97,22 @@ fn scheduler_trace_reports_mode3_startup_and_cached_slice_observability() {
     ppu.bg_pipeline_state.fetcher.source = PpuBgFetcherSource::Background;
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
     ppu.bg_pipeline_state.fetcher.stage_dot = 1;
-    ppu.bg_pipeline_state.fetcher.cached_origin =
-        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2);
-    ppu.bg_pipeline_state
-        .fetcher
-        .post_alignment_fetch_restart_delay_dots = 1;
     ppu.bg_pipeline_state.push.pending = true;
     ppu.bg_pipeline_state.push.entry_delay_remaining = 1;
-    ppu.bg_pipeline_state.push.cached =
-        BgCachedSlice::default().with_origin(BgCachedSliceOrigin::StartupAlignmentFill);
     ppu.bg_pipeline_state.fill.pending = true;
     ppu.bg_pipeline_state.fill.startup_dummy_pixels = 4;
-    ppu.bg_pipeline_state.fill.cached = BgCachedSlice::default().with_origin(
-        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3),
-    );
     ppu.bg_pipeline_state.fifo.push_back(2);
     ppu.bg_pipeline_state
         .fifo
         .push_back_cached_slot(Some(BgFifoPixelCached::new(
             BgCachedSlice {
                 source: PpuBgFetcherSource::Background,
-                origin: BgCachedSliceOrigin::StartupContinuation(
-                    BgStartupContinuationSlice::VisibleTile3,
-                ),
                 fetch_x: BG_TILE_WIDTH as u16 * 2,
                 ..BgCachedSlice::default()
             },
             5,
         )));
     ppu.bg_pipeline_state.startup_source_state = Mode3StartupSourceState::Abstract { remaining: 3 };
-    ppu.bg_pipeline_state.begin_post_alignment_followup();
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 2;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
     ppu.bg_pipeline_state.current_transfer_x = 12;
     ppu.bg_pipeline_state.visible_pixels_output = 9;
@@ -172,21 +123,14 @@ fn scheduler_trace_reports_mode3_startup_and_cached_slice_observability() {
     assert!(trace.contains("bg_source=Background"));
     assert!(trace.contains("bg_stage=TileDataHigh"));
     assert!(trace.contains("bg_stage_dot=1"));
-    assert!(trace.contains("bg_fetch_origin=StartupContinuation(VisibleTile2)"));
     assert!(trace.contains("bg_push_pending=true"));
     assert!(trace.contains("bg_push_entry_delay_remaining=1"));
-    assert!(trace.contains("bg_push_origin=StartupAlignmentFill"));
     assert!(trace.contains("bg_fill_pending=true"));
     assert!(trace.contains("bg_fill_startup_dummy_pixels=4"));
-    assert!(trace.contains("bg_fill_origin=StartupContinuation(VisibleTile3)"));
     assert!(trace.contains("bg_fifo_len=1"));
-    assert!(trace.contains("bg_startup_fifo_placeholders=2"));
-    assert!(trace.contains("bg_fifo_front_cached_origin=Some(StartupContinuation(VisibleTile3))"));
     assert!(trace.contains("bg_fifo_front_cached_fetch_x=Some(16)"));
     assert!(trace.contains("bg_fifo_front_cached_pixel_index=Some(5)"));
     assert!(trace.contains("bg_startup_source_state=Abstract { remaining: 3 }"));
-    assert!(trace.contains("bg_startup_fetch_seam=PostAlignment"));
-    assert!(trace.contains("bg_fetcher_post_alignment_restart_delay_dots=1"));
     assert!(trace.contains("bg_transfer_phase=Output"));
     assert!(trace.contains("bg_current_transfer_x=12"));
     assert!(trace.contains("bg_current_transfer_lane=Some(Visible)"));

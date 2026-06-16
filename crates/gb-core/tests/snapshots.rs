@@ -94,7 +94,6 @@ fn machine_snapshot_rendering_includes_mode3_startup_observability_fields() {
     let rendered = machine.snapshot().render_text();
 
     assert!(rendered.contains("ppu.bg_startup_source_state="));
-    assert!(rendered.contains("ppu.bg_startup_fetch_seam="));
     assert!(rendered.contains("ppu.bg_transfer_phase="));
     assert!(rendered.contains("ppu.bg_current_transfer_lane="));
     assert!(rendered.contains("ppu.bg_current_transfer_backing="));

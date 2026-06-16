@@ -158,10 +158,6 @@ impl PpuMode3LiveRegisterWriteContext {
         (self.previous.lcdc ^ self.current.lcdc) & mask != 0
     }
 
-    pub(in crate::ppu) const fn bg_tilemap_select_changed(self) -> bool {
-        self.lcdc_changed(LCDC_BG_TILE_MAP_BIT)
-    }
-
     pub(in crate::ppu) const fn bgwin_tilemap_select_changed(
         self,
         source: PpuBgFetcherSource,
@@ -189,25 +185,12 @@ impl PpuMode3LiveRegisterWriteContext {
             != (self.current.scy.wrapping_add(ly) & (BG_TILE_WIDTH - 1))
     }
 
-    pub(in crate::ppu) const fn bg_scy_effective_row_changed(self, ly: u8) -> bool {
-        self.bg_scy_tilemap_row_changed(ly) || self.bg_scy_tile_data_row_changed(ly)
-    }
-
     pub(in crate::ppu) const fn current_lcdc(self) -> u8 {
         self.current.lcdc
     }
 
     pub(in crate::ppu) const fn previous_lcdc(self) -> u8 {
         self.previous.lcdc
-    }
-
-    pub(in crate::ppu) const fn current_scy_tile_data_row(self, ly: u8) -> u16 {
-        (self.current.scy.wrapping_add(ly) % BG_TILE_WIDTH) as u16
-    }
-
-    pub(in crate::ppu) const fn current_bg_tile_index_address(self, fetch_x: u16, ly: u8) -> u16 {
-        PpuMode3BackgroundFetchContext::new(self.current, self.current, fetch_x, ly)
-            .tile_index_address()
     }
 }
 

@@ -146,7 +146,6 @@ fn cgb_ten_sprite_step8_fifo_tail_without_pending_push(operating_mode: Operating
     ppu.bg_pipeline_state.current_transfer_x = 127;
     ppu.bg_pipeline_state.visible_pixels_output = 119;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
     ppu.line_dot = MODE0_START_DOT + 68;
 

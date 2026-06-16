@@ -44,7 +44,7 @@ fn cpu_stat_read_logs_sprite_extended_post_visible_tail_without_startup_placehol
         ppu.line_dot = line_dot;
         let stat = ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation);
         println!(
-            "x8_tail line_dot={} stat_mode={} current_mode={:?} current_mode0_start_dot={} bg_base_mode0_start_dot={} current_transfer_x={} bg_lane={:?} bg_source_window={:?} bg_readiness={:?} startup_fifo_placeholders={} bg_fifo_len={} obj_stage={:?} obj_pending_hit_match_x={:?} obj_pending_hit_len={}",
+            "x8_tail line_dot={} stat_mode={} current_mode={:?} current_mode0_start_dot={} bg_base_mode0_start_dot={} current_transfer_x={} bg_lane={:?} bg_source_window={:?} bg_readiness={:?} fifo_contains_real_pixels={} bg_fifo_len={} obj_stage={:?} obj_pending_hit_match_x={:?} obj_pending_hit_len={}",
             line_dot,
             stat & 0x03,
             ppu.current_access_mode(),
@@ -55,7 +55,7 @@ fn cpu_stat_read_logs_sprite_extended_post_visible_tail_without_startup_placehol
             ppu.current_transfer()
                 .map(|transfer| transfer.context.source_window),
             ppu.current_transfer().map(|transfer| transfer.readiness),
-            ppu.bg_pipeline_state.startup_fifo_placeholders,
+            ppu.bg_pipeline_state.fifo_contains_real_pixels(),
             ppu.bg_pipeline_state.fifo.len(),
             ppu.obj_pipeline_state.fetch.stage,
             ppu.obj_pipeline_state.pending_match_x,
@@ -89,7 +89,6 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_without_obj_work()
     ppu.bg_pipeline_state.current_transfer_x = 167;
     ppu.bg_pipeline_state.visible_pixels_output = 159;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
     ppu.bg_pipeline_state.fetcher.stage_dot = 1;
@@ -146,7 +145,6 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_pending_same_
     ppu.bg_pipeline_state.current_transfer_x = 167;
     ppu.bg_pipeline_state.visible_pixels_output = 159;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataHigh;
     ppu.bg_pipeline_state.fetcher.stage_dot = 0;
@@ -269,7 +267,6 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_while_blank_frame_
     ppu.bg_pipeline_state.current_transfer_x = 167;
     ppu.bg_pipeline_state.visible_pixels_output = 159;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
     ppu.bg_pipeline_state.fetcher.stage_dot = 1;
@@ -326,7 +323,6 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x165_visible_tail_while_blank_frame_
     ppu.bg_pipeline_state.current_transfer_x = 165;
     ppu.bg_pipeline_state.visible_pixels_output = 157;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
     ppu.bg_pipeline_state.fetcher.stage_dot = 1;
@@ -378,7 +374,6 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x166_visible_tail_without_blank_frame(
     ppu.bg_pipeline_state.current_transfer_x = 166;
     ppu.bg_pipeline_state.visible_pixels_output = 158;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 0;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 2));
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
     ppu.bg_pipeline_state.fetcher.stage_dot = 1;
@@ -430,7 +425,6 @@ fn cpu_stat_read_keeps_mode3_for_terminal_placeholder_only_visible_tail() {
     ppu.bg_pipeline_state.current_transfer_x = 164;
     ppu.bg_pipeline_state.visible_pixels_output = 156;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 4));
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileIndex;
     ppu.bg_pipeline_state.fetcher.stage_dot = 0;
@@ -482,7 +476,6 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x163_visible_tail_even_with_one_real_f
     ppu.bg_pipeline_state.current_transfer_x = 163;
     ppu.bg_pipeline_state.visible_pixels_output = 155;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 5));
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
     ppu.bg_pipeline_state.fetcher.stage_dot = 0;

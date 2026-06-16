@@ -212,10 +212,6 @@ impl PpuTestRig {
         self.with_ppu_vram(|ppu, vram| ppu.maybe_recompute_pending_background_fill(vram));
     }
 
-    pub(super) fn advance_mode3_output_phase_with_ppu_vram(&mut self) -> Mode3TransferDot {
-        self.with_ppu_vram(|ppu, vram| ppu.advance_mode3_output_phase_with_vram(vram))
-    }
-
     pub(super) fn advance_bg_fetcher_with_ppu_vram(&mut self) -> bool {
         self.with_ppu_vram(|ppu, vram| ppu.advance_bg_fetcher(vram))
     }

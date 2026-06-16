@@ -291,61 +291,9 @@ impl Ppu {
     }
 
     fn route_mode3_live_background_write(&mut self, route: PpuMode3LiveBackgroundWriteRoute) {
-        let cgb_dmg_software_scy = matches!(route.register, PpuMode3LiveBackgroundRegister::Scy)
-            && self.console_model.is_cgb_family()
-            && self.operating_mode.uses_dmg_software_contract();
-        if cgb_dmg_software_scy {
-            if route.write_context.bg_scy_effective_row_changed(route.ly) {
-                self.bg_pipeline_state.cgb_dmg_scy_startup_retarget_active = true;
-            }
-            self.maybe_latch_cgb_dmg_scy_low_row_for_high_plane(route);
-            let Some(cgb_route) = self
-                .scy_obj_phase_policy()
-                .map(PpuMode3ScyObjPhasePolicy::cgb_dmg_software_live_scy_write_route)
-            else {
-                return;
-            };
-            if !cgb_route.routes_anything() {
-                return;
-            }
-            if cgb_route.pending_cached_slices() {
-                self.route_live_background_write_to_pending_cached_slices(route);
-            }
-            if cgb_route.startup_alignment_fifo() {
-                self.route_live_scy_write_to_startup_alignment_fifo(route);
-            }
-            if cgb_route.current_fetch() {
-                self.route_live_background_write_to_current_fetch(route);
-            }
-            return;
-        }
         self.route_live_background_write_to_pending_cached_slices(route);
         self.route_live_lcdc_write_to_observed_bg_seams(route);
-        self.route_live_scy_write_to_startup_alignment_fifo(route);
         self.route_live_background_write_to_current_fetch(route);
-        self.route_live_scx_boundary_write_effects(route);
-    }
-
-    fn maybe_latch_cgb_dmg_scy_low_row_for_high_plane(
-        &mut self,
-        route: PpuMode3LiveBackgroundWriteRoute,
-    ) {
-        if !route.write_context.bg_scy_tile_data_row_changed(route.ly)
-            || self.bg_pipeline_state.fetcher.source != PpuBgFetcherSource::Background
-            || !matches!(
-                (
-                    self.bg_pipeline_state.fetcher.stage,
-                    self.bg_pipeline_state.fetcher.stage_dot
-                ),
-                (PpuBgFetcherStage::TileDataLow, 0 | 1) | (PpuBgFetcherStage::TileDataHigh, 0)
-            )
-        {
-            return;
-        }
-
-        self.bg_pipeline_state
-            .fetcher
-            .cgb_dmg_scy_high_plane_uses_low_row = true;
     }
 
     fn route_live_background_write_to_pending_cached_slices(
@@ -417,25 +365,6 @@ impl Ppu {
         self.apply_dmg_lcdc2_live_obj_size_write(route.write_context);
     }
 
-    fn route_live_scy_write_to_startup_alignment_fifo(
-        &mut self,
-        route: PpuMode3LiveBackgroundWriteRoute,
-    ) {
-        if !matches!(route.register, PpuMode3LiveBackgroundRegister::Scy) {
-            return;
-        }
-
-        let seed_pending_tracks_live_tiledata_row = self.scy_obj_phase_policy().is_some_and(
-            PpuMode3ScyObjPhasePolicy::startup_alignment_seed_pending_tracks_live_tiledata_row,
-        );
-        self.bg_pipeline_state
-            .mark_live_scy_write_while_startup_alignment_fifo_visible(
-                route.write_context,
-                route.ly,
-                seed_pending_tracks_live_tiledata_row,
-            );
-    }
-
     fn route_live_background_write_to_current_fetch(
         &mut self,
         route: PpuMode3LiveBackgroundWriteRoute,
@@ -450,239 +379,6 @@ impl Ppu {
                 window_line_counter,
                 route.scy_routing,
             );
-    }
-
-    fn route_live_scx_boundary_write_effects(&mut self, route: PpuMode3LiveBackgroundWriteRoute) {
-        if !matches!(route.register, PpuMode3LiveBackgroundRegister::Scx)
-            || !route.write_context.bg_scx_tilemap_column_changed()
-        {
-            return;
-        }
-
-        self.route_live_scx_full_refetch_boundary_write(route.write_context);
-        self.route_live_scx_old_pixel_window_boundary_write();
-        self.route_live_scx_next_tile_output_retarget_boundary_write();
-        self.route_cgb_dmg_software_scx_visible_tile3_old_tile_boundary_write();
-    }
-
-    fn route_live_scx_full_refetch_boundary_write(
-        &mut self,
-        write_context: PpuMode3LiveRegisterWriteContext,
-    ) {
-        if !write_context.bg_scx_tilemap_column_changed()
-            || !self.startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile()
-        {
-            return;
-        }
-
-        self.bg_pipeline_state
-            .fetcher
-            .needs_live_tilemap_refetch_on_push = false;
-        self.bg_pipeline_state
-            .fetcher
-            .needs_live_tilemap_full_refetch_on_push = false;
-        self.bg_pipeline_state
-            .fetcher
-            .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
-        self.bg_pipeline_state
-            .fetcher
-            .clear_startup_visible_tile3_scx_boundary_old_pixel_window();
-        self.bg_pipeline_state
-            .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
-        self.bg_pipeline_state
-            .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
-    }
-
-    fn route_live_scx_old_pixel_window_boundary_write(&mut self) {
-        if !self.inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window() {
-            return;
-        }
-
-        let current_scx = self.scx;
-        let visible_scx = self.runtime.visible_registers.scx;
-        self.bg_pipeline_state
-            .push
-            .cached
-            .needs_live_tilemap_refetch = false;
-        self.bg_pipeline_state
-            .push
-            .cached
-            .needs_live_tilemap_full_refetch = false;
-        self.bg_pipeline_state
-            .push
-            .cached
-            .startup_visible_tile3_scx_boundary_previous_scx = None;
-        self.bg_pipeline_state
-            .push
-            .cached
-            .startup_visible_tile3_scx_boundary_old_tail_start_pixel = BG_TILE_WIDTH;
-        self.bg_pipeline_state
-            .push
-            .cached
-            .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
-        self.bg_pipeline_state
-            .startup_visible_tile3_scx_boundary_next_slice_previous_scx = None;
-        self.bg_pipeline_state
-            .startup_visible_tile3_scx_boundary_next_slice_old_prefix_pixels = 0;
-
-        if (0x08..=0x0E).contains(&current_scx) && current_scx & 0x07 == 0x03 {
-            self.bg_pipeline_state
-                .push
-                .cached
-                .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(visible_scx);
-        }
-    }
-
-    fn route_live_scx_next_tile_output_retarget_boundary_write(&mut self) {
-        if !self.inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget() {
-            return;
-        }
-
-        let current_scx = self.scx;
-        let visible_scx = self.runtime.visible_registers.scx;
-        let scx_low_bits = current_scx & 0x07;
-        self.bg_pipeline_state
-            .push
-            .cached
-            .arm_startup_visible_tile3_scx_boundary_next_tile_output_retarget(current_scx);
-        if scx_low_bits >= 0x03 {
-            self.bg_pipeline_state
-                .push
-                .cached
-                .arm_startup_visible_tile3_scx_boundary_old_tail(visible_scx, current_scx);
-            if scx_low_bits == 0x03 {
-                self.bg_pipeline_state
-                    .push
-                    .cached
-                    .startup_visible_tile3_scx_boundary_old_tail_start_pixel =
-                    BG_TILE_WIDTH.saturating_sub(4);
-            }
-        }
-        if matches!(scx_low_bits, 0x00 | 0x06) {
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 1;
-        }
-        if current_scx >= 0x60 && scx_low_bits == 0x01 {
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 2;
-        }
-        if current_scx >= 0x78 && matches!(scx_low_bits, 0x00..=0x02) {
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_old_tail_start_pixel = self
-                .bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_old_tail_start_pixel
-                .min(BG_TILE_WIDTH.saturating_sub(scx_low_bits.saturating_add(1)));
-        }
-        if current_scx >= 0x60 && matches!(scx_low_bits, 0x03..=0x05) {
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_previous_scx = Some(visible_scx);
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_old_prefix_pixels = self
-                .bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_old_prefix_pixels
-                .max(5);
-        }
-    }
-
-    fn route_cgb_dmg_software_scx_visible_tile3_old_tile_boundary_write(&mut self) {
-        if !self.console_model.is_cgb_family()
-            || !self.operating_mode.uses_dmg_software_contract()
-            || !Self::cgb_dmg_software_scx_preserves_visible_tile3_old_tile(self.scx)
-        {
-            return;
-        }
-
-        if self.cgb_dmg_software_scx_write_preserves_current_visible_tile3_fetcher() {
-            self.bg_pipeline_state
-                .fetcher
-                .startup_visible_tile3_scx_boundary_previous_scx =
-                Some(self.runtime.visible_registers.scx);
-            self.bg_pipeline_state
-                .fetcher
-                .startup_visible_tile3_scx_boundary_old_tail_start_pixel = 0;
-            self.bg_pipeline_state
-                .fetcher
-                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
-        }
-
-        if self.cgb_dmg_software_scx_write_preserves_pending_visible_tile3_push() {
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_previous_scx =
-                Some(self.runtime.visible_registers.scx);
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_old_tail_start_pixel = 0;
-            self.bg_pipeline_state
-                .push
-                .cached
-                .startup_visible_tile3_scx_boundary_old_prefix_pixels = 0;
-        }
-    }
-
-    const fn cgb_dmg_software_scx_preserves_visible_tile3_old_tile(scx: u8) -> bool {
-        // Mealybug CGB evidence keeps the old carried VisibleTile3 slice for these two early
-        // startup high-bit bands instead of importing the tile-column refetch into the slice.
-        matches!(scx, 0x08..=0x17 | 0x48..=0x57)
-    }
-
-    fn cgb_dmg_software_scx_write_preserves_current_visible_tile3_fetcher(&self) -> bool {
-        self.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Background
-            && matches!(
-                self.bg_pipeline_state.fetcher.cached_origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
-            )
-            && self.bg_pipeline_state.fetcher.fetch_x == BG_TILE_WIDTH as u16 * 2
-            && matches!(
-                (
-                    self.bg_pipeline_state.fetcher.stage,
-                    self.bg_pipeline_state.fetcher.stage_dot
-                ),
-                (PpuBgFetcherStage::TileDataLow, 1) | (PpuBgFetcherStage::TileDataHigh, 0)
-            )
-    }
-
-    fn cgb_dmg_software_scx_write_preserves_pending_visible_tile3_push(&self) -> bool {
-        self.bg_pipeline_state.push.pending
-            && self.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
-            && matches!(
-                self.bg_pipeline_state.push.cached.origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
-            )
-            && self.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
-            && self.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
-            && self.bg_pipeline_state.fetcher.stage_dot == 0
-            && matches!(self.bg_pipeline_state.current_transfer_x, 21 | 22)
-            && self.bg_pipeline_state.visible_pixels_output
-                == self.bg_pipeline_state.current_transfer_x.saturating_sub(8)
     }
 
     pub(super) fn live_scy_write_routing(
@@ -703,10 +399,6 @@ impl Ppu {
         PpuMode3LiveScyWriteRouting {
             pending_high_plane_only: self.scy_pending_refetch_prefers_high_plane_only(register),
             pending_tilemap_row_refetch: self.scy_pending_refetch_prefers_tilemap_row(register),
-            startup_visible_tile2_tilemap_row_refetch: self
-                .scy_startup_visible_tile2_refetch_prefers_tilemap_row(register),
-            startup_visible_tile2_phase6_tilemap_row_refetch: self
-                .scy_startup_visible_tile2_phase6_refetch_prefers_tilemap_row(register),
             defers_current_tile_data_fetch_to_next: false,
             defers_current_tile_tilemap_row_to_next: false,
         }
@@ -734,32 +426,6 @@ impl Ppu {
 
         self.scy_obj_phase_policy()
             .is_some_and(PpuMode3ScyObjPhasePolicy::pending_refetch_prefers_tilemap_row)
-    }
-
-    fn scy_startup_visible_tile2_refetch_prefers_tilemap_row(
-        &self,
-        register: PpuMode3LiveBackgroundRegister,
-    ) -> bool {
-        if !matches!(register, PpuMode3LiveBackgroundRegister::Scy) {
-            return false;
-        }
-
-        self.scy_obj_phase_policy().is_some_and(
-            PpuMode3ScyObjPhasePolicy::startup_visible_tile2_refetch_prefers_tilemap_row,
-        )
-    }
-
-    fn scy_startup_visible_tile2_phase6_refetch_prefers_tilemap_row(
-        &self,
-        register: PpuMode3LiveBackgroundRegister,
-    ) -> bool {
-        if !matches!(register, PpuMode3LiveBackgroundRegister::Scy) {
-            return false;
-        }
-
-        self.scy_obj_phase_policy().is_some_and(
-            PpuMode3ScyObjPhasePolicy::startup_visible_tile2_phase6_refetch_prefers_tilemap_row,
-        )
     }
 
     fn read_ppu_register(&self, register: PpuRegister, source: PpuRegisterReadSource) -> u8 {
@@ -1367,16 +1033,7 @@ impl Ppu {
             bg_startup_source_state: snapshot_bg_startup_source_state(
                 self.bg_pipeline_state.startup_source_state,
             ),
-            bg_startup_fetch_seam: snapshot_bg_startup_fetch_seam(
-                self.bg_pipeline_state.startup_fetch_seam,
-            ),
-            bg_startup_fifo_placeholders: self.bg_pipeline_state.startup_fifo_placeholders,
             bg_push_entry_delay_remaining: self.bg_pipeline_state.push.entry_delay_remaining,
-            bg_fill_startup_dummy_pixels: self.bg_pipeline_state.fill.startup_dummy_pixels,
-            bg_fetcher_post_alignment_restart_delay_dots: self
-                .bg_pipeline_state
-                .fetcher
-                .post_alignment_fetch_restart_delay_dots,
             bg_transfer_phase: snapshot_bg_transfer_phase(self.bg_pipeline_state.transfer_phase),
             bg_current_transfer_x: self.bg_pipeline_state.current_transfer_x,
             bg_current_transfer_lane: current_transfer
@@ -1785,13 +1442,13 @@ impl Ppu {
                 "t_cycle={} phase={} console_model={:?} status={:?} ",
                 "lcd_state={:?} visible_output={:?} ly={} lyc={} coincidence={} ",
                 "line_dot={} mode={:?} stat_irq_line={} mode2_scanned_entries={} selected_sprites={} ",
-                "bg_source={:?} bg_stage={:?} bg_stage_dot={} bg_fetch_origin={:?} ",
-                "bg_push_pending={} bg_push_entry_delay_remaining={} bg_push_origin={:?} ",
-                "bg_fill_pending={} bg_fill_startup_dummy_pixels={} bg_fill_origin={:?} ",
-                "bg_fifo_len={} bg_startup_fifo_placeholders={} bg_fifo_front_cached_origin={:?} ",
+                "bg_source={:?} bg_stage={:?} bg_stage_dot={} ",
+                "bg_push_pending={} bg_push_entry_delay_remaining={} ",
+                "bg_fill_pending={} bg_fill_startup_dummy_pixels={} ",
+                "bg_fifo_len={} ",
                 "bg_fifo_front_cached_fetch_x={:?} bg_fifo_front_cached_pixel_index={:?} ",
-                "bg_startup_source_state={:?} bg_startup_fetch_seam={:?} ",
-                "bg_fetcher_post_alignment_restart_delay_dots={} bg_transfer_phase={:?} ",
+                "bg_startup_source_state={:?} ",
+                "bg_transfer_phase={:?} ",
                 "bg_current_transfer_x={} bg_current_transfer_lane={:?} ",
                 "bg_current_transfer_source_window={:?} bg_current_transfer_backing={:?} ",
                 "bg_current_transfer_readiness={:?} bg_current_transfer_kind={:?} ",
@@ -1814,23 +1471,14 @@ impl Ppu {
             self.bg_pipeline_state.fetcher.source,
             self.bg_pipeline_state.fetcher.stage,
             self.bg_pipeline_state.fetcher.stage_dot,
-            self.bg_pipeline_state.fetcher.cached_origin,
             self.bg_pipeline_state.push.pending,
             self.bg_pipeline_state.push.entry_delay_remaining,
-            self.bg_pipeline_state.push.cached.origin,
             self.bg_pipeline_state.fill.pending,
             self.bg_pipeline_state.fill.startup_dummy_pixels,
-            self.bg_pipeline_state.fill.cached.origin,
             self.bg_pipeline_state.fifo.len(),
-            self.bg_pipeline_state.startup_fifo_placeholders,
-            bg_fifo_front_cached.map(|pixel| pixel.cached.origin),
             bg_fifo_front_cached.map(|pixel| pixel.cached.fetch_x),
             bg_fifo_front_cached.map(|pixel| pixel.pixel_index),
             self.bg_pipeline_state.startup_source_state,
-            self.bg_pipeline_state.startup_fetch_seam,
-            self.bg_pipeline_state
-                .fetcher
-                .post_alignment_fetch_restart_delay_dots,
             self.bg_pipeline_state.transfer_phase,
             self.bg_pipeline_state.current_transfer_x,
             current_transfer.map(|transfer| transfer.context.lane),

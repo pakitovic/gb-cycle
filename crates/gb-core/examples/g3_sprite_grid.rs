@@ -163,13 +163,20 @@ fn main() {
             }
             if trace && trace_visits <= TRACE_MAX_VISITS && (80..=120).contains(&line_dot) {
                 let snapshot = machine.ppu().snapshot();
+                // Canonical startup FIFO holds real junk pixels (no cached sideband) before the
+                // first real tile; count the leading junk to mirror the old placeholder gauge.
+                let leading_junk = snapshot
+                    .bg_fifo_cached_pixels
+                    .iter()
+                    .take_while(|cached| cached.is_none())
+                    .count();
                 println!(
                     "fetcher visit={trace_visits} dot={line_dot} tx={} bg={:?}/{} fifo={} ph={} obj={:?}/{} m0={mode0_start_dot} raw={}",
                     snapshot.bg_current_transfer_x,
                     snapshot.bg_fetcher_stage,
                     snapshot.bg_fetcher_stage_dot,
                     snapshot.bg_fifo_pixels.len(),
-                    snapshot.bg_startup_fifo_placeholders,
+                    leading_junk,
                     snapshot.obj_fetcher_stage,
                     snapshot.obj_fetcher_stage_dot,
                     snapshot.mode0_start_dot,

@@ -39,11 +39,7 @@ pub struct PpuSnapshot {
     pub bg_fifo_pixels: Vec<u8>,
     pub bg_fifo_cached_pixels: Vec<Option<PpuBgFifoCachedPixelSnapshot>>,
     pub bg_startup_source_state: PpuMode3StartupSourceStateSnapshot,
-    pub bg_startup_fetch_seam: PpuBgStartupFetchSeamSnapshot,
-    pub bg_startup_fifo_placeholders: u8,
     pub bg_push_entry_delay_remaining: u8,
-    pub bg_fill_startup_dummy_pixels: u8,
-    pub bg_fetcher_post_alignment_restart_delay_dots: u8,
     pub bg_transfer_phase: PpuMode3TransferPhaseSnapshot,
     pub bg_current_transfer_x: u8,
     pub bg_current_transfer_lane: Option<PpuMode3TransferLaneSnapshot>,
@@ -110,18 +106,8 @@ pub struct PpuSnapshot {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum PpuBgCachedSliceOriginSnapshot {
-    Ordinary,
-    StartupAlignmentSeed,
-    StartupAlignmentFill,
-    StartupContinuationVisibleTile2,
-    StartupContinuationVisibleTile3,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PpuBgFifoCachedPixelSnapshot {
     pub source: PpuBgFetcherSource,
-    pub origin: PpuBgCachedSliceOriginSnapshot,
     pub fetch_x: u16,
     pub pixel_index: u8,
     pub same_cycle_live_tilemap_refetch_window_open: bool,
@@ -137,7 +123,6 @@ pub struct PpuBgFifoCachedPixelSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PpuBgCachedSliceSnapshot {
     pub source: PpuBgFetcherSource,
-    pub origin: PpuBgCachedSliceOriginSnapshot,
     pub fetch_x: u16,
     pub tile_map_address: u16,
     pub tile_data_address: u16,
@@ -199,57 +184,12 @@ pub enum PpuMode3StartupSourceStateSnapshot {
     FifoBacked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum PpuBgStartupContinuationSliceSnapshot {
-    None,
-    VisibleTile2,
-    VisibleTile3,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum PpuBgStartupFetchSeamSnapshot {
-    Inactive,
-    AlignmentSeedPending,
-    PostAlignment {
-        first_real_push_skips_entry_delay: bool,
-        next_startup_continuation_slice: PpuBgStartupContinuationSliceSnapshot,
-        startup_continuation_visible_tiles_remaining: u8,
-        delayed_background_tileindex_read_tiles_remaining: u8,
-        delayed_background_tilemap_tiles_remaining: u8,
-        delayed_background_tiledata_tiles_remaining: u8,
-    },
-}
-
-pub(super) const fn snapshot_bg_fifo_cached_origin(
-    origin: BgCachedSliceOrigin,
-) -> PpuBgCachedSliceOriginSnapshot {
-    match origin {
-        BgCachedSliceOrigin::Ordinary => PpuBgCachedSliceOriginSnapshot::Ordinary,
-        BgCachedSliceOrigin::StartupAlignmentSeed => {
-            PpuBgCachedSliceOriginSnapshot::StartupAlignmentSeed
-        }
-        BgCachedSliceOrigin::StartupAlignmentFill => {
-            PpuBgCachedSliceOriginSnapshot::StartupAlignmentFill
-        }
-        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile2) => {
-            PpuBgCachedSliceOriginSnapshot::StartupContinuationVisibleTile2
-        }
-        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3) => {
-            PpuBgCachedSliceOriginSnapshot::StartupContinuationVisibleTile3
-        }
-        BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::None) => {
-            PpuBgCachedSliceOriginSnapshot::Ordinary
-        }
-    }
-}
-
 pub(super) fn snapshot_bg_fifo_cached_pixel(
     cached: Option<BgFifoPixelCached>,
 ) -> Option<PpuBgFifoCachedPixelSnapshot> {
     let cached = cached?;
     Some(PpuBgFifoCachedPixelSnapshot {
         source: cached.cached.source,
-        origin: snapshot_bg_fifo_cached_origin(cached.cached.origin),
         fetch_x: cached.cached.fetch_x,
         pixel_index: cached.pixel_index,
         same_cycle_live_tilemap_refetch_window_open: cached
@@ -268,7 +208,6 @@ pub(super) fn snapshot_bg_fifo_cached_pixel(
 pub(super) const fn snapshot_bg_cached_slice(cached: BgCachedSlice) -> PpuBgCachedSliceSnapshot {
     PpuBgCachedSliceSnapshot {
         source: cached.source,
-        origin: snapshot_bg_fifo_cached_origin(cached.origin),
         fetch_x: cached.fetch_x,
         tile_map_address: cached.tile_map_address,
         tile_data_address: cached.tile_data_address,
@@ -374,47 +313,5 @@ pub(super) const fn snapshot_bg_startup_source_state(
             PpuMode3StartupSourceStateSnapshot::Abstract { remaining }
         }
         Mode3StartupSourceState::FifoBacked => PpuMode3StartupSourceStateSnapshot::FifoBacked,
-    }
-}
-
-pub(super) const fn snapshot_bg_startup_continuation_slice(
-    slice: BgStartupContinuationSlice,
-) -> PpuBgStartupContinuationSliceSnapshot {
-    match slice {
-        BgStartupContinuationSlice::None => PpuBgStartupContinuationSliceSnapshot::None,
-        BgStartupContinuationSlice::VisibleTile2 => {
-            PpuBgStartupContinuationSliceSnapshot::VisibleTile2
-        }
-        BgStartupContinuationSlice::VisibleTile3 => {
-            PpuBgStartupContinuationSliceSnapshot::VisibleTile3
-        }
-    }
-}
-
-pub(super) const fn snapshot_bg_startup_fetch_seam(
-    seam: BgStartupFetchSeamState,
-) -> PpuBgStartupFetchSeamSnapshot {
-    match seam {
-        BgStartupFetchSeamState::Inactive => PpuBgStartupFetchSeamSnapshot::Inactive,
-        BgStartupFetchSeamState::AlignmentSeedPending => {
-            PpuBgStartupFetchSeamSnapshot::AlignmentSeedPending
-        }
-        BgStartupFetchSeamState::PostAlignment {
-            first_real_push_skips_entry_delay,
-            next_startup_continuation_slice,
-            startup_continuation_visible_tiles_remaining,
-            delayed_background_tileindex_read_tiles_remaining,
-            delayed_background_tilemap_tiles_remaining,
-            delayed_background_tiledata_tiles_remaining,
-        } => PpuBgStartupFetchSeamSnapshot::PostAlignment {
-            first_real_push_skips_entry_delay,
-            next_startup_continuation_slice: snapshot_bg_startup_continuation_slice(
-                next_startup_continuation_slice,
-            ),
-            startup_continuation_visible_tiles_remaining,
-            delayed_background_tileindex_read_tiles_remaining,
-            delayed_background_tilemap_tiles_remaining,
-            delayed_background_tiledata_tiles_remaining,
-        },
     }
 }

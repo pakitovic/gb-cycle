@@ -144,7 +144,8 @@ impl Ppu {
             && self.runtime.bg_pipeline_state.current_transfer_x >= 168
             && usize::from(self.runtime.mode2_scan_state.selected_sprite_count())
                 == MAX_SELECTED_SPRITES_PER_LINE
-            && self.runtime.bg_pipeline_state.startup_fifo_placeholders > 0
+            && self.runtime.bg_pipeline_state.fifo.first_cached().is_none()
+            && !self.runtime.bg_pipeline_state.fifo.is_empty()
             && self.runtime.obj_pipeline_state.fetch.stage == PpuObjFetcherStage::Idle
             && self.runtime.obj_pipeline_state.pending_match_x.is_none()
             && self
@@ -324,118 +325,6 @@ impl Ppu {
         PpuMode3TransferPolicy::from_pipeline_state(&self.runtime.bg_pipeline_state, self.line_dot)
     }
 
-    pub(in crate::ppu) fn startup_visible_tile3_scx_boundary_full_refetch_needs_next_tile(
-        &self,
-    ) -> bool {
-        self.operating_mode.uses_dmg_software_contract()
-            && self.runtime.bg_pipeline_state.fetcher.source == PpuBgFetcherSource::Background
-            && matches!(
-                self.runtime.bg_pipeline_state.fetcher.cached_origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
-            )
-            && self.runtime.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::TileDataHigh
-            && self.runtime.bg_pipeline_state.fetcher.stage_dot == 0
-            && self.runtime.bg_pipeline_state.current_transfer_x == 16
-            && self.runtime.bg_pipeline_state.visible_pixels_output == 8
-            && matches!(
-                self.runtime.bg_pipeline_state.startup_fetch_seam,
-                BgStartupFetchSeamState::PostAlignment {
-                    next_startup_continuation_slice: BgStartupContinuationSlice::VisibleTile3,
-                    startup_continuation_visible_tiles_remaining: 1,
-                    delayed_background_tileindex_read_tiles_remaining: 0,
-                    delayed_background_tilemap_tiles_remaining: 0,
-                    delayed_background_tiledata_tiles_remaining: 0,
-                    ..
-                }
-            )
-    }
-
-    pub(in crate::ppu) fn inactive_visible_tile3_scx_push_boundary_needs_old_pixel_window(
-        &self,
-    ) -> bool {
-        let expected_visible_tile2_front_pixel = self
-            .runtime
-            .bg_pipeline_state
-            .current_transfer_x
-            .saturating_sub(16);
-        self.operating_mode.uses_dmg_software_contract()
-            && self.runtime.bg_pipeline_state.push.pending
-            && self.runtime.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
-            && matches!(
-                self.runtime.bg_pipeline_state.push.cached.origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
-            )
-            && self.runtime.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
-            && self.runtime.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
-            && self.runtime.bg_pipeline_state.fetcher.stage_dot == 0
-            && (18..=21).contains(&self.runtime.bg_pipeline_state.current_transfer_x)
-            && self.runtime.bg_pipeline_state.visible_pixels_output
-                == self
-                    .runtime
-                    .bg_pipeline_state
-                    .current_transfer_x
-                    .saturating_sub(8)
-            && matches!(
-                self.runtime.bg_pipeline_state.startup_fetch_seam,
-                BgStartupFetchSeamState::Inactive
-            )
-            && self
-                .runtime
-                .bg_pipeline_state
-                .fifo
-                .cached_front()
-                .flatten()
-                .is_some_and(|cached| {
-                    matches!(
-                        cached.cached.origin,
-                        BgCachedSliceOrigin::StartupContinuation(
-                            BgStartupContinuationSlice::VisibleTile2
-                        )
-                    ) && cached.pixel_index == expected_visible_tile2_front_pixel
-                })
-    }
-
-    pub(in crate::ppu) fn inactive_visible_tile3_scx_push_boundary_needs_next_tile_output_retarget(
-        &self,
-    ) -> bool {
-        let expected_visible_tile2_front_pixel = self
-            .runtime
-            .bg_pipeline_state
-            .current_transfer_x
-            .saturating_sub(16);
-        self.operating_mode.uses_dmg_software_contract()
-            && self.scx >= 0x58
-            && self.runtime.bg_pipeline_state.push.pending
-            && self.runtime.bg_pipeline_state.push.cached.source == PpuBgFetcherSource::Background
-            && matches!(
-                self.runtime.bg_pipeline_state.push.cached.origin,
-                BgCachedSliceOrigin::StartupContinuation(BgStartupContinuationSlice::VisibleTile3)
-            )
-            && self.runtime.bg_pipeline_state.push.cached.fetch_x == BG_TILE_WIDTH as u16 * 2
-            && self.runtime.bg_pipeline_state.fetcher.stage == PpuBgFetcherStage::Push
-            && self.runtime.bg_pipeline_state.fetcher.stage_dot == 0
-            && self.runtime.bg_pipeline_state.current_transfer_x == 22
-            && self.runtime.bg_pipeline_state.visible_pixels_output == 14
-            && matches!(
-                self.runtime.bg_pipeline_state.startup_fetch_seam,
-                BgStartupFetchSeamState::Inactive
-            )
-            && self
-                .runtime
-                .bg_pipeline_state
-                .fifo
-                .cached_front()
-                .flatten()
-                .is_some_and(|cached| {
-                    matches!(
-                        cached.cached.origin,
-                        BgCachedSliceOrigin::StartupContinuation(
-                            BgStartupContinuationSlice::VisibleTile2
-                        )
-                    ) && cached.pixel_index == expected_visible_tile2_front_pixel
-                })
-    }
-
     pub(in crate::ppu) fn mode3_line_timing_policy(&self) -> PpuMode3LineTimingPolicy {
         PpuMode3LineTimingPolicy::new(
             self.mode3_register_latches().visible(),
@@ -449,15 +338,6 @@ impl Ppu {
             self.mode3_register_latches(),
             self.console_model,
             self.operating_mode.uses_dmg_software_contract(),
-            self.runtime
-                .bg_pipeline_state
-                .startup_background_tilemap_uses_pipeline_snapshot(),
-            self.runtime
-                .bg_pipeline_state
-                .startup_background_tiledata_uses_pipeline_snapshot(),
-            self.runtime
-                .bg_pipeline_state
-                .startup_background_tileindex_reads_on_stage_one(),
             self.runtime
                 .bg_pipeline_state
                 .fetcher

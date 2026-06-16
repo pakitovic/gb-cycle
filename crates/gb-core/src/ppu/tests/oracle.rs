@@ -108,7 +108,7 @@ fn cpu_stat_read_logs_case1_first_read_helper_conditions_against_real_rom() {
             let transfer_source_window =
                 current_transfer.map(|transfer| transfer.context.source_window);
             println!(
-                "case1_first_read_helper value={:#04X} pc={:#06X} line_dot={} ly={} published_mode={:?} current_mode={:?} current_mode0_start_dot={} blank_frame_active={} obj_stage={:?} pending_match_x={:?} pending_hit_len={} transfer_lane={:?} transfer_source_window={:?} current_transfer_x={} visible_pixels_output={} startup_fifo_placeholders={} fifo_len={} line_dot_plus_one_eq_mode0={} ly_visible={} obj_idle={} no_pending_match={} no_pending_hits={}",
+                "case1_first_read_helper value={:#04X} pc={:#06X} line_dot={} ly={} published_mode={:?} current_mode={:?} current_mode0_start_dot={} blank_frame_active={} obj_stage={:?} pending_match_x={:?} pending_hit_len={} transfer_lane={:?} transfer_source_window={:?} current_transfer_x={} visible_pixels_output={} fifo_contains_real_pixels={} fifo_len={} line_dot_plus_one_eq_mode0={} ly_visible={} obj_idle={} no_pending_match={} no_pending_hits={}",
                 activity.value,
                 cpu_snapshot.registers.pc,
                 ppu.line_dot,
@@ -124,7 +124,7 @@ fn cpu_stat_read_logs_case1_first_read_helper_conditions_against_real_rom() {
                 transfer_source_window,
                 ppu.bg_pipeline_state.current_transfer_x,
                 ppu.bg_pipeline_state.visible_pixels_output,
-                ppu.bg_pipeline_state.startup_fifo_placeholders,
+                ppu.bg_pipeline_state.fifo_contains_real_pixels(),
                 ppu.bg_pipeline_state.fifo.len(),
                 ppu.line_dot + 1 == ppu.current_mode0_start_dot(),
                 ppu.ly < VISIBLE_SCANLINES,

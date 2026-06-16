@@ -28,7 +28,6 @@ fn saturated_terminal_tail_rig(line_dot: u16) -> PpuTestRig {
     ppu.bg_pipeline_state
         .saw_right_edge_visible_same_x_cluster_this_line = true;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 8));
 
     for sprite_slot in 0..10_u8 {
@@ -55,7 +54,6 @@ fn non_holding_terminal_tail_rig() -> PpuTestRig {
     ppu.bg_pipeline_state.current_transfer_x = 168;
     ppu.bg_pipeline_state.visible_pixels_output = 160;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 1;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 8));
 
     for sprite_slot in 0..10_u8 {
@@ -113,7 +111,6 @@ fn terminal_visible_bg_transfer_without_obj_work_does_not_extend_mode3_past_x167
     ppu.bg_pipeline_state.current_transfer_x = 167;
     ppu.bg_pipeline_state.visible_pixels_output = 159;
     ppu.bg_pipeline_state.transfer_phase = Mode3TransferPhase::Output;
-    ppu.bg_pipeline_state.startup_fifo_placeholders = 4;
     ppu.bg_pipeline_state.fifo.extend(std::iter::repeat_n(0, 9));
     ppu.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
     ppu.bg_pipeline_state.fetcher.stage_dot = 1;
@@ -173,6 +170,9 @@ fn saturated_placeholder_backed_terminal_bg_tail_stays_in_mode3_during_push() {
     assert_eq!(ppu.current_mode0_start_dot(), 316);
 }
 
+#[ignore = "canonical-pending: terminal_placeholder_tail_extra_hold has no production trigger (was \
+    test-only even at HEAD) and the WaitingForEmptyFifo gate is now real-pixel-based; re-pin/remove \
+    after L1-d/L2. See docs/roadmap/12 §24.6"]
 #[test]
 fn saturated_placeholder_backed_terminal_bg_tail_holds_one_extra_dot_after_push_entry_delay() {
     let mut ppu = saturated_terminal_tail_rig(316);

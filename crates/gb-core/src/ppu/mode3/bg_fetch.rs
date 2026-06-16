@@ -14,37 +14,7 @@ impl Ppu {
             return handed_off;
         }
 
-        if self.consume_bg_fetcher_post_alignment_restart_delay_dot() {
-            return false;
-        }
-
-        if self.cgb_startup_continuation_fetch_blocked_on_fifo_room() {
-            return false;
-        }
-
         self.advance_bg_fetcher_automaton_step(fetch_policy, vram)
-    }
-
-    fn cgb_startup_continuation_fetch_blocked_on_fifo_room(&self) -> bool {
-        if !self.console_model.is_cgb_family() {
-            return false;
-        }
-        let bg = &self.runtime.bg_pipeline_state;
-        let at_continuation_get_tile0 = bg.fetcher.source == PpuBgFetcherSource::Background
-            && matches!(bg.fetcher.stage, PpuBgFetcherStage::TileIndex)
-            && bg.fetcher.stage_dot == 0
-            && matches!(
-                bg.startup_fetch_seam,
-                BgStartupFetchSeamState::PostAlignment { .. }
-            );
-        // The left-edge-sprite obj stall delayed the seed, so the first continuation tile must
-        // wait one extra dot of FIFO drain to land its GetTile0 on the canonical (oracle) dot.
-        let min_fifo_room = if bg.cgb_startup_seed_obj_stall_extra_continuation_dot {
-            BG_TILE_WIDTH as usize - 1
-        } else {
-            BG_TILE_WIDTH as usize
-        };
-        at_continuation_get_tile0 && bg.fifo.len() > min_fifo_room
     }
 
     fn prepare_bg_fetcher_dot(&mut self, vram: &VramBusView<'_>) {
@@ -89,24 +59,6 @@ impl Ppu {
             .bg_pipeline_state
             .fetcher
             .startup_fetch_idle_dots -= 1;
-        true
-    }
-
-    fn consume_bg_fetcher_post_alignment_restart_delay_dot(&mut self) -> bool {
-        if self
-            .runtime
-            .bg_pipeline_state
-            .fetcher
-            .post_alignment_fetch_restart_delay_dots
-            == 0
-        {
-            return false;
-        }
-
-        self.runtime
-            .bg_pipeline_state
-            .fetcher
-            .post_alignment_fetch_restart_delay_dots -= 1;
         true
     }
 
@@ -160,10 +112,6 @@ impl Ppu {
         vram: &VramBusView<'_>,
     ) {
         if fetcher.source == PpuBgFetcherSource::Background {
-            self.runtime.bg_pipeline_state.fetcher.cached_origin = self
-                .runtime
-                .bg_pipeline_state
-                .peek_startup_background_fetch_origin();
             self.runtime
                 .bg_pipeline_state
                 .fetcher
@@ -196,16 +144,6 @@ impl Ppu {
                 .bg_pipeline_state
                 .fetcher
                 .cgb_startup_seed_get_tile_scy_row = None;
-            // Consume the left-edge-sprite +1 hold once the first continuation tile's GetTile0
-            // actually fires, so it never extends later continuation tiles. See docs/roadmap/12 §22.
-            if matches!(
-                self.runtime.bg_pipeline_state.startup_fetch_seam,
-                BgStartupFetchSeamState::PostAlignment { .. }
-            ) {
-                self.runtime
-                    .bg_pipeline_state
-                    .cgb_startup_seed_obj_stall_extra_continuation_dot = false;
-            }
         }
 
         let tile_map_address =
@@ -267,21 +205,6 @@ impl Ppu {
             );
         }
         self.maybe_apply_bgwin_tilemap_selector_glitch(vram, fetcher.source);
-        if self.console_model.is_cgb_family()
-            && fetcher.source == PpuBgFetcherSource::Background
-            && matches!(
-                self.runtime.bg_pipeline_state.startup_fetch_seam,
-                BgStartupFetchSeamState::AlignmentSeedPending
-            )
-        {
-            self.runtime
-                .bg_pipeline_state
-                .fetcher
-                .cgb_startup_seed_get_tile_scy_row = Some(
-                self.background_fetch_context(fetcher.fetch_x)
-                    .tile_data_row(),
-            );
-        }
         self.runtime.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::TileDataLow;
         self.runtime.bg_pipeline_state.fetcher.stage_dot = 0;
     }
@@ -295,10 +218,7 @@ impl Ppu {
         let cgb_frozen_row = if fetcher.source == PpuBgFetcherSource::Background
             && self.console_model.is_cgb_family()
             && self.operating_mode.uses_dmg_software_contract()
-            && !matches!(
-                self.runtime.bg_pipeline_state.startup_fetch_seam,
-                BgStartupFetchSeamState::AlignmentSeedPending
-            ) {
+        {
             let frozen_row = u16::from(self.scy.wrapping_add(self.ly) % BG_TILE_WIDTH);
             self.runtime
                 .bg_pipeline_state
@@ -382,10 +302,7 @@ impl Ppu {
         let cgb_frozen_row = if fetcher.source == PpuBgFetcherSource::Background
             && self.console_model.is_cgb_family()
             && self.operating_mode.uses_dmg_software_contract()
-            && !matches!(
-                self.runtime.bg_pipeline_state.startup_fetch_seam,
-                BgStartupFetchSeamState::AlignmentSeedPending
-            ) {
+        {
             fetcher.cgb_startup_seed_get_tile_scy_row
         } else {
             None
@@ -436,51 +353,15 @@ impl Ppu {
         vram: &VramBusView<'_>,
     ) -> bool {
         self.maybe_apply_bgwin_tile_data_selector_glitch(vram, fetcher.source, 1);
-        if self
-            .runtime
-            .bg_pipeline_state
-            .startup_alignment_seed_pending()
-        {
-            return self.queue_bg_startup_alignment_seed_from_fetcher();
-        }
-
-        self.queue_bg_push_from_fetcher(fetcher)
+        self.queue_bg_push_from_fetcher()
     }
 
-    fn queue_bg_startup_alignment_seed_from_fetcher(&mut self) -> bool {
-        let fetcher_state = self.runtime.bg_pipeline_state.fetcher;
-        self.runtime
-            .bg_pipeline_state
-            .push
-            .queue_startup_alignment_seed_from_fetcher(fetcher_state);
-        self.runtime
-            .bg_pipeline_state
-            .fetcher
-            .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
-        self.runtime
-            .bg_pipeline_state
-            .fetcher
-            .first_window_tile_after_activation = false;
-        self.runtime.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
-        self.runtime.bg_pipeline_state.fetcher.stage_dot = 0;
-        Self::bg_push_handed_off_to_object_fetch(self.advance_bg_push_stage())
-    }
-
-    fn queue_bg_push_from_fetcher(&mut self, fetcher: BgFetcherState) -> bool {
-        self.runtime
-            .bg_pipeline_state
-            .maybe_attach_startup_visible_tile3_scx_boundary_next_slice_to_fetcher();
+    fn queue_bg_push_from_fetcher(&mut self) -> bool {
         let fetcher_state = self.runtime.bg_pipeline_state.fetcher;
         self.runtime
             .bg_pipeline_state
             .push
             .queue_from_fetcher(fetcher_state);
-        self.runtime
-            .bg_pipeline_state
-            .maybe_apply_dmg_lcdc3_startup_continuation_tilemap_select_override_to_push();
-        self.runtime
-            .bg_pipeline_state
-            .maybe_apply_latched_dmg_lcdc4_startup_tiledata_select_override_to_push();
         if self.console_model.is_cgb_family()
             && self.operating_mode.uses_dmg_software_contract()
             && fetcher_state.source == PpuBgFetcherSource::Window
@@ -495,36 +376,9 @@ impl Ppu {
         self.runtime
             .bg_pipeline_state
             .fetcher
-            .startup_visible_tile3_scx_boundary_full_refetch_next_tile = false;
-        self.runtime
-            .bg_pipeline_state
-            .fetcher
-            .clear_startup_visible_tile3_scx_boundary_old_pixel_window();
-        if fetcher.source == PpuBgFetcherSource::Background {
-            self.runtime
-                .bg_pipeline_state
-                .advance_startup_background_fetch_tile();
-        }
-
-        let mut advance_push_immediately = false;
-        if self
-            .runtime
-            .bg_pipeline_state
-            .take_startup_first_real_push_skip_entry_delay()
-        {
-            self.runtime.bg_pipeline_state.push.entry_delay_remaining = 0;
-            advance_push_immediately = true;
-        }
-        self.runtime
-            .bg_pipeline_state
-            .fetcher
             .first_window_tile_after_activation = false;
         self.runtime.bg_pipeline_state.fetcher.stage = PpuBgFetcherStage::Push;
         self.runtime.bg_pipeline_state.fetcher.stage_dot = 0;
-        if advance_push_immediately {
-            return Self::bg_push_handed_off_to_object_fetch(self.advance_bg_push_stage());
-        }
-
         false
     }
 

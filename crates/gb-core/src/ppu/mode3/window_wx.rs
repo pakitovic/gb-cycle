@@ -948,7 +948,6 @@ impl Ppu {
         if !preserve_fifo {
             self.runtime.bg_pipeline_state.fifo.clear();
         }
-        self.runtime.bg_pipeline_state.startup_fifo_placeholders = 0;
         self.runtime.bg_pipeline_state.push.reset();
         self.runtime.bg_pipeline_state.fill.reset();
         if window_pixel_offset == 0 {

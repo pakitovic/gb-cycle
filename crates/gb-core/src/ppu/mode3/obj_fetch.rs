@@ -90,23 +90,6 @@ impl Ppu {
             } else {
                 OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS.saturating_sub(match_phase)
             };
-            // A left-edge sprite (x == 0) starts its fetch before the BG seed tile is pushed,
-            // stalling and delaying the seed. The canonical model drains the FIFO during that
-            // freeze, so the first continuation tile's GetTile0 lands one dot later than gb's
-            // pre-fetch leaves it (its data-stage register read otherwise samples on gb's +4-phase
-            // write boundary and reads one write stale). Flag the +1 for the continuation gate.
-            // See docs/roadmap/12 §22.
-            if sprite.x == 0
-                && self.console_model.is_cgb_family()
-                && matches!(
-                    self.runtime.bg_pipeline_state.startup_fetch_seam,
-                    BgStartupFetchSeamState::AlignmentSeedPending
-                )
-            {
-                self.runtime
-                    .bg_pipeline_state
-                    .cgb_startup_seed_obj_stall_extra_continuation_dot = true;
-            }
         }
         if matches!(
             start_source,

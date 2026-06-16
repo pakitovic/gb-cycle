@@ -107,9 +107,6 @@ impl Ppu {
         plane: u16,
         tile_data: u8,
     ) {
-        if self.bg_pipeline_state.startup_alignment_seed_pending() {
-            return;
-        }
         let uses_unsigned_tile_data = match source {
             PpuBgFetcherSource::Background => self
                 .background_fetch_context(next_fetch_pixel)
