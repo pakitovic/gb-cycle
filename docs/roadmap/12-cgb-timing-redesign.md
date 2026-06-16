@@ -1763,3 +1763,23 @@ alive in parallel, print both in a temporary probe and diff vs the seam over a f
 `ly_lyc_0`/`ly_lyc_0_write` close; (c) delete the seam constants/functions; (d) rewrite the seam-pinned unit tests
 (`mode_edges::*` line-153/dot0 + `registers.rs` lyc tests — see §24 map) to the canonical behaviour; (e) ROM gate.
 Targets: close `ly_lyc_0-GS/-C`, `ly_lyc_0_write-GS`; keep E1-closed green; mooneye/mealybug/blargg no-regress.
+
+### 24.16 VBlank IF-read fix (`d461621a`) classified — interim compensation, not canon-structural (2026-06-16)
+
+(The standing per-commit self-audit — "is this following the canon DocBoy + SameSuite + Pan Docs to avoid manual tables
+and seams?" — is tracked in agent memory, not duplicated in repo docs. This section keeps only the factual record below.)
+
+**Honest classification of the §24.14 VBlank IF-read fix (`d461621a`) — INTERIM COMPENSATION, not
+canon-structural.** Verified at the source: DocBoy raises VBlank straight into the shared IF register
+(`ppu.cpp:1715 enter_vblank → interrupts.raise_interrupt<VBlank>()`) and has NO cpu-IF-read suppress/hide — the
+"visible one read-position after the raster crossing" timing falls out STRUCTURALLY from the within-T-cycle order (CPU
+memory access ordered before the PPU raise, reading the shared IF directly). gb-cycle's `cpu_if_read_suppress_mask` is a
+**compensation** for gb-cycle's different architecture (PPU `pending_interrupts` → separate `InterruptAggregation` drain
+→ scheduler IF, read pre-tick under the reorder), not that structural ordering. It is hardware-CORRECT (grounded vs the
+`main`/PR-#245 oracle + the wilbertpol sources) and is the §24.12/§24.13-sanctioned "item (3) design item" (a
+1-cycle-skewed IF-read-vs-dispatch mechanism, NOT a per-dot/scx table) — but it is NOT the DocBoy mechanism and was NOT
+cross-checked against DocBoy's IF path / SameBoy / Pan Docs. Kept interim like E1. **Canonical end-state that should
+subsume it:** make the VBlank/STAT IF-read timing fall out of the tick order (align the scheduler-IF commit/read with the
+within-cycle order the way DocBoy interleaves CPU-access-then-PPU-raise), or fold it into the items (1)/(2) canonical
+IF-read / mode-from-delayed-registers model — then delete the mask. Revisit when items (1)/(2) land; net seam count must
+not rise on its account.
