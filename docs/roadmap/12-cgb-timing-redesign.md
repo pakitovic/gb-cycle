@@ -1366,3 +1366,41 @@ tests + the Mode2-STAT handler dot; (2) re-derive the pretrigger / LY-read-advan
 DocBoy oracle (addresses ppu_mode_edges); (3) handle OAM-DMA startup (latch vs +1 constant, verified against
 `oam_dma_*`); (4) regen the trace fixtures (env vars above) once behaviour settles; (5) ROM-gate
 fmt/lint/tests/blargg + m3_* no-regress + wilbertpol 117 + mooneye 113. Then L2-b, L2-c.
+
+**FIX-PHASE DIAGNOSIS (2026-06-16, still at commit 4f0b04e4 — recon only, no further code landed):**
+- *Hide mechanism (confirmed):* the hide ONLY sets `pending_interrupts_hidden_from_cpu_if` (the same-cycle CPU IF-read
+  mask, irq.rs:559-577); it does NOT change committed real IF (`pending_interrupts`, drained in InterruptAggregation)
+  nor dispatch. CPU consumes it via `cpu_interrupt_mask_for_if_read`→`cpu_visible_pending_interrupt_request_mask`
+  (step.rs:135). Under the new order the CPU IF read (phase 5) is BEFORE the PPU tick (phase 7), so the hide now
+  OVER-persists by a cycle ⇒ retire it: both call sites `irq.rs:503` + `registers.rs:185` → `true`; delete the 4
+  `*_stat_irq_edge_hidden_from_same_cycle_cpu_if` predicates + `stat_request_hidden_from_same_cycle_cpu_if`. KEEP the
+  shared source helpers `ordinary_mode2_stat_pretrigger_{edge,source}`/`mode2_vblank_entry_stat_source`/
+  `line_153_lyc0_stat_irq_pretrigger_source` (used by the real IRQ-line calc at irq.rs:130/161-162/401/454/499/541).
+- *Retirement is NOT independently validatable:* the 7 `ppu_lcd_restart::*` tests ASSERT the removed mechanism → they
+  must be REWRITTEN to canonical, not "made green". The retirement's gate is the ROM suites (mooneye intr_2_*,
+  wilbertpol lcd_restart), not the existing unit tests.
+- *Quantified shift (oracle-proxy probes ppu_mode_edges.rs):* `mode2_to_mode3_stat_probe` count (2,2) vs expected
+  (1,2); `hblank_ly_scx` fails scx 3-8 but PASSES scx 0-2 ⇒ NOT a naive universal −1 on `LY_READ_ADVANCE_START_DOT`
+  (451) — there is an scx-dependent interaction with the mode0-start dot. Shift is ~1 dot in the "CPU now observes PPU
+  line_dot one behind" direction; exact per-constant value/direction needs DocBoy-oracle grounding per case (the scx
+  asymmetry is the whack-a-mole trap that broke the 8 prior bounded fixes). Probes = fast oracle proxy (~4s); DocBoy
+  `build-trace-cgb` + `GBCYCLE_SCY_PROBE_LY` = ground truth. **Do NOT guess constants — ground each vs the oracle.**
+
+**FIX-PHASE PROGRESS (2026-06-16, grind started — "vamos con A"):**
+- ✅ **LY-read advance = clean −1, VALIDATED.** `LY_READ_ADVANCE_START_DOT` 451→450 (ppu.rs:59) + the unit-test
+  assertion (`DOTS_PER_SCANLINE - 5`→`- 6`, ppu/tests/stat/registers.rs:793). All 3 `hblank_ly_scx` probes GREEN
+  (incl. scx 0-2, which already passed — so the −1 restores the exact pre-reorder observation without breaking the
+  slack cases). Confirms the model: the reorder makes the CPU observe the PPU `line_dot` exactly one behind for a DIRECT
+  register read, and the canonical fix is −1 on that CPU-comparison threshold (matching how DocBoy's constants are
+  defined relative to its CPU-first order). KEPT uncommitted→ committed as a small WIP.
+- ⚠️ **The STAT-visibility / pretrigger cases are NOT a uniform −1 — they need per-case work.** Two concrete signals:
+  `mode2_to_mode3_stat_probe` count (2,2) vs (1,2) [STAT-edge-to-mode3 spacing]; `lcd_reenable_mode0_if_probe(59)`
+  returns 0xE2 (visible) but should be 0xE0 — the mode0 STAT edge becomes IF-visible ONE delay-unit EARLIER. So the
+  same-cycle IF-visibility STILL matters under the new order (the earlier "hide is redundant/no-op" reasoning is NOT
+  confirmed — these probes prove same-cycle visibility shifted, not vanished). These involve the pretrigger leads
+  (`+4`), the hide, and the IRQ-service phase together, and shift in directions that need grounding per case. ⇒ retire
+  the hide and re-derive the pretrigger constants TOGETHER, validating each against its probe, NOT by a global rule.
+- *Method confirmed working:* the curated ppu.rs probes ARE the fast oracle proxy — empirical loop (change → probe →
+  read delta) is the right inner loop; full ROM suites are the outer gate. Remaining: STAT pretrigger family (mode2/
+  mode0/vblank-entry), the LCD-reenable family (off-by-1 in the IF-visibility boundary), line-153 LYC, hide cleanup,
+  OAM-DMA startup, then rewrite the 7 lcd_restart tests, regen fixtures, ROM-gate.
