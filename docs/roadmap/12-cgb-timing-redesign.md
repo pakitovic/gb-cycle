@@ -1549,3 +1549,86 @@ cluster is closed and behaviour is final.
 **RESUME:** read §24.8–24.10 + this §24.11. Net-positive WIP is in the working tree (uncommitted, fmt+lint clean,
 1472 lib + 45/46 ppu integration green). Next: pick the `ly_lyc` cluster (biggest, untouched) or the base `intr_2_*`
 cluster; ground each against the ROM oracle. Target: mooneye 113/113, wilbertpol 117/117, m3_* no-regress, blargg green.
+
+### 24.12 L2-a.1 FIX-PHASE BATCH 3 — LYC dot0 edge closed + differential-oracle method + full per-cluster diagnosis (2026-06-16)
+
+**State:** branch `ppu/fetcher-lead-hardening`, working tree CLEAN. Commits this batch (on top of `567cdcd5`):
+`f2e66727` (E1 — LYC dot0 IRQ defer, the real fix) and `685893d8` (TEMPORARY diagnostic sweep harness). ROM scoreboard
+now **mooneye 109/113, wilbertpol 104/117, mealybug 13 fails (IDENTICAL to pre-batch baseline — zero m3 regression,
+m3_scy_change DMG still closed), blargg untouched.** E1 fixed `ly_lyc-GS`, `ly_lyc-C`, `ly_lyc_write-GS` (wilbertpol
+16→13) with zero unit/ROM regression.
+
+**THE WINNING METHOD (use this — it is the missing piece §24.11 lacked).** The curated probes are an INCOMPLETE oracle;
+the reliable loop is a **differential probe vs a `main` (PR #245) worktree**, because main passes every one of these ROMs
+and is therefore the exact CPU-observable truth:
+1. `git worktree add ../gb-cycle-main main` (HEAD 9956eb3b; it builds independently).
+2. Fetch the real ROM source to learn what each round measures + the literal pass values — they are NOT in the repo:
+   `curl -fsSL https://raw.githubusercontent.com/wilbertpol/mooneye-gb/master/tests/acceptance/gpu/<name>.s` (and
+   `tests/common/common.s` for the `wait_ly`/`nops` macros). WebFetch paraphrases — use curl.
+3. The sweep harness (`crates/gb-core/tests/ppu/ppu_oracle_sweep.rs`, commit `685893d8`, `#[ignore]`) has: a faithful
+   reenable+readback probe (`run_reenable_readback`: di/IE=0/IF=0/LYC/STAT; wait_ly 144; LCD off;nop;LCD on; IF=0;
+   wait_ly V; nops N; `ldh a,(target)` — captures the value the ROM stores), a vblank/mode1-entry sweep, a faithful
+   `intr_2_mode0_timing` poll-until-mode probe, and `run_real_rom_capture_wram` which RUNS the actual `.gb` and dumps
+   the first WRAM writes = the `round1..N` table (so you read the measured value the assert checks, no disassembly).
+   NOTE: synthetic-cartridge `build_test_rom` writes the program at 0x0100 and the program byte at offset 0x47 lands on
+   the cartridge-type header (0x147); a long program that puts 0x20 there is rejected as MBC6 — use
+   `build_nom_bc_test_rom_with_program_entry(.., 0x0150, ..)` (entry jump + program at 0x150) and rebase the PC math.
+4. Run `cargo test -p gb-core --test ppu ppu_oracle_sweep::<probe> -- --ignored --nocapture --test-threads=1` in BOTH
+   trees, diff. The reorder shows up as a per-edge dot/read-position shift; CRITICAL distinction the data proved:
+   **register READBACK (STAT mode bits, LY) already matches main; only IF/IRQ EDGES are shifted** (the §24.11
+   "read path self-compensates, IRQ path does not", now confirmed mechanically).
+
+**E1 — the LYC fix (LANDED, principled):** under the CPU-first order the CPU observes the raster one dot ahead, so a
+regular-line LYC coincidence IRQ that rises at `line_dot 0` (via `regular_line_dot0_compare_window`) is seen one
+read-position too early. Fix = defer it to `line_dot 1` by returning the `lyc_compare_latch` instead of the live dot0
+compare in `lyc_coincidence_for_irq_line` (irq.rs:87-96). Readback path untouched. Proof: `ly_lyc-GS` round5 IF read
+went `0xE2`→`0xE0` (= assert), `ly_lyc`/`ly_lyc_144`/`vblank_if` STAT+LY readbacks already matched main, mealybug
+identical. The 9 pre-existing red `ppu::tests::stat::mode_edges::*_hidden_from_same_cycle_cpu_if*` lib tests (they assert
+the retired hide / old dot0 timing) were ALREADY red at clean HEAD — §24.11's "1472 lib green" was inaccurate; they
+still need the rewrite from the §24.10 plan and are unchanged by E1.
+
+**REMAINING 13 wilbertpol + 4 mooneye, fully diagnosed (all reenable+measure tests). Each needs DEDICATED design, not a
+constant tweak — two bounded fixes were REFUTED this batch (below). Order by tractability:**
+
+- **vblank-entry cluster — `intr_1_timing`, `vblank_if_timing` (wb), `ly_lyc_144-GS/-C` (wb).** Ground truth: vblank +
+  mode1 IF edge is observed exactly **1 read-position early** (main E0→E1/E3 between nops 105/106; branch 104/105). The
+  STAT *mode* readback is already correct (separate published-stat path, lags via `line_dot-1`). **REFUTED EXPERIMENT
+  #1:** deferring the internal queue by 1 dot (a `vblank_entry_irq_deferred` flag in api.rs:940 + returning Drawing from
+  `current_stat_irq_access_mode` at ly==144,dot==0) DID align the read (fixed all 4) but REGRESSED
+  `vblank_stat_intr-GS/-C` and `intr_1_2_timing-GS` (mooneye 4→7). ROOT CAUSE: deferring the queue defers DISPATCH too,
+  but `vblank_stat_intr` measures dispatch (ei + serviced IRQ) which is ALREADY correct (dispatch reads post-PPU-tick
+  state in both orders, §24.8). The real need: defer ONLY the CPU **IF-read** visibility by 1 read-position, leave the
+  commit/dispatch at line 144 dot 0. The hide (`pending_interrupts_hidden_from_cpu_if`) cannot do it — it is cleared by
+  the InterruptAggregation drain every cycle and the read sees the committed scheduler IF afterwards. This needs a real
+  design: a 1-cycle-skewed "IF-register read value vs dispatch-pending state" for PPU interrupts under the reorder.
+
+- **base `intr_2_*` cluster — `intr_2_mode0_timing`, `intr_2_mode0_timing_sprites`, `intr_2_oam_ok_timing`,
+  `intr_2_timing` (mooneye+wb).** Faithful probe (mode2 STAT IRQ → nops → poll STAT until mode0, counting): main count
+  transitions 2→1 at delay **45/46** (= asserts d=1@46, e=2@45); branch transitions at **46/47** (+1). The
+  poll-until-**mode2** count MATCHES main (7→6 @47/48) — so the start (mode2 IRQ wake) and the mode2 readback are fine;
+  only **poll-until-mode0 is +1**, i.e. the Drawing→HBlank (mode0) edge is observed one read-position late vs the
+  mode2/mode3 edges. **REFUTED EXPERIMENT #2:** mirroring the mode2→mode3 published-stat "publish one dot earlier"
+  override onto the mode0 boundary (`published_stat_steady_frame_mode0_boundary_override_applies` at
+  `mode0_start_dot-1`) blew up — lib stat 9→**21** failures (the published mode0 readback is load-bearing across the
+  suite). The mode0-vs-mode2/3 read asymmetry is the crux; the published-stat `line_dot-1` lag + the two existing
+  overrides need re-derivation per-edge against the probe, not a blanket earlier-publish. `intr_2_mode0_scx3/scx7_nops`
+  (wb) are the scx-seam siblings (same mode0-edge machinery, `current_mode0_stat_irq_start_dot` seam).
+
+- **`ly_lyc_0-GS/-C`, `ly_lyc_0_write-GS` (wb) — line-153 LYC0 wrap.** Reenable; wait_ly 152; nops; read LY/STAT/IF
+  across the 152→153→0 boundary with LYC=0 (asserts e.g. -GS a=153,b=$15,c=$13,d=$54,e=$C6,h=$40,l=$C2). Touches the
+  intricate `LINE_153_LYC0_*`/`CGB_LINE_153_*` compare windows + `vblank_wrap_line0_stat_readback_delay` together — NOT
+  a clean E1-style single-window defer; CGB-sensitive. Lowest priority.
+
+- **`boot_hwio-dmg0` (mooneye)** — boot HWIO at the DMG0 handoff; reorder-caused (passed on main, red since the reorder)
+  but mechanism is the boot/handoff phase, likely independent of the STAT clusters. Investigate separately.
+
+**REFUTED (do NOT retry):** (1) vblank/mode1 internal-queue 1-dot defer — breaks dispatch-based `vblank_stat_intr`;
+(2) mode0-boundary published-stat earlier-publish — cascades to 21 lib fails. Both reverted. Also still dead-ends from
+§24.11: enable-delay 5→6 (breaks read probes), chasing scx1 halt_wake with another +1 (cascades the counter).
+
+**NEXT:** the vblank-entry cluster is the cleanest target IF the IF-read-vs-dispatch skew is solved as a small,
+contained mechanism (the read of FF0F for PPU-sourced bits lags dispatch by one read-position under CPU-first). Then the
+base `intr_2_*` mode0-edge readback. Gate unchanged: fmt-check + lint + tests + rom-report blargg + mooneye 113 +
+wilbertpol 117 + m3 no-regress; THEN rewrite the (now ~9) `*_hidden_from_same_cycle_cpu_if*` + the §24.10 lcd_restart
+unit tests to the post-reorder behaviour, regen the ~17 trace fixtures, and DELETE `ppu_oracle_sweep.rs` (+ its `mod`
+line in `tests/ppu.rs`, commit `685893d8`).
