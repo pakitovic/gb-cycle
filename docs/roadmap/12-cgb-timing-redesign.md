@@ -2038,3 +2038,31 @@ group scx3/scx7 with `intr_2_mode0_timing_sprites` (batch-4, the §245/fetcher-l
 cluster is now: `intr_2_timing` (LCD-restart mode2-STAT-IF latch, IF path), `intr_2_mode0_timing_sprites` + scx3/scx7
 (mode3-length/§245/fetcher), `boot_hwio-dmg0` (boot handoff, independent). Scoreboard after batches 1-3: **wilbertpol
 113/117, mooneye 111/113**, blargg 58/58, mealybug 13-fail.
+
+### 24.22 ITEM (2) batch-4: intr_2_timing LANDED (mode2 vblank-entry STAT pretrigger, blank-frame) (2026-06-16)
+
+**`intr_2_timing` LANDED (commit `7a9599f5`, wilbertpol 114/117).** 7 rounds, all IF reads after an LCD re-enable:
+rounds 1-4 bracket the line-0 mode2 STAT-IF latch (109→110 nops, $E0→$E2), rounds 5-7 (resync `wait_ly 143; nops 70;
+clear IF; nops 26/27/28`) bracket the line-144 mode2-entry STAT-IF ($E0→$E2) and the VBlank-IF one dot later ($E2→$E3). A
+real-ROM WRAM dump (both trees) isolated the failure to **round5 only** (branch $E2 vs main $E0); rounds 1-4 and 6/7
+already matched. So the line-0 mode2 latch and the VBlank IF (item-3) are correct; only the line-144 mode2-entry STAT IF
+fired one read-position early.
+- **Mechanism:** rounds 5-7 run during the blank frame after the LCD re-enable. `ordinary_mode2_stat_pretrigger_lead_dots`
+  already shifts the ordinary mode2 pretrigger one dot later in the blank frame (4→3) — which is why rounds 1-4 (line-0,
+  ordinary path) are correct — but `mode2_vblank_entry_stat_source` (the line-144 mode2-entry quirk) used a fixed
+  pretrigger (`==`, 4 dots) with no blank-frame adjustment, so it fired one dot early in the blank frame.
+- **Fix:** apply the same blank-frame adjustment to `mode2_vblank_entry_stat_source` (`pretrigger_dots -= 1` when
+  `blank_frame_active`), so both mode2 pretrigger paths agree. round5 $E2→$E0.
+- Canon self-audit: removes an asymmetry by extending an EXISTING blank-frame compensation (the ordinary-mode2 4→3 lead)
+  to the parallel vblank-entry source; not a new manual table/constant. Net manual-seam count does not rise.
+- Gate green: wilbertpol 113→114, mooneye 111 unchanged, blargg 58/58, mealybug 13-fail (m3_scy_change DMG closed), lib 9
+  pre-existing mode_edges reds, integration/trace failing set byte-identical (27 total), fmt-check + lint clean.
+
+**Cluster status after batches 1-4.** Closed this work: `intr_2_mode0_timing` (batch-1), `intr_2_oam_ok_timing`
+(batch-2), `vblank_if_timing` (batch-3), `intr_2_timing` (batch-4). **Scoreboard: wilbertpol 114/117, mooneye 111/113**,
+blargg 58/58, mealybug 13-fail. Remaining:
+- `intr_2_mode0_scx3/scx7_timing_nops` (wb) + `intr_2_mode0_timing_sprites` (wb+mn) — the **fetcher/§245 mode3-length**
+  batch (per-scx and sprite-extended mode3 length; §24.21 proved scx is not a readback gate-seam). Needs the
+  `[PPU][MODE3-FETCHER-LEAD]` work, not the mode0-publish pattern; do NOT re-fit the §245 sprite penalty.
+- `boot_hwio-dmg0` (mn) — boot-handoff IO snapshot (dmg0 LY $01 / STAT $83 / DIV $19). Independent of the PPU readback /
+  STAT cluster; depends on the dmg0 boot-ROM duration + raster position at handoff.
