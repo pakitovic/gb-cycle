@@ -16,7 +16,8 @@ jobs:
       matrix:
         include:
           - name: ax6
-          - name: samesuite
+          # Temporarily disabled while the standalone SameSuite v7 report is imported and baselined.
+          # - name: samesuite
           - name: little-things-gb
           - name: magen
           # Temporarily disabled while the c-sp v7 Mealybug inventory is validated manually.

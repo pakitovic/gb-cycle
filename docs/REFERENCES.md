@@ -29,7 +29,7 @@ Consult primary documentation and hardware research before emulator source code.
 - [gb-cycle GBEmulatorShootout fork dashboard](https://pakitovic.github.io/GBEmulatorShootout/) — project-facing summary of the current gb-cycle counted rows.
 - [blargg test ROMs](https://github.com/retrio/gb-test-roms) — CPU, timing, memory, OAM, and DMG/CGB sound ROMs, currently consumed through the curated GBEmulatorShootout source path rather than a direct retrio checkout.
 - [Mooneye GB](https://github.com/Gekkio/mooneye-gb) — acceptance, boot, CPU/interrupt/timer/DMA, serial, and model-specific executable tests plus documentary reasoning.
-- [c-sp/game-boy-test-roms](https://github.com/c-sp/game-boy-test-roms) — release-ZIP aggregate used for the archive-backed Mooneye and Wilbertpol Mooneye-derived ROM channels, including independently pinned ROM and fixture hashes.
+- [c-sp/game-boy-test-roms](https://github.com/c-sp/game-boy-test-roms) — release-ZIP aggregate used for archive-backed Blargg, Mooneye, Wilbertpol, and standalone SameSuite channels, including independently pinned ROM and fixture hashes.
 - [dmg-acid2](https://github.com/mattcurrie/dmg-acid2), [cgb-acid2](https://github.com/mattcurrie/cgb-acid2), and Acid-family CGB hardening ROMs — framebuffer-oracle visual PPU references.
 - [mealybug-tearoom-tests](https://github.com/mattcurrie/mealybug-tearoom-tests) — DMG/CGB PPU timing and LCD pipeline framebuffer-oracle rows.
 - [SameSuite](https://github.com/LIJI32/SameSuite) — CGB APU, DMA, palette/PPU, and SGB command/multiplayer executable tests.

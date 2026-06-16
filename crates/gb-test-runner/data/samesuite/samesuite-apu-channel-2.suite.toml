@@ -1,0 +1,68 @@
+family = "samesuite"
+suite_name = "samesuite-apu-channel-2"
+report = "samesuite"
+model = "cgb"
+revision = "cpu-cgb-e"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-duty-delay"
+rom = "apu/channel_2/channel_2_duty_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-delay"
+rom = "apu/channel_2/channel_2_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-align"
+rom = "apu/channel_2/channel_2_align.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-nrx2-speed-change"
+rom = "apu/channel_2/channel_2_nrx2_speed_change.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-restart"
+rom = "apu/channel_2/channel_2_restart.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-extra-length-clocking-cgb0b"
+rom = "apu/channel_2/channel_2_extra_length_clocking-cgb0B.gb"
+revision = "cpu-cgb-0"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-duty"
+rom = "apu/channel_2/channel_2_duty.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-freq-change"
+rom = "apu/channel_2/channel_2_freq_change.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-stop-div"
+rom = "apu/channel_2/channel_2_stop_div.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-stop-restart"
+rom = "apu/channel_2/channel_2_stop_restart.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-restart-nrx2-glitch"
+rom = "apu/channel_2/channel_2_restart_nrx2_glitch.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-nrx2-glitch"
+rom = "apu/channel_2/channel_2_nrx2_glitch.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-align-cpu"
+rom = "apu/channel_2/channel_2_align_cpu.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-volume-div"
+rom = "apu/channel_2/channel_2_volume_div.gb"
+
+[[case]]
+id = "samesuite-apu-channel-2-channel-2-volume"
+rom = "apu/channel_2/channel_2_volume.gb"

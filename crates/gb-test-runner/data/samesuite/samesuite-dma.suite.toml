@@ -1,0 +1,22 @@
+family = "samesuite"
+suite_name = "samesuite-dma"
+report = "samesuite"
+model = "cgb"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-dma-hdma-lcd-off"
+rom = "dma/hdma_lcd_off.gb"
+
+[[case]]
+id = "samesuite-dma-gdma-addr-mask"
+rom = "dma/gdma_addr_mask.gb"
+
+[[case]]
+id = "samesuite-dma-gbc-dma-cont"
+rom = "dma/gbc_dma_cont.gb"
+
+[[case]]
+id = "samesuite-dma-hdma-mode0"
+rom = "dma/hdma_mode0.gb"
