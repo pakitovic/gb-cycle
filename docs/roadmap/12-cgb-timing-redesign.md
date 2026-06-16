@@ -1632,3 +1632,38 @@ base `intr_2_*` mode0-edge readback. Gate unchanged: fmt-check + lint + tests + 
 wilbertpol 117 + m3 no-regress; THEN rewrite the (now ~9) `*_hidden_from_same_cycle_cpu_if*` + the §24.10 lcd_restart
 unit tests to the post-reorder behaviour, regen the ~17 trace fixtures, and DELETE `ppu_oracle_sweep.rs` (+ its `mod`
 line in `tests/ppu.rs`, commit `685893d8`).
+
+### 24.13 DIRECTION CHANGE — close the remaining STAT/LYC clusters CANONICALLY (delete the seam), not by re-deriving constants (user decision, 2026-06-16)
+
+**Decision:** the user reviewed batch 3 and chose to stop patching the observation-table seam constants and instead
+**replace it with the canonical DocBoy model.** Rationale: the remaining L2-a.1 failures ARE the known seams
+(`ly_lyc_0`/line-153 = the *observation-tables* seam; `intr_2_*` mode0 / `scx_nops` = the *mode0-publish* seam; vblank =
+the IF-visibility variant). §24.8's "re-derive the pretrigger / line-153 LYC-compare constants" plan = patching the
+seam; it entrenches it and pins more tests to it (proven by the refuted 21-test cascade in §24.12). **Re-greening must
+not rebuild what the canonical refactor exists to delete.** The scheduler reorder (L2-a) and E1 STAY — both are
+canonical-aligned (E1 actually removed a dot0 special case and matches DocBoy's delayed-LY effect); E1's branch is later
+subsumed by the replacement.
+
+**The canonical model (DocBoy `src/docboy/docboy/ppu/ppu.cpp`, verified):**
+- `last_ly` = LY delayed by 1 T-cycle; `last_lyc` = LYC delayed by 1 T-cycle (ppu.cpp:554-560,366). The coincidence is
+  `is_lyc_eq_ly() = (last_lyc == last_ly) && enable_lyc_eq_ly_irq` (ppu.cpp:651-667). The 1-T-cycle register delay is
+  what makes the coincidence/IRQ land one dot after the LY increment — i.e. E1's effect falls out for FREE, with no
+  `regular_line_dot0_compare_window`.
+- `enable_lyc_eq_ly_irq` is a SINGLE flag toggled at the few edge dots instead of gb-cycle's 11 window constants: on DMG
+  LYC_EQ_LY is forced 0 at dot 454 and at last-scanline (LY 153→0) dots ~2:6; on CGB the flag RETAINS its previous state
+  over those windows (ppu.cpp:653-667 documents this DMG/CGB divergence — the same split gb-cycle encodes as separate
+  `LINE_153_*` vs `CGB_LINE_153_*` constants). Cross-check against SameBoy + Pandocs LYC timing before landing.
+- STAT mode readback: DocBoy derives it from the current dot with the delayed registers, not from
+  `published_stat` dot-window overrides — that is the separate *mode0-publish* seam (handle with the same philosophy).
+
+**The seam to DELETE (gb-cycle):** `live_ly_for_lyc_compare()` + `lyc_compare_latch` + `regular_line_dot0_compare_window`
+(irq.rs:24-101) + the 11 `LINE_153_LYC*`/`CGB_LINE_153_*`/`*_LY_READ_ZERO_DOT`/`CGB_LINE_END_LYC_COMPARE_BLANK_DOTS`
+constants (ppu.rs:70-80). Replace with `last_ly`/`last_lyc` (delayed registers, serialized in save-state) + an
+`enable_lyc_eq_ly_irq`-style flag. This should close `ly_lyc_0-GS/-C`, `ly_lyc_0_write-GS` and keep the E1-closed ones
+green WITHOUT the dot windows. Ground every step with the §24.12 differential method (main worktree + the sweep harness +
+the wilbertpol sources) AND DocBoy `build-trace-cgb`.
+
+**Sequencing:** (1) observation-tables seam → DocBoy LYC model (LYC + line-153 clusters); (2) mode0-publish seam → DocBoy
+mode-from-delayed-registers (base `intr_2_*` + `scx_nops`); (3) vblank IF-read-vs-dispatch skew (still a design item,
+§24.12). The unit tests pinned to the old seam (the ~9 `mode_edges::*` reds + others) get rewritten to the canonical
+behaviour as part of each replacement, not before. Keep the reorder; keep E1 until the LYC model lands.
