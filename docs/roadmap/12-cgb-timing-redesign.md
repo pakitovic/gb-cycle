@@ -1997,3 +1997,44 @@ by direct fetch):**
 - `boot_hwio-dmg0` (mn) — boot-handoff IO snapshot (LCDC/STAT/SCY/SCX/LY/LYC/BGP read once at $0100; dmg0 = LY $01, STAT
   $83/mode3, DIV $19). NOT a STAT-cluster timing test; depends on the dmg0 boot-ROM duration + PPU raster position at
   handoff. Independent of the mode0-publish work.
+
+### 24.21 ITEM (2) batch-3: vblank_if_timing LANDED (LY-wrap), scx3/scx7 gate-deletion REFUTED → fetcher cluster (2026-06-16)
+
+**`vblank_if_timing` LANDED (commit `b798c348`, wilbertpol 113/117).** Correcting the §24.20 note: the full wilbertpol
+source has 5 rounds, and rounds **4/5 read LY** (not IF) — `r4 = wait_vblank_irq; di; nops 96; ldh a,(LY)` asserts LY=144,
+`r5 = …nops 97…` asserts LY=145. A real-ROM WRAM dump (both trees) isolated the failure to round5 only: branch r5=144 vs
+main r5=145; r1-r4 already matched. A faithful LY-after-vblank-IRQ probe pinned the mechanism: round5's read lands at the
+144→145 **wrap**, where the CPU-first reorder makes the CPU observe the pre-tick `line_dot` (line 144 dot 455) and read
+ly=144, while main reads the post-tick wrap value 145.
+- **Fix:** `read_ly_without_skip_boot_lag` gains a one-dot vblank-wrap compensation — at the final dot of a vblank line
+  (`ly >= VISIBLE_SCANLINES && line_dot + 1 >= current_scanline_length() && ly + 1 < TOTAL_SCANLINES`) the same-cycle CPU
+  LY read publishes the next line. This mirrors the mode0-publish overrides (CPU-pre-tick observation). Crucially it is
+  **one dot, not the visible 6-dot lead** (450..455): the test's round4 reads 144 at line 144 dot ~452, so the visible lead
+  would be wrong at vblank and is correctly gated off by `ly < VISIBLE_SCANLINES`. Line 153 stays excluded by `ly + 1 <
+  TOTAL_SCANLINES` (handled by `line_153_reads_as_ly0`); the visible 6-dot lead is untouched.
+- Canon self-audit: a structural reorder compensation mirroring the existing canonical mode0-publish pattern, not a manual
+  table/constant; net manual-seam count does not rise. The §24.18 internal-LY mid-line rephase is the end-state that
+  subsumes it (the wrap compensation collapses into the intrinsic lead once `self.ly` leads/wraps in phase).
+- Gate green: wilbertpol 112→113, mooneye 111 unchanged, blargg 58/58, mealybug 13-fail (m3_scy_change DMG closed), lib 9
+  pre-existing mode_edges reds, integration/trace failing set byte-identical (27 total), fmt-check + lint clean.
+
+**`intr_2_mode0_scx3/scx7_timing_nops` — the "delete the `scx==0` gate" plan is REFUTED (deferred to the fetcher/§245
+cluster).** The D/E rounds read STAT mode bits (`nops delay; ld a,(STAT); and $03`) and bracket the mode3→mode0 edge at
+SCX=3/7. Oracle (single STAT-read-after-delay probe, scx 0..8, both trees, DMG=CGB) showed the branch matches main for
+scx **0,1,2,4,5,6,8** and is +1 late ONLY at scx **3,7** — i.e. NOT the uniform gate effect the seam hypothesis predicted.
+Experiment (removing the `scx==0 || mode0-int` gate so the override fires for all scx): it FIXES scx3/scx7 but REGRESSES
+scx4/scx8 (those go one dot early). Transition-delay table (mode0@nop, DMG):
+
+| scx        | 0  | 1  | 2  | 3   | 4   | 5  | 6  | 7   | 8   |
+|------------|----|----|----|-----|-----|----|----|-----|-----|
+| main       | 49 | 50 | 50 | 50  | 51  | 51 | 51 | 51  | 50  |
+| branch+gate| 49 | 50 | 50 | 51✗ | 51  | 51 | 51 | 52✗ | 50  |
+| no-gate    | 49 | 50 | 50 | 50  | 50✗ | 51 | 51 | 51  | 49✗ |
+
+No binary scx-gating of the override reproduces main's per-scx pattern. The residual is the **sub-dot mode3-length phase
+per scx** (the `[PPU][MODE3-FETCHER-LEAD]` seam / §245), not the STAT-readback gate. The gate `scx==0 || mode0-int` is a
+hand-fit compensation that happens to land 0-2/4-6/8 but not 3/7; it is NOT a deletable seam in isolation. **Deferred:
+group scx3/scx7 with `intr_2_mode0_timing_sprites` (batch-4, the §245/fetcher-lead mode3-length work).** The remaining
+cluster is now: `intr_2_timing` (LCD-restart mode2-STAT-IF latch, IF path), `intr_2_mode0_timing_sprites` + scx3/scx7
+(mode3-length/§245/fetcher), `boot_hwio-dmg0` (boot handoff, independent). Scoreboard after batches 1-3: **wilbertpol
+113/117, mooneye 111/113**, blargg 58/58, mealybug 13-fail.
