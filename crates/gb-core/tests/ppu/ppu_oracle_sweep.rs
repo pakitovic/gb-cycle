@@ -332,6 +332,23 @@ fn oracle_sweep_vblank_ly_after_irq() {
 
 #[test]
 #[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_run_intr_2_timing_rom() {
+    let base = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../test/wilbertpol/wilbertpol/acceptance/gpu"
+    );
+    // intr_2_timing rounds (IF reads after LCD re-enable): r1 0nops->$E0, r2 109->$E0,
+    // r3 110->$E2, r4 130->$E2, r5 wait143+70+clr+26->$E0, r6 +27->$E2, r7 +28->$E3.
+    // Stores r1..r7 to consecutive WRAM. wb-only (DMG).
+    run_real_rom_capture_wram(
+        &format!("{base}/intr_2_timing.gb"),
+        ConsoleModel::GameBoy,
+        40,
+    );
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
 fn oracle_run_vblank_if_rom() {
     let base = concat!(
         env!("CARGO_MANIFEST_DIR"),

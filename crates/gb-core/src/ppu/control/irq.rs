@@ -304,9 +304,16 @@ impl Ppu {
     }
 
     fn mode2_vblank_entry_stat_source(&self) -> bool {
-        let Some(pretrigger_dots) = self.mode2_vblank_entry_stat_pretrigger_dots() else {
+        let Some(mut pretrigger_dots) = self.mode2_vblank_entry_stat_pretrigger_dots() else {
             return false;
         };
+
+        // The blank frame after an LCD re-enable shifts the mode2 STAT pretrigger one dot
+        // later, exactly like `ordinary_mode2_stat_pretrigger_lead_dots` (4->3); the
+        // vblank-entry source needs the same adjustment (wilbertpol intr_2_timing round5).
+        if self.runtime.blank_frame_active {
+            pretrigger_dots -= 1;
+        }
 
         self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
             && self.is_lcd_enabled()
