@@ -65,7 +65,7 @@ fn cpu_stat_read_logs_sprite_extended_post_visible_tail_without_startup_placehol
 }
 
 #[test]
-fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_without_obj_work() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x167_visible_tail_without_obj_work() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -114,14 +114,17 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_without_obj_work()
         MODE0_START_DOT + 17,
         "internal raster still stretches one more dot from the live transfer"
     );
+    // CPU-first reorder: the Drawing→HBlank boundary is observed one dot early, so the
+    // same-cycle CPU STAT read at mode0_start_dot-1 (line_dot here) already yields HBlank.
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x03
+        0x00
     );
 }
 
 #[test]
-fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_pending_same_x_work() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x167_visible_tail_with_pending_same_x_work()
+{
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -167,14 +170,15 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_pending_same_
         MODE0_START_DOT + 17,
         "internal raster still stretches one more dot from the live transfer"
     );
+    // CPU-first reorder: the Drawing→HBlank boundary is observed one dot early.
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x03
+        0x00
     );
 }
 
 #[test]
-fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_ready_push_and_pending_same_x_chain()
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x167_visible_tail_with_ready_push_and_pending_same_x_chain()
  {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
@@ -236,9 +240,10 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x167_visible_tail_with_ready_push_an
         MODE0_START_DOT + 61,
         "live transfer still stretches one more dot before the CPU-visible read"
     );
+    // CPU-first reorder: the Drawing→HBlank boundary is observed one dot early.
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x03
+        0x00
     );
 }
 
@@ -350,7 +355,7 @@ fn cpu_stat_read_keeps_drawing_for_terminal_x165_visible_tail_while_blank_frame_
 }
 
 #[test]
-fn cpu_stat_read_keeps_mode3_for_terminal_x166_visible_tail_without_blank_frame() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x166_visible_tail_without_blank_frame() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x93,
@@ -394,9 +399,10 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x166_visible_tail_without_blank_frame(
         MODE0_START_DOT + 60,
         "internal raster still stretches one more dot from the live transfer"
     );
+    // CPU-first reorder: the Drawing→HBlank boundary is observed one dot early.
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x03
+        0x00
     );
 }
 

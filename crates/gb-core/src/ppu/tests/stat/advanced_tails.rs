@@ -105,7 +105,8 @@ fn cpu_stat_read_logs_terminal_x162_placeholder_backed_tail_with_blank_frame_act
 }
 
 #[test]
-fn cpu_stat_read_keeps_mode3_for_terminal_x161_placeholder_backed_tail_on_saturated_sprite_lines() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x161_placeholder_backed_tail_on_saturated_sprite_lines()
+ {
     let ppu = terminal_tail_rig(TerminalTailConfig {
         current_transfer_x: 161,
         visible_pixels_output: 153,
@@ -120,11 +121,14 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x161_placeholder_backed_tail_on_satura
         MODE0_START_DOT + 61,
         "internal raster still stretches one more dot from the live transfer"
     );
-    assert_eq!(cpu_visible_stat_mode(&ppu), 0x03);
+    // Under the CPU-first reorder the Drawing→HBlank boundary is observed one dot early,
+    // so the same-cycle CPU STAT read at mode0_start_dot-1 already yields mode0 (HBlank).
+    assert_eq!(cpu_visible_stat_mode(&ppu), 0x00);
 }
 
 #[test]
-fn cpu_stat_read_keeps_mode3_for_terminal_x165_placeholder_backed_tail_on_saturated_sprite_lines() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x165_placeholder_backed_tail_on_saturated_sprite_lines()
+ {
     let ppu = terminal_tail_rig(TerminalTailConfig {
         ly: 70,
         mode0_start_dot: MODE0_START_DOT + 63,
@@ -139,11 +143,14 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x165_placeholder_backed_tail_on_satura
     });
 
     assert_eq!(ppu.current_mode0_start_dot(), MODE0_START_DOT + 65);
-    assert_eq!(cpu_visible_stat_mode(&ppu), 0x03);
+    // Under the CPU-first reorder the Drawing→HBlank boundary is observed one dot early,
+    // so the same-cycle CPU STAT read at mode0_start_dot-1 already yields mode0 (HBlank).
+    assert_eq!(cpu_visible_stat_mode(&ppu), 0x00);
 }
 
 #[test]
-fn cpu_stat_read_keeps_mode3_for_terminal_x159_ready_tail_on_shorter_saturated_sprite_lines() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x159_ready_tail_on_shorter_saturated_sprite_lines()
+ {
     let ppu = terminal_tail_rig(TerminalTailConfig {
         stat: STAT_MODE2_INTERRUPT_ENABLE_BIT,
         current_transfer_x: 159,
@@ -158,11 +165,14 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x159_ready_tail_on_shorter_saturated_s
         MODE0_START_DOT + 61,
         "live transfer still stretches one more dot from the shorter ready tail"
     );
-    assert_eq!(cpu_visible_stat_mode(&ppu), 0x03);
+    // Under the CPU-first reorder the Drawing→HBlank boundary is observed one dot early,
+    // so the same-cycle CPU STAT read at mode0_start_dot-1 already yields mode0 (HBlank).
+    assert_eq!(cpu_visible_stat_mode(&ppu), 0x00);
 }
 
 #[test]
-fn cpu_stat_read_keeps_mode3_for_terminal_x151_ready_tail_on_unsaturated_sprite_lines() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x151_ready_tail_on_unsaturated_sprite_lines()
+ {
     let ppu = terminal_tail_rig(TerminalTailConfig {
         current_transfer_x: 151,
         visible_pixels_output: 143,
@@ -181,11 +191,14 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x151_ready_tail_on_unsaturated_sprite_
         ppu.current_transfer().map(|transfer| transfer.readiness),
         Some(Mode3TransferReadiness::Ready(_))
     ));
-    assert_eq!(cpu_visible_stat_mode(&ppu), 0x03);
+    // Under the CPU-first reorder the Drawing→HBlank boundary is observed one dot early,
+    // so the same-cycle CPU STAT read at mode0_start_dot-1 already yields mode0 (HBlank).
+    assert_eq!(cpu_visible_stat_mode(&ppu), 0x00);
 }
 
 #[test]
-fn cpu_stat_read_keeps_mode3_for_terminal_x158_ready_tail_on_saturated_sprite_lines() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_x158_ready_tail_on_saturated_sprite_lines()
+{
     let ppu = terminal_tail_rig(TerminalTailConfig {
         current_transfer_x: 158,
         visible_pixels_output: 150,
@@ -203,11 +216,14 @@ fn cpu_stat_read_keeps_mode3_for_terminal_x158_ready_tail_on_saturated_sprite_li
         ppu.current_transfer().map(|transfer| transfer.readiness),
         Some(Mode3TransferReadiness::Ready(_))
     ));
-    assert_eq!(cpu_visible_stat_mode(&ppu), 0x03);
+    // Under the CPU-first reorder the Drawing→HBlank boundary is observed one dot early,
+    // so the same-cycle CPU STAT read at mode0_start_dot-1 already yields mode0 (HBlank).
+    assert_eq!(cpu_visible_stat_mode(&ppu), 0x00);
 }
 
 #[test]
-fn cpu_stat_read_keeps_mode3_for_terminal_waiting_for_fifo_tail_on_unsaturated_sprite_lines() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_terminal_waiting_for_fifo_tail_on_unsaturated_sprite_lines()
+ {
     let ppu = terminal_tail_rig(TerminalTailConfig {
         current_transfer_x: 152,
         visible_pixels_output: 144,
@@ -227,5 +243,7 @@ fn cpu_stat_read_keeps_mode3_for_terminal_waiting_for_fifo_tail_on_unsaturated_s
         ppu.current_transfer().map(|transfer| transfer.readiness),
         Some(Mode3TransferReadiness::WaitingForFifo(_))
     ));
-    assert_eq!(cpu_visible_stat_mode(&ppu), 0x03);
+    // Under the CPU-first reorder the Drawing→HBlank boundary is observed one dot early,
+    // so the same-cycle CPU STAT read at mode0_start_dot-1 already yields mode0 (HBlank).
+    assert_eq!(cpu_visible_stat_mode(&ppu), 0x00);
 }

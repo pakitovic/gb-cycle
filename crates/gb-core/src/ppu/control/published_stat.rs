@@ -62,13 +62,29 @@ impl Ppu {
         &self,
         context: PpuPublishedStatModeContext,
     ) -> bool {
-        context.published_mode == PpuAccessMode::Drawing
+        if self.vblank_wrap_line0_stat_readback_delay_active()
+            || self.runtime.blank_frame_active
+            || self.ly >= VISIBLE_SCANLINES
+            || !(self.scx == 0 || self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0)
+        {
+            return false;
+        }
+
+        let mode0_start_dot = self.current_mode0_start_dot();
+
+        if context.published_mode == PpuAccessMode::Drawing
             && context.current_mode == PpuAccessMode::HBlank
-            && !self.vblank_wrap_line0_stat_readback_delay_active()
-            && !self.runtime.blank_frame_active
-            && self.ly < VISIBLE_SCANLINES
-            && self.line_dot == self.current_mode0_start_dot()
-            && (self.scx == 0 || self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0)
+            && self.line_dot == mode0_start_dot
+        {
+            return true;
+        }
+
+        // The CPU micro-op observes the pre-tick `line_dot`, so the Drawing→HBlank
+        // boundary must publish one dot earlier to match the same-cycle CPU read, exactly
+        // like the OamScan→Drawing override above (wilbertpol/mooneye intr_2_mode0_timing).
+        self.line_dot + 1 == mode0_start_dot
+            && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::Drawing
+            && self.access_mode_for_line_dot(self.line_dot + 1) == PpuAccessMode::HBlank
     }
 
     fn published_stat_mode2_to_mode3_override_applies(

@@ -40,7 +40,7 @@ fn cpu_stat_read_switches_to_mode3_on_the_exact_mode2_end_dot() {
 }
 
 #[test]
-fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot() {
+fn cpu_stat_read_switches_to_hblank_one_dot_before_mode0_start_under_the_reorder() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -59,19 +59,22 @@ fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot() {
     ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
     ppu.blank_frame_active = false;
 
-    ppu.line_dot = MODE0_START_DOT - 1;
+    // Under the CPU-first reorder the same-cycle CPU read observes the pre-tick line_dot,
+    // so the Drawing→HBlank boundary is published one dot early: mode3 still reads at
+    // mode0_start_dot-2, but mode0 (HBlank) already reads at mode0_start_dot-1.
+    ppu.line_dot = MODE0_START_DOT - 2;
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
         0x03
     );
 
-    ppu.line_dot = MODE0_START_DOT;
+    ppu.line_dot = MODE0_START_DOT - 1;
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
         0x00
     );
 
-    ppu.line_dot = MODE0_START_DOT + 1;
+    ppu.line_dot = MODE0_START_DOT;
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
         0x00

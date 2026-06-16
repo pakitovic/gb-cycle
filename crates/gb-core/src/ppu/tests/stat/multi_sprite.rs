@@ -65,7 +65,7 @@ fn two_same_x_sprites_pay_one_alignment_stall_then_a_bare_fetch_on_a_blank_frame
 }
 
 #[test]
-fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x8_x10_preterminal_tail() {
+fn cpu_stat_read_reads_mode0_one_dot_early_for_two_sprite_staggered_x8_x10_preterminal_tail() {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {
         lcdc: 0x91,
@@ -115,9 +115,11 @@ fn cpu_stat_read_keeps_drawing_for_two_sprite_staggered_x8_x10_preterminal_tail(
         MODE0_START_DOT + 17,
         "staggered x=8/16 pair still has one live drawing dot before internal HBlank"
     );
+    // CPU-first reorder: the Drawing→HBlank boundary is observed one dot early, so the
+    // same-cycle CPU STAT read at mode0_start_dot-1 already yields mode0 (HBlank).
     assert_eq!(
         ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
-        0x03
+        0x00
     );
 }
 
