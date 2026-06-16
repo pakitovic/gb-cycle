@@ -1895,3 +1895,39 @@ canonical delayed register (no manual table). Recommend treating the full rephas
 then over `154*456` dots records `(ly, line_dot, read_register(0xFF44,CpuBusOperation), live_ly_for_lyc_compare(),
 lyc_coincidence_for_readback(), lyc_coincidence_for_irq_line())` and prints the dots where `observed_ly==lyc` diverges
 from the seam readback/irq. Reverted (not committed) — findings captured above.
+
+### 24.19 ITEM (2) mode0-publish — base `intr_2_mode0_timing` fix VALIDATED (the §24.12 "blowup" is legit test-pinning), full cluster is multi-batch (2026-06-16)
+
+**Oracle (`oracle_sweep_intr_2_mode0_timing`, both trees):** confirmed §24.12 — poll-until-mode0 transitions 2→1 at delay
+**46→47 on branch vs 45→46 on main (+1 late)**; poll-until-mode2 identical (47→48). The Drawing→HBlank (mode0) edge is
+observed one read-position late under the CPU-first reorder; mode2/mode3 already correct (the §24.11 fix-#6
+mode2→mode3 override fires at `MODE2_DOTS-1`, one dot early). DMG and CGB identical.
+
+**The fix (validated, then reverted to keep the tree green for a deliberate landing):** make the mode0 boundary override
+fire **one dot earlier**, mirroring the mode2→mode3 override — `published_stat_steady_frame_mode0_boundary_override_applies`
+returns true also when `line_dot + 1 == current_mode0_start_dot() && access_mode_for_line_dot(line_dot)==Drawing &&
+access_mode_for_line_dot(line_dot+1)==HBlank` (same gate `scx==0 || mode0-int`). This is scoped to the STAT readback path
+(`current_published_stat_access_mode`), NOT the bus-access modes (`current_published_bus_access_mode` is separate). Result:
+poll-until-mode0 → **45→46 = main**; **wilbertpol 110→111, mooneye 109→110** (both close `intr_2_mode0_timing` base),
+poll-until-mode2 unchanged, ZERO ROM regression.
+
+**The §24.12 "exp#2 blew up — lib stat 9→21" is CORRECTED here: it is legit test-pinning, not a regression.** The 12 new
+lib fails are all `cpu_stat_read_*` CpuBusOperation mode0-boundary assertions (`mode_edges::cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot`
++ 6 `advanced_tails::*` + 4 `terminal::*` + 1 `multi_sprite::*`). They assert the PRE-reorder boundary (Drawing at
+`mode0_start_dot-1`, HBlank at `mode0_start_dot`); the reorder-correct CPU read is HBlank one dot earlier. The shift is
+**uniform** (a CPU-pre-tick scheduling property, independent of mode3 length), so the sprite-tail tests shift too — and
+crucially the §245-frozen mode3 terminal-tail LENGTH stays verified by their separate `current_mode0_start_dot()` asserts
+(untouched), so the rewrite does NOT touch §245. **Rewrite shape:** flip each `cpu_visible_stat_mode(&ppu)==0x03`
+assertion that sits at `line_dot == boundary-1` to `==0x00` (or, per test, move the probed `line_dot` to `boundary-2` and
+keep `0x03`); the helper `advanced_tails::cpu_visible_stat_mode` reads `CpuBusOperation`. Per-test `line_dot`-vs-boundary
+analysis is required (some use the `terminal_tail_rig` default, x165 sets `line_dot` explicitly) — mechanical but careful;
+deferred to a focused cut rather than rushed.
+
+**Remaining intr_2_* cluster after the base fix (each a distinct sub-issue, NOT closed by the mode0-edge defer):**
+`intr_2_mode0_timing_sprites` (mooneye+wb) — sprite-extended mode3 LENGTH (the §245-frozen penalty / fetcher-lead, item
+MODE3-FETCHER-LEAD), orthogonal to the reorder edge; `intr_2_oam_ok_timing` (mooneye+wb) — the OAM/mode2 boundary, not
+mode0; `intr_2_timing` (wb); `intr_2_mode0_scx3/scx7_timing_nops` (wb) — scx≠0, so the override gate needs `mode0-int`
+(these are mode2-int tests → the `scx==0` arm fails → the current gate does NOT fire for them; the gate itself is a seam
+to revisit). `vblank_if_timing` (wb) round5 = the LY-after-event read (item-1/2 LY model, §24.14). `boot_hwio-dmg0`
+(mooneye) — boot handoff, separate. **NEXT item-2 batch:** land the validated base fix + the 12 mechanical test rewrites,
+then take the sprites (mode3-length) and scx (gate) sub-issues one at a time against the oracle.
