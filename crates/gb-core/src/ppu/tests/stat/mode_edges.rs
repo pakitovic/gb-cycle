@@ -349,9 +349,21 @@ fn dmg_line153_lyc0_stat_pretrigger_bridges_to_visible_coincidence_without_retri
 
     ppu.tick();
 
+    // The line-153 LYC0 pretrigger edge is deferred one dot (canonical 1-T-cycle delayed
+    // register, capture_delayed_lyc_state): entering the window at PRETRIGGER_DOT does not
+    // yet raise the edge that the CPU would otherwise observe one read-position too early.
     assert_eq!(
         ppu.snapshot().line_dot,
         LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
+    );
+    assert!(!ppu.snapshot().stat_irq_line);
+    assert!(drain_ppu_interrupts(&mut ppu.ppu).is_empty());
+
+    ppu.tick();
+
+    assert_eq!(
+        ppu.snapshot().line_dot,
+        LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT + 1
     );
     assert!(ppu.snapshot().stat_irq_line);
     assert!(!ppu.snapshot().lyc_coincidence);
@@ -361,7 +373,7 @@ fn dmg_line153_lyc0_stat_pretrigger_bridges_to_visible_coincidence_without_retri
     );
 
     ppu.tick_n(u64::from(
-        LINE_153_LYC0_COMPARE_START_DOT - LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT,
+        LINE_153_LYC0_COMPARE_START_DOT - LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT - 1,
     ));
 
     assert_eq!(ppu.snapshot().line_dot, LINE_153_LYC0_COMPARE_START_DOT);
@@ -436,11 +448,12 @@ fn cgb_line153_lyc_edges_follow_the_cgb_compare_schedule() {
     lyc0.blank_frame_active = false;
     lyc0.startup_mode_latch = None;
     lyc0.stat_state.irq_line = false;
-    lyc0.line_dot = CGB_LINE_153_LY_READ_ZERO_DOT - 1;
+    lyc0.line_dot = CGB_LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT - 1;
 
     lyc0.tick();
 
-    assert_eq!(lyc0.snapshot().line_dot, CGB_LINE_153_LY_READ_ZERO_DOT);
+    // The CGB LYC0 pretrigger edge is deferred one dot (capture_delayed_lyc_state), the
+    // same canonical 1-T-cycle delay as DMG. LY already reads 0 at the pretrigger dot.
     assert_eq!(
         lyc0.snapshot().line_dot,
         CGB_LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
@@ -448,8 +461,8 @@ fn cgb_line153_lyc_edges_follow_the_cgb_compare_schedule() {
     assert_eq!(lyc0.read_register(0xFF44), 0);
     assert!(!lyc0.snapshot().lyc_coincidence);
     assert_eq!(
-        lyc0.pending_interrupt_request_mask(),
-        InterruptSource::LcdStat.mask()
+        lyc0.pending_interrupt_request_mask() & InterruptSource::LcdStat.mask(),
+        0
     );
 
     lyc0.tick();

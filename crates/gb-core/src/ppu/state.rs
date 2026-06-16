@@ -2753,6 +2753,8 @@ pub(super) struct StatState {
     pub(super) dmg_stat_write_quirk_blocks_line153_lyc0: bool,
     #[serde(default)]
     pub(super) lyc_compare_latch: bool,
+    #[serde(default)]
+    pub(super) last_line_153_lyc0_pretrigger_window: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]

@@ -949,6 +949,7 @@ impl Ppu {
                 self.refresh_stat_irq_line(false);
             },
         );
+        self.capture_delayed_lyc_state();
     }
 
     fn dmg0_direct_boot_handoff_stat_phase_active(&self) -> bool {

@@ -458,7 +458,10 @@ fn dmg_vblank_stat_write_quirk_blocks_the_repeated_line153_lyc0_source() {
 
     blocked.stat_state.irq_line = false;
     blocked.ly = TOTAL_SCANLINES - 1;
-    blocked.line_dot = LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT;
+    // The pretrigger source reads the 1-T-cycle delayed window membership (deferred edge);
+    // arm it so the test exercises the quirk-block against an otherwise-firing source.
+    blocked.line_dot = LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT + 1;
+    blocked.stat_state.last_line_153_lyc0_pretrigger_window = true;
     blocked.refresh_stat_irq_line(false);
 
     assert!(!blocked.snapshot().stat_irq_line);
@@ -481,7 +484,8 @@ fn dmg_vblank_stat_write_quirk_blocks_the_repeated_line153_lyc0_source() {
     ordinary.blank_frame_active = false;
     ordinary.startup_mode_latch = None;
     ordinary.stat_state.irq_line = false;
-    ordinary.line_dot = LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT;
+    ordinary.line_dot = LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT + 1;
+    ordinary.stat_state.last_line_153_lyc0_pretrigger_window = true;
     ordinary.refresh_stat_irq_line(false);
 
     assert!(ordinary.snapshot().stat_irq_line);

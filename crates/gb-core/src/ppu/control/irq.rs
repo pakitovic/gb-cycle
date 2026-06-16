@@ -111,6 +111,19 @@ impl Ppu {
         }
     }
 
+    // Capture the line-153 LYC0 pretrigger window membership at the END of the tick, as
+    // a 1-T-cycle delayed register (DocBoy last_* family, ppu.cpp:554-560). Under the
+    // CPU-first reorder the CPU observes the raster one dot ahead, so the line-153 LYC0
+    // STAT IRQ edge is otherwise seen one read-position too early; reading the delayed
+    // membership defers that edge by one dot, exactly as E1 defers the regular-line dot0
+    // edge and item (3) defers the VBlank IF edge (wilbertpol ly_lyc_0 / ly_lyc_0_write).
+    // INTERIM: the full observation-tables-seam deletion is coupled to the item-2 raster
+    // rephasing + the write-vs-tick re-eval model; see §24.17.
+    pub(in crate::ppu) fn capture_delayed_lyc_state(&mut self) {
+        self.runtime.stat_state.last_line_153_lyc0_pretrigger_window =
+            self.line_153_lyc0_pretrigger_window_live();
+    }
+
     pub(in crate::ppu) fn lcd_enable_pending_lyc_rise_source(&self) -> bool {
         self.lcd_enable_pending_delay_tcycles == 2
             && self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT != 0
@@ -302,6 +315,20 @@ impl Ppu {
             && self.line_dot + pretrigger_dots == self.current_scanline_length()
     }
 
+    fn line_153_lyc0_pretrigger_window_live(&self) -> bool {
+        if self.ly != TOTAL_SCANLINES - 1 {
+            return false;
+        }
+
+        if self.console_model.is_cgb_family() {
+            (CGB_LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT..CGB_LINE_153_LYC0_COMPARE_START_DOT)
+                .contains(&self.line_dot)
+        } else {
+            (LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT..LINE_153_LYC0_COMPARE_START_DOT)
+                .contains(&self.line_dot)
+        }
+    }
+
     fn line_153_lyc0_stat_irq_pretrigger_source(&self) -> bool {
         if self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT == 0
             || !self.is_lcd_enabled()
@@ -311,15 +338,15 @@ impl Ppu {
             return false;
         }
 
-        if self.console_model.is_cgb_family() {
-            return (CGB_LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT
-                ..CGB_LINE_153_LYC0_COMPARE_START_DOT)
-                .contains(&self.line_dot);
+        if !self.console_model.is_cgb_family() && self.dmg_stat_write_quirk_blocks_line153_lyc0() {
+            return false;
         }
 
-        !self.dmg_stat_write_quirk_blocks_line153_lyc0()
-            && (LINE_153_LYC0_STAT_IRQ_PRETRIGGER_DOT..LINE_153_LYC0_COMPARE_START_DOT)
-                .contains(&self.line_dot)
+        // The line-153 LYC0 STAT IRQ edge is observed one read-position too early under
+        // the CPU-first reorder; defer it one dot via the same 1-T-cycle register delay
+        // as E1's dot0 latch (see capture_delayed_lyc_state). Subsumes the ad-hoc
+        // pretrigger-window edge skew without re-deriving the window constants.
+        self.runtime.stat_state.last_line_153_lyc0_pretrigger_window
     }
 
     fn dmg_stat_write_quirk_blocks_line153_lyc0_stat_source(&self) -> bool {
