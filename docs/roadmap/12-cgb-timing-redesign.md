@@ -1941,3 +1941,59 @@ DMG still closed), lib back to the 9 pre-existing reorder reds, integration/trac
 fmt-check + lint clean. Canon self-audit: the fix is a scoped published-STAT-readback override mirroring the already-canon
 mode2→mode3 one (CPU-pre-tick observation), not a new manual table; net manual-seam count does not rise. Remaining
 intr_2_* cluster (sprites/oam/scx/timing) + vblank_if + boot_hwio are the subsequent batches.
+
+### 24.20 ITEM (2) mode0-publish batch-2 LANDED — `intr_2_oam_ok_timing` via the OAM-read bus path; cluster sources re-diagnosed (2026-06-16)
+
+**Oracle (`oracle_sweep_intr_2_oam_ok_timing`, a faithful poll-until-OAM-accessible probe added to the sweep harness,
+both trees):** the `intr_2_oam_ok_timing` ROM clears OAM, syncs to a mode2 IRQ, then `inc b; ld a,(OAM); and $FF; jr nz`
+counts iterations until the OAM read returns 0 (= OAM accessible = HBlank). Asserts delay 46 → count 1, delay 45 → 2. The
+probe showed the count 2→1 transition at delay **46→47 on the branch vs 45→46 on main (+1 late)**; DMG = CGB. So the
+mode3→mode0 (HBlank) **OAM-unlock** was observed one read-position late under the CPU-first reorder — the SAME skew as the
+batch-1 STAT readback, but on a SEPARATE path: the OAM-read bus path (`cpu_oam_read_bus_state` →
+`current_published_oam_read_access_mode_from`), which the batch-1 STAT-readback fix did not touch.
+
+**Root cause (the path asymmetry).** Both the STAT readback (`current_published_stat_line_dot`) and the bus access
+(`current_published_bus_access_mode`) read the pre-tick `line_dot-1`. After batch-1, the STAT mode0 override fires at
+`line_dot+1 == mode0_start` (one dot early, reorder-correct), but the OAM-read override still fired only at
+`line_dot == mode0_start` (one dot late) — a one-dot mismatch between the two CPU-observed paths.
+
+**The fix (commit `056340d0`).** Mirror the batch-1 STAT override in `current_published_oam_read_access_mode_from`: when
+the pre-tick bus mode is Drawing and `line_dot+1 == current_mode0_start_dot()` with `access_mode_for_line_dot(line_dot+1)
+== HBlank`, publish HBlank for the same-cycle CPU OAM read. Scoped to the OAM-read path only (owner/internal
+`current_bus_access_mode`, the OAM-write and VRAM paths untouched). **Deliberately NO `scx==0` gate** — the OAM-unlock is a
+CPU-pre-tick observation for all scx; the `scx==0` gate that still sits on the STAT-readback mode0 override is the
+remaining mode0-publish seam (item-2 batch-3 = `intr_2_mode0_scx3/scx7`), and when that lands the STAT readback will
+unlock early for scx≠0 too and reconverge with this OAM path. So this fix is the forward-consistent canonical end-state
+for the OAM path, not a seam. Net manual-seam count does not rise (same CPU-pre-tick principle as the canonical
+mode2→mode3 / batch-1 overrides).
+
+**Test rewrites.** Two pinned `stat::bus` unit tests rewritten to the reorder-correct OAM unlock:
+`cpu_oam_read_bus_state_switches_to_hblank_on_the_exact_mode0_start_dot` → `…_one_dot_before_mode0_start` (now HBlank at
+`mode0_start-1`, anchored by a `mode0_start-2` Drawing probe); `sprite_extended_mode0_start_opens_cpu_oam_read_before_published_stat_catches_up`
+updated so OAM opens at `mode0_start-1` while the (scx-gated, still-lagging) STAT readback stays Drawing — the test's
+theme (OAM ahead of STAT) holds with a wider gap. The §245 `current_mode0_start_dot()` asserts are untouched.
+
+**Gate green: wilbertpol 111→112, mooneye 110→111** (both close `intr_2_oam_ok_timing`), blargg 58/58, mealybug 13-fail
+(m3_scy_change DMG still closed), lib back to the 9 pre-existing reorder mode_edges reds, integration/trace failing set
+byte-identical (27 total), fmt-check + lint clean.
+
+**Remaining cluster — sources RE-DIAGNOSED from the wilbertpol master `.s` (the workflow agents mislabelled three; verified
+by direct fetch):**
+- `intr_2_mode0_scx3/scx7_timing_nops` (wb) — **STAT-readback** mode3→mode0 bracket (D/E rounds: `nops delay; ld a,(STAT);
+  and $03`, delay→mode3 then +1→mode0) at SCX=3/7, plus a mode2-IRQ instruction-counter (B/C). The mode3→mode0 readback is
+  the SAME edge batch-1 fixed for scx=0, but the override's `scx==0 || mode0-int` gate does not fire (these are mode2-int
+  tests, scx≠0). **Fix = derive the scx-aware mode0 boundary without the `scx==0` gate** (do NOT re-fit the §245 sprite
+  penalty). This is item-2 batch-3, the direct sibling of batch-1/2.
+- `intr_2_mode0_timing_sprites` (wb+mn) — NOT an IF test (the agent mislabelled it). Real source: `testcase`/`run_testcase`
+  with sprites at X coords (`testcase 2,0` / `4,0,0` / …), `ld d,41+extra; ld e,40+extra` → it measures sprite-extended
+  **mode3 LENGTH** (§245-frozen penalty / fetcher-lead). Orthogonal to the readback skew; most §245-entangled → last.
+- `intr_2_timing` (wb) — NOT a poll-loop. LCD off@LY144 / on, then a single `ldh a,(IF)` per round (STAT=%00100000 mode2
+  source, LYC=$F0). Rounds 1-4 pin the first **mode2 STAT-IF latch after an LCD re-enable** (109→110 nops); rounds 5-7 the
+  STAT-vs-VBlank IF ordering at 143→144. Path = IF-read + LCD-restart phase (adjacent to item-3 / `LCD_REENABLE_LINE0_*`),
+  NOT a mode0 readback.
+- `vblank_if_timing` (wb) — NOT an LY-after-event read (the older §24.14 note and the agent both off): real source reads
+  **IF** every round; round1 nops 97 → $E0 (VBlank bit0 clear), round2 nops 98 → $E1 (VBlank bit0 set). It pins the
+  **VBlank IF (bit0)** raise at 143→144 after an LCD restart. Path = IF-read / vblank entry (item-3 family).
+- `boot_hwio-dmg0` (mn) — boot-handoff IO snapshot (LCDC/STAT/SCY/SCX/LY/LYC/BGP read once at $0100; dmg0 = LY $01, STAT
+  $83/mode3, DIV $19). NOT a STAT-cluster timing test; depends on the dmg0 boot-ROM duration + PPU raster position at
+  handoff. Independent of the mode0-publish work.
