@@ -2066,3 +2066,49 @@ blargg 58/58, mealybug 13-fail. Remaining:
   `[PPU][MODE3-FETCHER-LEAD]` work, not the mode0-publish pattern; do NOT re-fit the §245 sprite penalty.
 - `boot_hwio-dmg0` (mn) — boot-handoff IO snapshot (dmg0 LY $01 / STAT $83 / DIV $19). Independent of the PPU readback /
   STAT cluster; depends on the dmg0 boot-ROM duration + raster position at handoff.
+
+### 24.23 boot_hwio-dmg0 DIAGNOSED (dmg0 boot-power-on STAT phase one mode behind) — DEFERRED, NOT a mode0-publish item (2026-06-16)
+
+**Diagnosis (real-ROM IO-read capture, dmg0 vs the passing dmgABCmgb).** boot_hwio walks `$FF00..$FF7F` once at `$0100`
+and exact-matches a per-row table; the first mismatch fails. Capturing the first read of the PPU registers under the dmg0
+boot-power-on lag window (which freezes the PPU-register reads at the handoff phase, `boot_power_on_ppu_phase_extends_until_vblank`):
+
+| reg  | dmg0 reads | dmg0 expects | dmgABCmgb reads (passes) |
+|------|-----------|--------------|--------------------------|
+| DIV  | `$19` ✓   | `$19`        | `$AD` ✓ (live, window expired) |
+| LY   | `$01` ✓   | `$01`        | `$0A` ✓ (live)           |
+| STAT | `$82` (mode2) ✗ | `$83` (mode3) | `$80` ✓ (live mode0)  |
+
+Only **STAT** mismatches: gb-cycle returns mode2 (OamScan), dmg0 hardware returns mode3 (Drawing). DIV (system counter)
+and LY are correct. The STAT read goes through `read_stat` → `dmg_boot_power_on_stat_access_mode(elapsed_mcycles)`, whose
+bucket table is the line-0/1/2 PPU mode progression (`7..=26` line0-OamScan, `27..=69` line0-Drawing, `70..=120`
+line0-HBlank, `121..=140` line1-OamScan, `141..=183` line1-Drawing, …). The dmg0 STAT read lands in `121..=140` (line1
+OamScan) but should be in `141..=183` (line1 Drawing) — the dmg0 boot-power-on PPU phase
+(`DMG0_DIRECT_BOOT_HANDOFF_PPU_PHASE_BASE_OFFSET_DOTS = 3992`, applied in `apply_dmg0_direct_boot_handoff_stat_phase`) is
+**~1 mode (≈20 mcycles) behind** the dmg0 hardware handoff phase.
+
+**DEFERRED — not part of the mode0-publish cluster, and the bounded fix would re-fit a manual seam.** This is a
+dmg0-specific boot-power-on phase issue, fully independent of the CPU-first reorder / STAT-readback / IF cluster (the task
+flagged it so). The bounded fix = retune `DMG0_DIRECT_BOOT_HANDOFF_PPU_PHASE_BASE_OFFSET_DOTS` so the STAT read lands in
+line1-Drawing while keeping LY=$01 — but that is adjusting a manual timing constant (a seam), which the canon/no-seams
+policy says to avoid (net manual-seam count must not rise), and it risks the dmg0 boot unit tests
+(`mode_edges.rs` `apply_dmg0_direct_boot_handoff_stat_phase`) and other dmg0 boot/power-on ROMs. The canonical fix is to
+model the dmg0 boot-ROM duration → exact handoff PPU phase (a boot-emulation-accuracy task), not a constant tweak.
+Tracked as an independent dmg0-boot-phase follow-up.
+
+### 24.24 L2-a item-2 mode0-publish cluster — readback/IF sub-cases COMPLETE; two deep workstreams remain (2026-06-16)
+
+**Closed (this item-2 work, all canon-aligned reorder compensations mirroring the established mode0-publish pattern, zero
+ROM regression each):** `intr_2_mode0_timing` (batch-1, STAT mode0 readback), `intr_2_oam_ok_timing` (batch-2, OAM-read
+bus mode0), `vblank_if_timing` (batch-3, vblank LY-wrap), `intr_2_timing` (batch-4, mode2 vblank-entry blank-frame
+pretrigger). **Scoreboard: wilbertpol 110→114/117, mooneye 109→111/113**, blargg 58/58, mealybug 13-fail (m3_scy_change
+DMG closed). Pre-existing reorder debt unchanged (9 lib `mode_edges` + 18 trace/integration = 27).
+
+**Remaining = two distinct DEEP workstreams, NOT mode0-publish readback skews (each oracle-grounded above):**
+1. **fetcher/§245 mode3-length** — `intr_2_mode0_scx3/scx7_timing_nops` (wb) + `intr_2_mode0_timing_sprites` (wb+mn). §24.21
+   proved scx is a per-scx sub-dot mode3-length phase, not a readback gate-seam; sprites is sprite-extended mode3 length.
+   Both need the `[PPU][MODE3-FETCHER-LEAD]` engine work; do NOT re-fit the §245 sprite penalty.
+2. **dmg0 boot-power-on phase** — `boot_hwio-dmg0` (mn), §24.23. Independent of the PPU timing cluster.
+
+The full internal-`self.ly` mid-line raster rephase (§24.18) remains the end-state that would subsume the interim
+reorder compensations (E1, item-1 line-153 pretrigger, item-3 vblank IF mask, batch-2 OAM mode0, batch-3 vblank LY-wrap).

@@ -332,6 +332,74 @@ fn oracle_sweep_vblank_ly_after_irq() {
 
 #[test]
 #[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_run_boot_hwio_dmg0() {
+    // boot_hwio-dmg0 walks $FF00..$FF7F once at $0100 and compares to a per-row-masked
+    // table; dmg0 expects DIV $19, STAT $83, LY $01. Capture the first CPU read value of
+    // DIV/STAT/LY during the walk to see which register mismatches.
+    for (label, rom_name, rev) in [
+        (
+            "dmg0",
+            "boot_hwio-dmg0.gb",
+            gb_core::HardwareRevision::DmgCpu0,
+        ),
+        (
+            "dmgABCmgb",
+            "boot_hwio-dmgABCmgb.gb",
+            gb_core::HardwareRevision::DmgCpuC,
+        ),
+    ] {
+        let rom = std::fs::read(format!(
+            "{}/../../test/mooneye/mooneye/acceptance/{rom_name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .expect("rom file");
+        let mut machine = Machine::new(
+            MachineConfig::new(ConsoleModel::GameBoy)
+                .with_revision(rev)
+                .with_startup_mode(StartupMode::SkipBoot),
+        );
+        machine.load_cartridge(rom).expect("rom load");
+        let mut seen: std::collections::BTreeMap<u16, (u8, u8, u16, PpuAccessMode, u64)> =
+            std::collections::BTreeMap::new();
+        let mut t = 0u64;
+        for _ in 0..2_000_000 {
+            machine.step_t_cycle();
+            t += 1;
+            if let Some(event) = machine.cpu().last_address_event()
+                && event.kind == CpuAddressEventKind::Read
+                && let Some(addr) = event.access_address
+                && matches!(addr, 0xFF04 | 0xFF41 | 0xFF44 | 0xFF05 | 0xFF40)
+                && !seen.contains_key(&addr)
+            {
+                let s = machine.ppu().snapshot();
+                seen.insert(
+                    addr,
+                    (machine.cpu().registers().a, s.ly, s.line_dot, s.mode, t),
+                );
+            }
+            if seen.len() >= 5 {
+                break;
+            }
+        }
+        println!("=== {label} ({rom_name}) ===");
+        for (addr, (val, ly, dot, mode, at)) in &seen {
+            let name = match addr {
+                0xFF04 => "DIV",
+                0xFF05 => "TIMA",
+                0xFF40 => "LCDC",
+                0xFF41 => "STAT",
+                0xFF44 => "LY",
+                _ => "?",
+            };
+            println!(
+                "  first read {name}({addr:#06X}) = {val:#04X}  ppu(ly={ly} dot={dot} {mode:?}) t={at}"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
 fn oracle_run_intr_2_timing_rom() {
     let base = concat!(
         env!("CARGO_MANIFEST_DIR"),
