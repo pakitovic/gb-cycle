@@ -1834,3 +1834,64 @@ that subsumes it:** once item (2) lands the mid-line-153 `ly`-wrap and the mode/
 (and the write path moves to pending-write + next-tick), the line-153 LYC0 pretrigger + compare windows collapse into the
 single delayed `is_lyc_eq_ly`, and `last_line_153_lyc0_pretrigger_window` + the `LINE_153_LYC0_*`/`CGB_LINE_153_*`
 constants delete together. Tracked as item-2-coupled debt; revisit when item (2) lands.
+
+### 24.18 ITEM-1+2 COUPLED REWORK ATTEMPTED — root seam deletion needs the full internal-LY mid-line rephase; the bounded "effective-LY decoupling" is REFUTED (2026-06-16)
+
+**Goal of the attempt (user-directed):** delete the LYC observation-tables seam at the root by rephasing the raster so
+LY wraps to 0 mid-line-153 (DocBoy: LY increments at the dot-453 handler on every line, resets to 0 at dot 2 DMG / dot 3
+CGB on line 153), letting the canonical `is_lyc_eq_ly = (last_lyc == last_ly) && enable_lyc_eq_ly_irq` replace
+`live_ly_for_lyc_compare` + the 9 LYC compare constants + the irq-vs-readback split + E1's latch + the line-153 pretrigger.
+
+**7-agent blast-radius map (ran via workflow).** Verdicts: (A) the LY-readback lead/wrap compensation
+(`current_ly_read_advance_start_dot`=450, `line_153_reads_as_ly0` dot 4/8, `skip_boot_ly_read_lag`) becomes redundant
+under a mid-line LY increment — deletable, HIGH risk. (D) **HIGH risk: all mode3 pixel rendering reads `self.ly` LIVE for
+tile-row** (`bg_fetch.rs:222`, `helpers/mode3_latches.rs:232` `(scy+ly)%8`, `pipeline.rs:246/277` sprite-Y). (C)
+mode-entry boundaries that key off LY (the VBlank-entry IRQ at ly 143→144, mode2-vblank-entry) **shift earlier** if LY
+leads and must be re-anchored to line_dot. (F) DocBoy spec: LY increments at dot 452/453 (two-phase `begin/end_increase_ly`),
+line 153 resets to 0 at dot 2/3, `enable_lyc_eq_ly_irq` disabled dots 453-454 + 2-6. (E) boot/lcd-restart seeding assumes
+end-of-line wrap. (G) ~9 mode_edges + ~16 trace fixtures pin the current phase (mostly pre-existing reorder debt).
+
+**Make-or-break experiment (the rigor item-1 skipped): a shadow-diff probe** (`oracle.rs`, reverted after; recipe below)
+that, over a settled frame for DMG+CGB and lyc∈{0,2,143,144,153}, compares `observed_ly == lyc` (observed_ly =
+`read_ly(CpuBusOperation)`, the readback geometry that ALREADY leads + wraps mid-153) against the seam's live
+`lyc_coincidence_for_readback`/`_for_irq_line`. **It REFUTES the bounded "reuse the readback geometry for the coincidence"
+plan:**
+- The **readback LY leads from dot 450** (`observed_ly = ly+1` at ly=N dots 450-455) but the **coincidence does NOT lead** —
+  the seam keeps `LYC==N` true at ly=N dots 450-455 (where `observed_ly` is already N+1). These are **incompatible phases**:
+  an `enable_lyc_eq_ly_irq` window can only SUPPRESS a match, it cannot CREATE the coincidence at the dots where
+  `observed_ly != lyc`. So the readback geometry is the wrong source for the coincidence.
+- **Line 153 (DMG)** the seam is a TWO-window structure (LYC153 dots 3-5, LYC0 dots 12+) with a gap (dots 0-2, 6-11);
+  collapsing it to "LY until a wrap-dot then 0" makes LYC153 span dots 0-11 (too long). Reproducing the gap needs
+  `enable` disabled at the SAME gb-cycle-specific dots (0-2, 6-11) — i.e. the seam constants relabelled as enable
+  windows, NOT a deletion (zero net reduction).
+- CGB has only 2 divergences (its compare windows happen to align with the readback geometry), DMG 8-14 — confirming the
+  DMG phase is where the readback/coincidence split is irreducible without changing the internal LY.
+
+**Conclusion — the root deletion requires the FULL internal-`self.ly` mid-line rephase, a core raster restructure (NOT a
+bounded LYC change), and the bounded effective-LY decoupling is dead.** The readback-LY (leads from dot 450) and the
+coincidence-LY (non-leading, line-153 multi-window at dots 3-5/12+) are genuinely different phases in gb-cycle, neither
+matching DocBoy (which leads 3 dots and wraps mid-153). Only making `self.ly` itself lead/wrap mid-line (DocBoy phase)
+collapses both into one geometry and lets the constants fall out. That rephase is:
+- **rendering-SAFE** (the LY lead lands at dot ~450-453, in hblank, AFTER mode3 ends ≤~289; line 153 is vblank, not
+  rendered — so the mode3 `self.ly` reads at dots 80-289 never see the lead; dimension D's "corrupts every line" is
+  over-cautious on this point), BUT
+- requires **(1) restructuring the line counter** so the mid-line increment is not double-applied at the end-of-line wrap
+  (a `next_ly`/already-incremented guard, like DocBoy's `real_ly`/`next_ly`); **(2) re-anchoring every ly-based mode/IRQ
+  boundary** to line_dot (VBlank-entry, mode2-vblank-entry) so the ~3-6 dot LY lead does not flip mode early (regresses
+  intr_1/vblank/lcdon_timing otherwise); **(3) deleting the readback lead compensation** and folding it into the intrinsic
+  lead; **(4) the canonical `last_ly`/`last_lyc` + `enable_lyc_eq_ly_irq` windows grounded in gb-cycle line_dot**; **(5)
+  resolving the write-vs-tick model** (item-1 finding: gb-cycle's immediate LYC re-eval vs DocBoy pending-write+next-tick);
+  **(6) re-grounding the ENTIRE ly/lyc/mode timing suite** (mooneye ly00_*/ly143_*/ly_new_frame/lcdon_timing + wilbertpol
+  ly_lyc family + intr_*; all currently green) + **regenerating ~17 trace fixtures + rewriting ~9 mode_edges tests.** This
+  is the §24 "canonical restructure" L2 raster pass, multi-cut, with a regression surface across every CGB+DMG timing ROM.
+
+**Decision pending (user).** The bounded path is refuted; the root deletion = the multi-cut core raster rephase above.
+Item-1's interim (commit `c4bec898`, §24.17) is landed, green, +3 wilbertpol, zero regression, and its only cost is one
+canonical delayed register (no manual table). Recommend treating the full rephase as a scoped, oracle-gated restructure
+(its own branch/cuts) rather than a continuation of item-1, OR keeping the interim and moving to item-2 mode0-publish.
+
+**Shadow-diff probe recipe (to reproduce the refutation):** add an `#[ignore]` test in `ppu/tests/oracle.rs` that builds a
+`PpuTestRig` (DMG/CGB) with `lcdc=0x91, stat=STAT_LYC_INTERRUPT_ENABLE_BIT, ly=0, lyc=L`, ticks `3*154*456` to settle,
+then over `154*456` dots records `(ly, line_dot, read_register(0xFF44,CpuBusOperation), live_ly_for_lyc_compare(),
+lyc_coincidence_for_readback(), lyc_coincidence_for_irq_line())` and prints the dots where `observed_ly==lyc` diverges
+from the seam readback/irq. Reverted (not committed) — findings captured above.
