@@ -956,6 +956,11 @@ impl MachinePhaseRunner<'_> {
             });
         }
 
+        // The CPU IF-read of the previous cycle has already consumed any armed suppress
+        // mask; clear it unconditionally so it lasts exactly one cycle, then re-arm below
+        // if a fresh VBlank-entry edge commits this cycle.
+        self.interrupts.clear_cpu_if_read_suppress();
+
         let has_interrupt_work = !context.interrupt_requests().is_empty()
             || self.ppu.pending_interrupt_request_mask() != 0
             || self.joypad.interrupt_request_pending();
@@ -980,6 +985,12 @@ impl MachinePhaseRunner<'_> {
             }
             if ppu_pending_interrupts & 0x02 != 0 {
                 interrupts.request(InterruptSource::LcdStat);
+            }
+            // VBlank only ever commits at the VBlank entry, so its presence scopes this to
+            // the VBlank-entry edge: hide it and any STAT bit co-committed at that raster
+            // from the next cycle's CPU IF read (see read_if_with_pending_requests).
+            if ppu_pending_interrupts & InterruptSource::VBlank.mask() != 0 {
+                interrupts.arm_cpu_if_read_suppress(ppu_pending_interrupts);
             }
             if joypad.consume_interrupt_request() {
                 interrupts.request(InterruptSource::Joypad);

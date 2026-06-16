@@ -156,5 +156,12 @@ fn entering_vblank_can_raise_vblank_and_mode1_stat_together() {
     assert_eq!(vblank.line_dot, 0);
     assert_eq!(vblank.mode, PpuAccessMode::VBlank);
     assert_eq!(machine.read_bus(0xFF41) & 0x03, 0x01);
+    // L2-a.1: under the CPU-first reorder the VBlank + mode1-STAT edge committed at the
+    // VBlank entry is hidden from the same-position CPU IF read for exactly one read
+    // position (matching hardware / the pre-reorder post-tick read), so the entry dot
+    // still observes 0xE0; both bits then become CPU-visible together one cycle later.
+    assert_eq!(machine.read_bus(0xFF0F), 0xE0);
+
+    machine.step_t_cycle();
     assert_eq!(machine.read_bus(0xFF0F), 0xE3);
 }

@@ -21,6 +21,8 @@ pub struct InterruptController {
     status: InterruptControllerStatus,
     interrupt_flags: u8,
     interrupt_enable: u8,
+    #[serde(default)]
+    cpu_if_read_suppress_mask: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -29,6 +31,8 @@ pub struct InterruptSaveState {
     status: InterruptControllerStatus,
     interrupt_flags: u8,
     interrupt_enable: u8,
+    #[serde(default)]
+    cpu_if_read_suppress_mask: u8,
 }
 
 impl InterruptSaveState {
@@ -90,6 +94,7 @@ impl InterruptController {
             status: InterruptControllerStatus::Ready,
             interrupt_flags: 0,
             interrupt_enable: 0,
+            cpu_if_read_suppress_mask: 0,
         }
     }
 
@@ -107,6 +112,7 @@ impl InterruptController {
             status: self.status,
             interrupt_flags: self.interrupt_flags,
             interrupt_enable: self.interrupt_enable,
+            cpu_if_read_suppress_mask: self.cpu_if_read_suppress_mask,
         }
     }
 
@@ -115,15 +121,32 @@ impl InterruptController {
         self.status = state.status;
         self.interrupt_flags = state.interrupt_flags;
         self.interrupt_enable = state.interrupt_enable;
+        self.cpu_if_read_suppress_mask = state.cpu_if_read_suppress_mask;
     }
 
     pub fn read_if(&self) -> u8 {
         INTERRUPT_FLAG_FORCED_HIGH_BITS | self.interrupt_flags
     }
 
+    // L2-a.1: under the CPU-first reorder a PPU IRQ edge committed in this cycle's
+    // InterruptAggregation is read by the next cycle's pre-tick CPU `ldh a,(IF)` one
+    // read-position too early (hardware/main observes it post-tick, in the same cycle as
+    // the commit, i.e. after the read). For the VBlank-entry edge (VBlank + its co-committed
+    // STAT) this mask hides the freshly committed bits from the CPU IF *read* for exactly
+    // one cycle, leaving the committed scheduler IF — and therefore dispatch/service, which
+    // read `pending_mask`/`highest_pending`, not this path — untouched.
     pub(crate) fn read_if_with_pending_requests(&self, pending_mask: u8) -> u8 {
-        INTERRUPT_FLAG_FORCED_HIGH_BITS
-            | (self.interrupt_flags | (pending_mask & INTERRUPT_REQUEST_MASK))
+        let visible = (self.interrupt_flags | (pending_mask & INTERRUPT_REQUEST_MASK))
+            & !self.cpu_if_read_suppress_mask;
+        INTERRUPT_FLAG_FORCED_HIGH_BITS | visible
+    }
+
+    pub(crate) fn arm_cpu_if_read_suppress(&mut self, mask: u8) {
+        self.cpu_if_read_suppress_mask = mask & INTERRUPT_REQUEST_MASK;
+    }
+
+    pub(crate) fn clear_cpu_if_read_suppress(&mut self) {
+        self.cpu_if_read_suppress_mask = 0;
     }
 
     pub fn write_if(&mut self, value: u8) {
