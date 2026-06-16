@@ -1699,3 +1699,67 @@ the canonical E0-then-E3 observation), ZERO regressions; the 9 `mode_edges::*` +
 asserts `round5` = LY read after `wait_vblank_irq`+97 nops = 145 (branch reads 144, 1 late). That is the **LY-after-event
 read**, NOT the IF skew — it belongs to the canonical LY-delayed-register / mode0-publish work (items 1–2), unaffected by
 this fix. So `vblank_if_timing` closes when the canonical `last_ly` model lands. NEXT: item (1), the DocBoy LYC model.
+
+### 24.15 ITEM (1) DESIGN — LYC observation-tables seam → DocBoy last_ly/last_lyc model (recon complete, 2026-06-16)
+
+Recon done (seam consumer map + DocBoy model verified at the source). This section is the cold-start-ready design.
+
+**DocBoy canonical model (verified, /Users/pakitovic/workspace/DocBoy/src/docboy/docboy/ppu/ppu.cpp):**
+- `tick()` order (ppu.cpp:507-571): (1) dot handler `(this->*tick_selector)()` (may `end_increase_ly` → `ly`/mode);
+  (2) `tick_window()`; (3) **`raise_stat_irq()`** (681-710) — computes `is_lyc_eq_ly()` from the CURRENT
+  `last_ly`/`last_lyc`, raises the STAT IRQ on a rising edge, and sets `stat.lyc_eq_ly = is_lyc_eq_ly()`; (4) at the
+  END, `last_ly = ly; last_lyc = lyc` (557-560) — captured for the NEXT tick. So `raise_stat_irq` at tick T reads the
+  registers as of the END of tick T-1 ⇒ the 1-T-cycle delay. The SAME `is_lyc_eq_ly()` drives BOTH the IRQ source and
+  the readback flag — there is NO separate irq-vs-readback path (gb-cycle's two functions were the seam).
+- `is_lyc_eq_ly()` (651-667): DMG = `(last_lyc == last_ly) && enable_lyc_eq_ly_irq`; CGB =
+  `enable_lyc_eq_ly_irq ? (last_lyc == last_ly) : stat.lyc_eq_ly` (CGB RETAINS the previous readback flag in the disabled
+  windows; DMG forces 0).
+- `enable_lyc_eq_ly_irq` (default true) is forced **false** in exactly two window kinds, then re-enabled (1276/1294,
+  1337/1351, 1415/1428, 1462/1488): (a) **dot 454 of every line** (disabled at the dot-453 handler right after
+  `end_increase_ly`, re-enabled at the dot-454 handler); (b) **line 153 (last scanline) dots 2:6** (the LY 153→0 wrap;
+  disabled at dot 2, re-enabled at dot 7; CGB resets `ly=0` at dot 3). `turn_on` sets `last_lyc=lyc` +
+  `stat.lyc_eq_ly=is_lyc_eq_ly()` (no IRQ); `turn_off` sets `last_ly=0`, `enable=true`.
+
+**Why this subsumes E1 and the 11 constants:** at a line boundary `ly` becomes `N` but `last_ly` is still `N-1` for one
+dot, so the `LYC==N` coincidence lands one dot late — exactly E1's dot0 defer, for free, with no
+`regular_line_dot0_compare_window`. The line-153 LYC153/LYC0 compare windows + the CGB blank/retain split collapse into
+the single `enable_lyc_eq_ly_irq` flag + the CGB `stat.lyc_eq_ly` retain branch.
+
+**gb-cycle tick mapping (api.rs `tick_t_cycle_with_observer`):** per dot — ModeTiming(`previous_mode`,
+pre-increment) → RasterAdvance(`line_dot += 1`, :853) → VisiblePrep/Mode2/Mode3 → RasterAdvance2(scanline_length; at
+`line_dot == scanline_length` RasterPublication sets `line_dot=0`, `ly++`/wrap, :899-904) → ModeTiming2(`current_mode`,
+VBlank queue :940) → **StatIrq(`update_lyc_compare_latch` + `refresh_stat_irq_line`, :948-949)** ≈ DocBoy
+`raise_stat_irq`. PLAN: add `last_ly`/`last_lyc` capture at the very END of the tick (after :949), and a
+`enable_lyc_eq_ly_irq` bool; `is_lyc_eq_ly()` reads them. The two disable windows must be expressed in gb-cycle
+`line_dot` coords — DocBoy `dots` and gb-cycle `line_dot` share 0..455 but differ in the LY-increment phase (gb-cycle
+ly++ at the `line_dot==scanline_length` wrap, :900), so **ground the exact disable dots against the differential oracle**
+(`oracle_sweep_ly_lyc` + `oracle_run_ly_lyc_roms` vs the main worktree) rather than copying 454/2:6 literally.
+
+**State (serialize in PpuRuntimeState + save-state, like `pending_interrupts`):** `last_ly: u8`, `last_lyc: u8`,
+`enable_lyc_eq_ly_irq: bool`. Seed in `apply_startup_state` (turn_on: `last_lyc=lyc`, `last_ly=ly`, `enable=true`,
+readback flag from `is_lyc_eq_ly`).
+
+**Seam to DELETE (irq.rs:24-101):** `live_lyc_coincidence`, `live_ly_for_lyc_compare`, `lyc_compare_blanked_at_line_end`,
+`regular_line_dot0_compare_window`, the `lyc_compare_latch` field + `update_lyc_compare_latch`. Constants (ppu.rs:70-80):
+`LINE_153_LYC153_COMPARE_{START,END}_DOT`(3/5), `LINE_153_LYC0_COMPARE_START_DOT`(12), `CGB_LINE_153_*`(1/5/9),
+`CGB_LINE_END_LYC_COMPARE_BLANK_DOTS`(3), `LINE_153_LY_READ_ZERO_DOT`(4)/`CGB_…`(8) **only if** not still needed by the
+LY-readback path (registers.rs:228-230 — CHECK; LY readback is item 2, may keep these until then).
+
+**Consumer contracts to re-route to `is_lyc_eq_ly()` (from the seam map):** IRQ — `lyc_coincidence_for_irq_line`
+(ordinary_stat_irq_line:128, lyc_stat_write_irq_source:365, cancel_obsolete_dot0_lyc_stat_irq_edge:440,
+stat_write_quirk_active_for_write:499, enter_lcd_disabled_state:551). Readback — `lyc_coincidence_for_readback`
+(registers.rs:147 read_stat, snapshot:994, trace:1465). LCD-enable-pending — `lcd_enable_pending_lyc_rise_source`
+(uses `live_lyc_coincidence`). KEEP for now (separate quirks): `dot0_lyc_stat_irq_edge_pending`/cancel,
+`line_153_lyc0_stat_irq_pretrigger_pending`/source/cancel (these are STAT-write/edge-cancel quirks layered on top — the
+last_ly delay may simplify or obviate the dot0 one; re-evaluate after the core lands). LYC FF45 write (api.rs:479-488)
+keeps re-evaluating; whether last_lyc lags a LYC write by 1 dot is an OPEN question — ground vs `ly_lyc_write-GS` (must
+stay green) and `ly_lyc_0_write-GS` (must close).
+
+**Incremental grounded plan:** (a) add the 3 state fields + capture at end of tick + `is_lyc_eq_ly()`, keep the seam
+alive in parallel, print both in a temporary probe and diff vs the seam over a full frame (no behaviour change yet);
+(b) flip `lyc_coincidence_for_irq_line`/`_for_readback` to `is_lyc_eq_ly`, delete the dot-window branches of
+`live_ly_for_lyc_compare`, tune the two `enable_lyc_eq_ly_irq` disable windows in `line_dot` coords against
+`oracle_sweep_ly_lyc` + the wilbertpol sources until `ly_lyc`/`ly_lyc_144`/`ly_lyc_write` stay green and
+`ly_lyc_0`/`ly_lyc_0_write` close; (c) delete the seam constants/functions; (d) rewrite the seam-pinned unit tests
+(`mode_edges::*` line-153/dot0 + `registers.rs` lyc tests — see §24 map) to the canonical behaviour; (e) ROM gate.
+Targets: close `ly_lyc_0-GS/-C`, `ly_lyc_0_write-GS`; keep E1-closed green; mooneye/mealybug/blargg no-regress.
