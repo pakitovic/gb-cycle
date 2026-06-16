@@ -87,11 +87,11 @@ impl Ppu {
         match self.live_ly_for_lyc_compare() {
             Some(compare_ly) => compare_ly == self.lyc,
             None => {
-                if self.regular_line_dot0_compare_window() {
-                    self.ly == self.lyc
-                } else {
-                    self.runtime.stat_state.lyc_compare_latch
-                }
+                // L2-a.1: under the CPU-first reorder the CPU observes the raster one
+                // dot ahead, so the dot0 LYC coincidence edge is seen one read-position
+                // too early. Defer the regular-line dot0 edge to line_dot 1 (latch only)
+                // so the CPU-observable LYC STAT IRQ matches hardware (wilbertpol ly_lyc).
+                self.runtime.stat_state.lyc_compare_latch
             }
         }
     }
