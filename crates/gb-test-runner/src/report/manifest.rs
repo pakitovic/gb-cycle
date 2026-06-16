@@ -8,6 +8,7 @@ use super::model::{REPORTS_MANIFEST_PATH, Report};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ReportManifestFile {
     status_dir: Option<PathBuf>,
+    artifact_dir: Option<PathBuf>,
     report_file: Option<PathBuf>,
     #[serde(rename = "report")]
     reports: Vec<ReportFile>,
@@ -19,6 +20,7 @@ struct ReportFile {
     store_dir: PathBuf,
     sources: Option<PathBuf>,
     status_dir: Option<PathBuf>,
+    artifact_dir: Option<PathBuf>,
     report_file: Option<PathBuf>,
     family_order: Option<Vec<String>>,
 }
@@ -36,10 +38,14 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
     let default_status_dir = manifest
         .status_dir
         .unwrap_or_else(|| PathBuf::from(".status"));
+    let default_artifact_dir = manifest
+        .artifact_dir
+        .unwrap_or_else(|| PathBuf::from(".artifacts"));
     let default_report_file = manifest
         .report_file
         .unwrap_or_else(|| PathBuf::from("test-report.md"));
     validate_relative_path(&default_status_dir, "report default status_dir", false)?;
+    validate_relative_path(&default_artifact_dir, "report default artifact_dir", false)?;
     validate_relative_path(&default_report_file, "report default report_file", false)?;
 
     let mut reports = Vec::with_capacity(manifest.reports.len());
@@ -52,10 +58,14 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
         let status_dir = report
             .status_dir
             .unwrap_or_else(|| default_status_dir.clone());
+        let artifact_dir = report
+            .artifact_dir
+            .unwrap_or_else(|| default_artifact_dir.clone());
         let report_file = report
             .report_file
             .unwrap_or_else(|| default_report_file.clone());
         validate_relative_path(&status_dir, "report status_dir", false)?;
+        validate_relative_path(&artifact_dir, "report artifact_dir", false)?;
         validate_relative_path(&report_file, "report report_file", false)?;
         if let Some(family_order) = &report.family_order {
             for family in family_order {
@@ -67,6 +77,7 @@ pub(super) fn load_reports(workspace_root: &Path) -> Result<Vec<Report>, String>
             store_dir: report.store_dir,
             sources: report.sources,
             status_dir,
+            artifact_dir,
             report_file,
             family_order: report.family_order,
         });

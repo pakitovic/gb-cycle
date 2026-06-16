@@ -459,10 +459,13 @@ impl MachinePhaseRunner<'_> {
                         observe_machine_step_region(observer, MachineStepRegion::Dma, || {
                             self.dma.tick_t_cycle_with_vram_dma_context(
                                 context,
-                                VramDmaRuntimeContext::new(
+                                VramDmaRuntimeContext::new_for_speed_at_dot(
                                     ppu_owner_bus_state_before,
                                     self.ppu.ly(),
+                                    self.ppu.line_dot(),
+                                    self.ppu.mode0_start_dot(),
                                     self.cpu.execution_state() == CpuExecutionState::Halted,
+                                    self.speed.current_speed(),
                                 ),
                             )
                         });

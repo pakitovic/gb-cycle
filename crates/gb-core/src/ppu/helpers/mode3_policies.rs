@@ -1643,6 +1643,9 @@ impl PpuMode3ObservedLcdc2ObjSizePhaseTable {
             (0, 32, 0) if matches!(self.raw_row, 2..=7) && active_write_visible_x == Some(10) => {
                 Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16)
             }
+            (0, 32, 4) if matches!(self.raw_row, 4..=7) && active_write_visible_x == Some(4) => {
+                Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High)
+            }
             (0, 32, 5..=7) if matches!(self.raw_row, 4..=7) => {
                 Some(PpuMode3Lcdc2ObjSizePlaneSelection::LineStart16LowLive8High)
             }

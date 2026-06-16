@@ -14,9 +14,11 @@ const OAM_DMA_T_CYCLES_PER_BYTE: u8 = 4;
 const OAM_DMA_TOTAL_T_CYCLES: u16 = 648;
 const DMG_OAM_DMA_ECHO_ALIAS_OFFSET: u16 = 0x2000;
 const VRAM_DMA_BLOCK_BYTES: u16 = 0x10;
-const VRAM_DMA_FIRST_BYTE_DELAY_T_CYCLES: u8 = 2;
+const VRAM_DMA_NORMAL_SPEED_FIRST_BYTE_DELAY_T_CYCLES: u8 = 2;
 const VRAM_DMA_CPU_BUS_RESTRICTION_DELAY_T_CYCLES: u8 = 0;
-const VRAM_DMA_T_CYCLES_PER_BYTE: u8 = 2;
+const VRAM_DMA_NORMAL_SPEED_T_CYCLES_PER_BYTE: u8 = 2;
+const VRAM_DMA_CPU_RELEASE_T_CYCLES: u8 = 5;
+const VRAM_DMA_PUBLICATION_T_CYCLES: u8 = 12;
 const VRAM_DMA_DESTINATION_END: u16 = 0x9FFF;
 const VRAM_DMA_INVALID_SOURCE_READ_VALUE: u8 = 0xFF;
 const HDMA5_TRANSFER_LENGTH_MASK: u8 = 0x7F;
@@ -160,7 +162,7 @@ impl DmaTransfer {
         })
     }
 
-    const fn gdma(transfer: VramDmaTransfer) -> Self {
+    const fn gdma_for_speed(transfer: VramDmaTransfer, speed_mode: CgbSpeedMode) -> Self {
         let total_bytes = transfer.remaining_bytes();
         Self::from_spec(DmaTransferSpec {
             kind: DmaTransferKind::Gdma,
@@ -169,15 +171,15 @@ impl DmaTransfer {
             total_bytes,
             block_size: VRAM_DMA_BLOCK_BYTES,
             family: DmaTransferFamily::FullBurst,
-            timing: vram_dma_timing(total_bytes),
-            oam_speed_mode: CgbSpeedMode::Normal,
+            timing: vram_dma_timing(total_bytes, speed_mode),
+            oam_speed_mode: speed_mode,
             cpu_impact_policy: DmaCpuImpactPolicy::CpuFullyStalledUntilDone,
             memory_region_impact: DmaMemoryRegionImpact::Vram,
             advance_condition: DmaAdvanceCondition::EveryTCycle,
         })
     }
 
-    const fn hdma_block(transfer: VramDmaTransfer) -> Self {
+    const fn hdma_block_for_speed(transfer: VramDmaTransfer, speed_mode: CgbSpeedMode) -> Self {
         Self::from_spec(DmaTransferSpec {
             kind: DmaTransferKind::Hdma,
             source_start: transfer.source_start(),
@@ -185,8 +187,8 @@ impl DmaTransfer {
             total_bytes: VRAM_DMA_BLOCK_BYTES,
             block_size: VRAM_DMA_BLOCK_BYTES,
             family: DmaTransferFamily::BlockWindowed,
-            timing: vram_dma_timing(VRAM_DMA_BLOCK_BYTES),
-            oam_speed_mode: CgbSpeedMode::Normal,
+            timing: vram_dma_timing(VRAM_DMA_BLOCK_BYTES, speed_mode),
+            oam_speed_mode: speed_mode,
             cpu_impact_policy: DmaCpuImpactPolicy::CpuStalledPerBlock,
             memory_region_impact: DmaMemoryRegionImpact::Vram,
             advance_condition: DmaAdvanceCondition::HBlank,
@@ -250,9 +252,10 @@ impl DmaTransfer {
 
     pub const fn lcd_domain_duration_dots(self) -> u16 {
         match (self.kind, self.oam_speed_mode) {
-            (DmaTransferKind::Oam, CgbSpeedMode::Double) => {
-                self.timing.total_t_cycles().div_ceil(2)
-            }
+            (
+                DmaTransferKind::Oam | DmaTransferKind::Gdma | DmaTransferKind::Hdma,
+                CgbSpeedMode::Double,
+            ) => self.timing.total_t_cycles().div_ceil(2),
             _ => self.timing.total_t_cycles(),
         }
     }
@@ -278,12 +281,45 @@ impl DmaTransfer {
     }
 }
 
-const fn vram_dma_timing(total_bytes: u16) -> DmaTransferTiming {
+const fn vram_dma_first_byte_delay_t_cycles(speed_mode: CgbSpeedMode) -> u8 {
+    match speed_mode {
+        CgbSpeedMode::Normal => VRAM_DMA_NORMAL_SPEED_FIRST_BYTE_DELAY_T_CYCLES,
+        CgbSpeedMode::Double => VRAM_DMA_NORMAL_SPEED_FIRST_BYTE_DELAY_T_CYCLES * 2,
+    }
+}
+
+const fn vram_dma_t_cycles_per_byte(speed_mode: CgbSpeedMode) -> u8 {
+    match speed_mode {
+        CgbSpeedMode::Normal => VRAM_DMA_NORMAL_SPEED_T_CYCLES_PER_BYTE,
+        CgbSpeedMode::Double => VRAM_DMA_NORMAL_SPEED_T_CYCLES_PER_BYTE * 2,
+    }
+}
+
+const fn vram_dma_body_t_cycles(total_bytes: u16, speed_mode: CgbSpeedMode) -> u16 {
+    let first_byte_delay_t_cycles = vram_dma_first_byte_delay_t_cycles(speed_mode);
+    let t_cycles_per_byte = vram_dma_t_cycles_per_byte(speed_mode);
+
+    if total_bytes == 0 {
+        0
+    } else {
+        first_byte_delay_t_cycles as u16 + (total_bytes - 1) * t_cycles_per_byte as u16
+    }
+}
+
+const fn vram_dma_timing(total_bytes: u16, speed_mode: CgbSpeedMode) -> DmaTransferTiming {
+    let first_byte_delay_t_cycles = vram_dma_first_byte_delay_t_cycles(speed_mode);
+    let t_cycles_per_byte = vram_dma_t_cycles_per_byte(speed_mode);
+    let total_t_cycles = if total_bytes == 0 {
+        0
+    } else {
+        vram_dma_body_t_cycles(total_bytes, speed_mode) + VRAM_DMA_CPU_RELEASE_T_CYCLES as u16
+    };
+
     DmaTransferTiming {
-        total_t_cycles: total_bytes * VRAM_DMA_T_CYCLES_PER_BYTE as u16,
-        first_byte_delay_t_cycles: VRAM_DMA_FIRST_BYTE_DELAY_T_CYCLES,
+        total_t_cycles,
+        first_byte_delay_t_cycles,
         cpu_bus_restriction_delay_t_cycles: VRAM_DMA_CPU_BUS_RESTRICTION_DELAY_T_CYCLES,
-        t_cycles_per_byte: VRAM_DMA_T_CYCLES_PER_BYTE,
+        t_cycles_per_byte,
     }
 }
 
@@ -357,6 +393,29 @@ impl DmaTransferProgress {
 
     pub const fn completed_blocks(self) -> u16 {
         self.completed_bytes() / self.transfer.block_size()
+    }
+
+    pub const fn published_completed_blocks(self) -> u16 {
+        let completed_blocks = self.completed_blocks();
+        if completed_blocks == 0 {
+            return 0;
+        }
+
+        let completed_bytes = completed_blocks * self.transfer.block_size();
+        let last_byte_elapsed_t_cycles = self.transfer.timing().first_byte_delay_t_cycles() as u16
+            + (completed_bytes - 1) * self.transfer.timing().t_cycles_per_byte() as u16;
+        let release_elapsed_t_cycles =
+            last_byte_elapsed_t_cycles + VRAM_DMA_PUBLICATION_T_CYCLES as u16;
+
+        if self.elapsed_t_cycles >= release_elapsed_t_cycles {
+            completed_blocks
+        } else {
+            completed_blocks - 1
+        }
+    }
+
+    pub const fn has_unpublished_completed_blocks(self) -> bool {
+        self.completed_blocks() > self.published_completed_blocks()
     }
 
     pub const fn remaining_blocks(self) -> u16 {
@@ -613,12 +672,18 @@ pub(crate) enum VramDmaHBlankWindow {
 }
 
 impl VramDmaHBlankWindow {
-    const fn from_ppu_bus_state(ppu: PpuBusState, ly: u8) -> Self {
+    const fn from_ppu_bus_state(
+        ppu: PpuBusState,
+        ly: u8,
+        line_dot: u16,
+        mode0_start_dot: u16,
+    ) -> Self {
         if !ppu.is_lcd_enabled() {
             return Self::LcdDisabled;
         }
 
-        if ly < 144 && matches!(ppu.mode(), PpuAccessMode::HBlank) {
+        if ly < 144 && matches!(ppu.mode(), PpuAccessMode::HBlank) && line_dot > mode0_start_dot + 2
+        {
             Self::VisibleHBlank { ly }
         } else {
             Self::None
@@ -630,24 +695,59 @@ impl VramDmaHBlankWindow {
 pub(crate) struct VramDmaRuntimeContext {
     ppu_bus_state: PpuBusState,
     ppu_ly: u8,
+    ppu_line_dot: u16,
+    ppu_mode0_start_dot: u16,
     cpu_halted: bool,
+    speed_mode: CgbSpeedMode,
 }
 
 impl VramDmaRuntimeContext {
     pub(crate) const fn new(ppu_bus_state: PpuBusState, ppu_ly: u8, cpu_halted: bool) -> Self {
+        Self::new_for_speed(ppu_bus_state, ppu_ly, cpu_halted, CgbSpeedMode::Normal)
+    }
+
+    pub(crate) const fn new_for_speed(
+        ppu_bus_state: PpuBusState,
+        ppu_ly: u8,
+        cpu_halted: bool,
+        speed_mode: CgbSpeedMode,
+    ) -> Self {
+        Self::new_for_speed_at_dot(ppu_bus_state, ppu_ly, 3, 0, cpu_halted, speed_mode)
+    }
+
+    pub(crate) const fn new_for_speed_at_dot(
+        ppu_bus_state: PpuBusState,
+        ppu_ly: u8,
+        ppu_line_dot: u16,
+        ppu_mode0_start_dot: u16,
+        cpu_halted: bool,
+        speed_mode: CgbSpeedMode,
+    ) -> Self {
         Self {
             ppu_bus_state,
             ppu_ly,
+            ppu_line_dot,
+            ppu_mode0_start_dot,
             cpu_halted,
+            speed_mode,
         }
     }
 
     const fn hblank_window(self) -> VramDmaHBlankWindow {
-        VramDmaHBlankWindow::from_ppu_bus_state(self.ppu_bus_state, self.ppu_ly)
+        VramDmaHBlankWindow::from_ppu_bus_state(
+            self.ppu_bus_state,
+            self.ppu_ly,
+            self.ppu_line_dot,
+            self.ppu_mode0_start_dot,
+        )
     }
 
     const fn cpu_halted(self) -> bool {
         self.cpu_halted
+    }
+
+    const fn speed_mode(self) -> CgbSpeedMode {
+        self.speed_mode
     }
 }
 
@@ -945,7 +1045,7 @@ impl DmaController {
     pub(crate) fn requires_t_cycle_tick(&self) -> bool {
         self.transfer_state.is_in_flight()
             || self.pending_restart.is_some()
-            || matches!(self.vram_dma_state, VramDmaState::HBlankActive(_))
+            || self.vram_dma_state.is_active()
     }
 
     pub fn transfer_status(&self) -> DmaTransferStatusView {
@@ -1085,6 +1185,10 @@ impl DmaController {
     }
 
     pub fn write_hdma5(&mut self, value: u8) {
+        self.write_hdma5_for_speed(value, CgbSpeedMode::Normal);
+    }
+
+    pub(crate) fn write_hdma5_for_speed(&mut self, value: u8, speed_mode: CgbSpeedMode) {
         if matches!(self.vram_dma_state, VramDmaState::HBlankActive(_)) {
             if value & HDMA5_MODE_BIT == 0 {
                 self.vram_dma_state = VramDmaState::Inactive {
@@ -1108,8 +1212,9 @@ impl DmaController {
                 VramDmaTransfer::new(VramDmaMode::GeneralPurpose, self.vram_dma_registers, blocks);
             self.vram_dma_state = VramDmaState::GeneralPurposeActive(transfer);
             self.vram_dma_last_served_window = VramDmaHBlankWindow::default();
-            self.transfer_state =
-                DmaTransferState::Starting(DmaTransferProgress::new(DmaTransfer::gdma(transfer)));
+            self.transfer_state = DmaTransferState::Starting(DmaTransferProgress::new(
+                DmaTransfer::gdma_for_speed(transfer, speed_mode),
+            ));
             self.pending_restart = None;
         } else {
             self.vram_dma_state = VramDmaState::HBlankActive(VramDmaTransfer::new(
@@ -1221,6 +1326,14 @@ impl DmaController {
 
         self.transfer_state = match self.transfer_state {
             DmaTransferState::Idle => DmaTransferState::Idle,
+            DmaTransferState::Completed(progress)
+                if matches!(
+                    progress.transfer().kind(),
+                    DmaTransferKind::Gdma | DmaTransferKind::Hdma
+                ) && progress.has_unpublished_completed_blocks() =>
+            {
+                DmaTransferState::Completed(progress.advance_one_t_cycle())
+            }
             DmaTransferState::Completed(progress) => DmaTransferState::Completed(progress),
             DmaTransferState::Starting(progress) => {
                 let advanced_progress = progress.advance_one_t_cycle();
@@ -1264,8 +1377,9 @@ impl DmaController {
         }
 
         self.vram_dma_last_served_window = window;
-        self.transfer_state =
-            DmaTransferState::Starting(DmaTransferProgress::new(DmaTransfer::hdma_block(transfer)));
+        self.transfer_state = DmaTransferState::Starting(DmaTransferProgress::new(
+            DmaTransfer::hdma_block_for_speed(transfer, vram_dma_context.speed_mode()),
+        ));
     }
 
     fn apply_vram_dma_progress_side_effects(
@@ -1285,8 +1399,8 @@ impl DmaController {
             return;
         }
 
-        let completed_blocks = current_progress.completed_blocks()
-            - previous_progress.map_or(0, DmaTransferProgress::completed_blocks);
+        let completed_blocks = current_progress.published_completed_blocks()
+            - previous_progress.map_or(0, DmaTransferProgress::published_completed_blocks);
         if completed_blocks == 0 {
             return;
         }

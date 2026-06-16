@@ -56,6 +56,82 @@ artifact_dir = ".custom-artifacts"
 }
 
 #[test]
+fn reports_manifest_rejects_unsafe_runtime_paths() {
+    let cases = [
+        (
+            "suite-report-empty-default-status",
+            r#"
+status_dir = ""
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+"#,
+            "report default status_dir must not be empty",
+        ),
+        (
+            "suite-report-parent-store",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "../sample-report"
+sources = "sample-report/sources.report.toml"
+"#,
+            "report store_dir ../sample-report must not contain parent components",
+        ),
+        (
+            "suite-report-parent-artifacts",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+artifact_dir = "../artifacts"
+"#,
+            "report artifact_dir ../artifacts must not contain parent components",
+        ),
+        (
+            "suite-report-current-status",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+status_dir = "."
+"#,
+            "report status_dir . must not contain current-directory components",
+        ),
+    ];
+
+    for (workspace_name, reports_toml, expected_error) in cases {
+        let workspace = unique_temp_dir(workspace_name);
+        let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+        fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+            .expect("reports parent should be creatable");
+        fs::write(&reports_path, reports_toml).expect("reports should be writable");
+
+        assert!(
+            load_reports(&workspace)
+                .expect_err("unsafe runtime path should fail")
+                .contains(expected_error)
+        );
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
+    }
+}
+
+#[test]
 fn reports_manifest_loads_local_report_without_sources() {
     let workspace = unique_temp_dir("suite-local-report");
     let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
@@ -686,6 +762,10 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
         ReportModel::Dmg
     );
     assert!(report_suffix_manifest.cases[0].report_model_suffix);
+    assert_eq!(
+        report_suffix_manifest.cases[0].report_rom(),
+        "which.gb (DMG)"
+    );
 
     let inherited_report_suffix = basic_manifest(
         "gb-emulator-shootout",
@@ -706,6 +786,70 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
     .expect("header report model suffix should parse");
     assert!(inherited_report_suffix_manifest.cases[0].report_model_suffix);
 
+    let inherited_revision_suffix = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace(
+        "model = \"dmg\"",
+        "model = \"dmg\"\nreport_revision_suffix = true",
+    );
+    let inherited_revision_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &inherited_revision_suffix,
+    )
+    .expect("header report revision suffix should parse");
+    assert!(inherited_revision_suffix_manifest.cases[0].report_revision_suffix);
+    assert_eq!(
+        inherited_revision_suffix_manifest.cases[0].report_rom(),
+        "which.gb (DMG-CPU-C)"
+    );
+
+    let case_revision_suffix = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace(
+        "rom = \"which.gb\"",
+        "rom = \"which.gb\"\nreport_revision_suffix = true",
+    );
+    let case_revision_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &case_revision_suffix,
+    )
+    .expect("case-level report revision suffix should parse");
+    assert!(case_revision_suffix_manifest.cases[0].report_revision_suffix);
+
+    let model_and_revision_suffix = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-cgb-d",
+        "which.gb",
+    )
+    .replace(
+        "model = \"dmg\"",
+        "model = \"cgb\"\nrevision = \"cpu-cgb-d\"\nreport_model_suffix = true\nreport_revision_suffix = true",
+    );
+    let model_and_revision_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &model_and_revision_suffix,
+    )
+    .expect("combined report suffixes should parse");
+    assert_eq!(
+        model_and_revision_suffix_manifest.cases[0].report_rom(),
+        "which.gb (GBC) (CPU-CGB-D)"
+    );
+
     let overridden_report_suffix = inherited_report_suffix.replace(
         "rom = \"which.gb\"",
         "rom = \"which.gb\"\nreport_model_suffix = false",
@@ -717,6 +861,22 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
     )
     .expect("case-level report model suffix override should parse");
     assert!(!overridden_report_suffix_manifest.cases[0].report_model_suffix);
+
+    let overridden_revision_suffix = inherited_revision_suffix.replace(
+        "rom = \"which.gb\"",
+        "rom = \"which.gb\"\nreport_revision_suffix = false",
+    );
+    let overridden_revision_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &overridden_revision_suffix,
+    )
+    .expect("case-level report revision suffix override should parse");
+    assert!(!overridden_revision_suffix_manifest.cases[0].report_revision_suffix);
+    assert_eq!(
+        overridden_revision_suffix_manifest.cases[0].report_rom(),
+        "which.gb"
+    );
 
     let unsupported_alias = basic_manifest(
         "gb-emulator-shootout",
@@ -794,6 +954,27 @@ fn parser_rejects_unknown_manifest_keys() {
         )
         .expect_err("unknown header key should fail")
         .contains("uses unsupported key \"model_typo\"")
+    );
+
+    let unknown_revision_suffix_key = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace(
+        "model = \"dmg\"",
+        "model = \"dmg\"\nreport_revision_extra = true",
+    );
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("acid.suite.toml"),
+            "gb-emulator-shootout",
+            &unknown_revision_suffix_key,
+        )
+        .expect_err("unknown report revision suffix key should fail")
+        .contains("uses unsupported key \"report_revision_extra\"")
     );
 
     let unknown_case_key = basic_manifest(
@@ -1571,7 +1752,11 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         ("magen", &[("magen-cgb", 8, "magen")][..]),
         (
             "mealybug-tearoom-tests",
-            &[("mealybug-tearoom-tests-cgb", 24, "mealybug-tearoom-tests")][..],
+            &[
+                ("mealybug-tearoom-tests-dma", 2, "mealybug-tearoom-tests"),
+                ("mealybug-tearoom-tests-mbc", 1, "mealybug-tearoom-tests"),
+                ("mealybug-tearoom-tests-ppu", 76, "mealybug-tearoom-tests"),
+            ][..],
         ),
         (
             "samesuite",

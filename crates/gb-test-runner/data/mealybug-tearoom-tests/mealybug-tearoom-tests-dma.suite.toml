@@ -1,0 +1,15 @@
+family = "mealybug-tearoom-tests"
+suite_name = "mealybug-tearoom-tests-dma"
+report = "mealybug-tearoom-tests"
+model = "cgb"
+revision = "cpu-cgb-c"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "mealybug-dma-hdma-during-halt-c"
+rom = "dma/hdma_during_halt-C.gb"
+
+[[case]]
+id = "mealybug-dma-hdma-timing-c"
+rom = "dma/hdma_timing-C.gb"

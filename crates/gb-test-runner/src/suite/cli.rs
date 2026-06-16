@@ -30,7 +30,7 @@ pub fn suite_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>] [--threads <n>] [--boot-rom-dir <dir>]\n",
         "\n",
-        "Runs report-local *.suite.toml test ROM manifests through the new minimal suite runner.\n",
+        "Validates report/suite/case selection, clears selected suite status/artifacts under test/<report>/, then runs report-local *.suite.toml manifests through the new minimal suite runner.\n",
     )
 }
 
@@ -56,6 +56,27 @@ where
     match parse_suite_arguments(arguments)? {
         SuiteAction::ShowHelp => write_all(output, suite_help_text()),
         SuiteAction::Run(options) => run_options(options, workspace_root, output),
+    }
+}
+
+pub(crate) fn run_suite_command_with_workspace_tracking_cleanup<I, S, W>(
+    arguments: I,
+    workspace_root: &Path,
+    output: &mut W,
+    cleanup_completed: &mut bool,
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+    W: Write,
+{
+    match parse_suite_arguments(arguments)? {
+        SuiteAction::ShowHelp => write_all(output, suite_help_text()),
+        SuiteAction::Run(options) => {
+            run_options_after_cleanup(options, workspace_root, output, || {
+                *cleanup_completed = true;
+            })
+        }
     }
 }
 
@@ -135,6 +156,15 @@ fn run_options<W: Write>(
     workspace_root: &Path,
     output: &mut W,
 ) -> Result<(), String> {
+    run_options_after_cleanup(options, workspace_root, output, || {})
+}
+
+fn run_options_after_cleanup<W: Write, F: FnMut()>(
+    options: SuiteOptions,
+    workspace_root: &Path,
+    output: &mut W,
+    mut after_cleanup: F,
+) -> Result<(), String> {
     let reports = load_reports(workspace_root)?;
     let Some(report_id) = options.report_id else {
         return Err(missing_report_error(&reports));
@@ -183,6 +213,15 @@ fn run_options<W: Write>(
     } else {
         None
     };
+
+    crate::runtime::clean_suite_runtime_dirs(
+        workspace_root,
+        &report.store_dir,
+        &report.status_dir,
+        &report.artifact_dir,
+        suites.iter().map(|suite| suite.suite_name.as_str()),
+    )?;
+    after_cleanup();
 
     let mut all_passed = true;
     for suite in &suites {
