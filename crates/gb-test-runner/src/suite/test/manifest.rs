@@ -1850,6 +1850,48 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                     .iter()
                     .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgbD)
             );
+            assert_eq!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-1-channel-1-volume-div")
+                    .expect("CH1 volume DIV row should exist")
+                    .timeout_frames,
+                300
+            );
+            assert_eq!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-1-channel-1-nrx2-speed-change")
+                    .expect("CH1 NRX2 speed row should exist")
+                    .timeout_frames,
+                420
+            );
+            let channel_2 =
+                load_selected_suites(&workspace, report, Some("samesuite-apu-channel-2"), None)
+                    .expect("samesuite APU CH2 suite should load");
+            assert_eq!(
+                channel_2[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-2-channel-2-nrx2-speed-change")
+                    .expect("CH2 NRX2 speed row should exist")
+                    .timeout_frames,
+                420
+            );
+            let channel_4 =
+                load_selected_suites(&workspace, report, Some("samesuite-apu-channel-4"), None)
+                    .expect("samesuite APU CH4 suite should load");
+            assert_eq!(
+                channel_4[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-4-channel-4-volume-div")
+                    .expect("CH4 volume DIV row should exist")
+                    .timeout_frames,
+                300
+            );
         }
         if report_id == "little-things-gb" {
             let suites =

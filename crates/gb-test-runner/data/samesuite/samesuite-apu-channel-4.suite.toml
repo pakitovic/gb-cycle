@@ -13,6 +13,7 @@ rom = "apu/channel_4/channel_4_lfsr15.gb"
 [[case]]
 id = "samesuite-apu-channel-4-channel-4-volume-div"
 rom = "apu/channel_4/channel_4_volume_div.gb"
+timeout_frames = 300
 
 [[case]]
 id = "samesuite-apu-channel-4-channel-4-equivalent-frequencies"

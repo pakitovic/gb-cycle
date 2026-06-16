@@ -46,6 +46,7 @@ rom = "apu/channel_1/channel_1_sweep_restart_2.gb"
 [[case]]
 id = "samesuite-apu-channel-1-channel-1-volume-div"
 rom = "apu/channel_1/channel_1_volume_div.gb"
+timeout_frames = 300
 
 [[case]]
 id = "samesuite-apu-channel-1-channel-1-freq-change-timing-a"
@@ -85,6 +86,7 @@ rom = "apu/channel_1/channel_1_duty.gb"
 [[case]]
 id = "samesuite-apu-channel-1-channel-1-nrx2-speed-change"
 rom = "apu/channel_1/channel_1_nrx2_speed_change.gb"
+timeout_frames = 420
 
 [[case]]
 id = "samesuite-apu-channel-1-channel-1-nrx2-glitch"

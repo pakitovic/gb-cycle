@@ -21,6 +21,7 @@ rom = "apu/channel_2/channel_2_align.gb"
 [[case]]
 id = "samesuite-apu-channel-2-channel-2-nrx2-speed-change"
 rom = "apu/channel_2/channel_2_nrx2_speed_change.gb"
+timeout_frames = 420
 
 [[case]]
 id = "samesuite-apu-channel-2-channel-2-restart"
