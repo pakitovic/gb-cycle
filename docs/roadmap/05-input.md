@@ -118,6 +118,7 @@ Phase `5` should be executed as narrow subphases. No subphase counts as closed u
 - The remaining Phase `4` TODOs are validation-grade PPU follow-ups, not architectural blockers for Phase `5`; only interleave one of them if shared scheduler traces, oracle tooling, or retained artifact plumbing can be improved once and reused immediately by the active joypad or serial subphase.
 - If a Phase `5` subphase depends on a missing helper, fixture pattern, or trace hook that also resolves a concrete earlier TODO, land that smallest reusable seam first instead of duplicating temporary peripheral-local scaffolding.
 - If a Phase `5` subphase lands with a deliberately isolated gap, record the remainder in `Open TODOs` immediately instead of carrying it informally into later cartridge or APU work.
+- The c-sp v7 `little-things-gb/tellinglys.gb` report rows are the retained external-ROM evidence for the current joypad interrupt entropy gap; keep the `test-roms-extra` `little-things-gb` lane disabled until `[JOYPAD][TELLINGLYS-IRQ-ENTROPY]` in `docs/TODO.md` is closed or the suite policy changes explicitly.
 
 #### Subphase exit rule
 
