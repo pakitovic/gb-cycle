@@ -180,7 +180,10 @@ impl Ppu {
                 || self.mode2_stat_write_irq_source()
                 || self.lyc_stat_write_irq_source());
         if !self.runtime.stat_state.irq_line && (quirk_active || write_requests_ordinary_edge) {
-            self.queue_interrupt_request_with_cpu_if_visibility(InterruptSource::LcdStat, true);
+            self.queue_interrupt_request_with_cpu_if_visibility(
+                InterruptSource::LcdStat,
+                !self.stat_request_hidden_from_same_cycle_cpu_if(),
+            );
         }
         self.runtime.stat_state.irq_line = new_line;
     }

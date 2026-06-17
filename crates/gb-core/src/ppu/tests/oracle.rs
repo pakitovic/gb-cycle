@@ -272,6 +272,138 @@ fn cut1_trace_ly143_144_mode3_0() {
     }
 }
 
+// ====================================================================
+// §24.25.3 RESUME PROBE — differential dispatch-IRQ trace (TEMPORARY).
+// Runs a failing wilbertpol ROM and dumps the full STAT-IRQ <-> STAT-readback
+// relationship around the relevant transitions, so the A'-branch vs main offset
+// between the IRQ latch (CPU-visible) and the now-shifted readback can be pinned.
+// Per relevant t-cycle it prints, on ANY of:
+//   - STAT (0x02) raw/visible PPU-pending change (PENDdelta)
+//   - ServiceInterrupt{LcdStat} rising edge (SERVICE)
+//   - CPU DataRead of IF/STAT/LY (0xFF0F/0xFF41/0xFF44) (READ)
+//   - terminal magic breakpoint 0x40 (RESULT, with the fibonacci registers)
+// the (ly, line_dot, mode), the committed IF (`interrupts().read_if()`), the raw
+// vs cpu-visible PPU pending masks, the read value, and pc.
+// Copy this file verbatim into ../gb-cycle-main and run the same test to diff.
+// ====================================================================
+
+fn irq_dispatch_trace(rom_relpath: &str, model: ConsoleModel, max_cycles: u64) {
+    let rom_path = format!("{}/../../{rom_relpath}", env!("CARGO_MANIFEST_DIR"));
+    let rom = std::fs::read(&rom_path).unwrap_or_else(|_| panic!("ROM present: {rom_path}"));
+    let mut machine =
+        Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+    machine.load_cartridge(rom).expect("rom loads");
+    let tag = if model.is_cgb_family() { "CGB" } else { "DMG" };
+
+    let mut out: Vec<String> = Vec::new();
+    let mut prev_iff = 0u8;
+    let mut prev_ff44 = 0xFFu16; // sentinel; dedups the busy-poll on FF44 (log only on change)
+    let mut terminal = "(none)";
+
+    for cycle in 0u64..max_cycles {
+        machine.step_t_cycle();
+
+        // Snapshot every cycle: these readback ROMs disable interrupts and busy-poll FF44,
+        // so the signal is the register READS (need last_bus_activity), not IRQ edges.
+        let cpu = machine.cpu().snapshot();
+        let exec = cpu.execution_state;
+        let iff = machine.interrupts().read_if();
+
+        let read = cpu.last_bus_activity.filter(|a| {
+            a.kind == crate::CpuBusAccessKind::DataRead
+                && matches!(a.address, 0xFF0F | 0xFF41 | 0xFF44)
+        });
+
+        // FF44 (LY) reads: log only when the read VALUE changes (the busy-poll exit shows
+        // as a value transition). FF41/FF0F: always. Also log any IF lower-bit change.
+        let iff_change = (iff & 0x03) != (prev_iff & 0x03);
+        prev_iff = iff;
+        let log_read = match read {
+            Some(a) if a.address == 0xFF44 => {
+                let changed = a.value as u16 != prev_ff44;
+                prev_ff44 = a.value as u16;
+                changed
+            }
+            Some(_) => true,
+            None => false,
+        };
+
+        if log_read || iff_change {
+            let (raddr, rval) = read.map(|a| (a.address, a.value)).unwrap_or((0, 0));
+            let mode = machine.ppu().current_access_mode();
+            out.push(format!(
+                "T {tag} ly={:>3} dot={:>3} mode={mode:?} IF={iff:#04X} | rd={raddr:#06X}:{rval:#04X} pc={:#06X} @{cycle}",
+                machine.ppu().ly(),
+                machine.ppu().line_dot(),
+                cpu.registers.pc,
+            ));
+        }
+
+        // Terminal: legacy magic breakpoint 0xED or 0x40 in Execute -> dump fib registers.
+        if matches!(cpu.current_opcode, Some(0x40) | Some(0xED))
+            && matches!(exec, crate::CpuExecutionState::Execute { .. })
+        {
+            let r = &cpu.registers;
+            let pass = [r.b, r.c, r.d, r.e, r.h, r.l] == [3, 5, 8, 13, 21, 34];
+            out.push(format!(
+                "T {tag} RESULT pass={pass} B={:#04X} C={:#04X} D={:#04X} E={:#04X} H={:#04X} L={:#04X} pc={:#06X} @{cycle}",
+                r.b, r.c, r.d, r.e, r.h, r.l, r.pc
+            ));
+            terminal = "magic";
+            break;
+        }
+        if exec == crate::CpuExecutionState::Halted {
+            out.push(format!("T {tag} HALTED @{cycle}"));
+            terminal = "halt";
+            break;
+        }
+    }
+
+    let path = format!("/tmp/irq_trace_{}_{tag}.txt", trace_rom_tag(rom_relpath));
+    std::fs::write(&path, out.join("\n")).expect("write trace");
+    println!(
+        "IRQT {tag} wrote {} lines to {path} (terminal={terminal})",
+        out.len()
+    );
+}
+
+fn trace_rom_tag(rom_relpath: &str) -> String {
+    rom_relpath
+        .rsplit('/')
+        .next()
+        .unwrap_or(rom_relpath)
+        .trim_end_matches(".gb")
+        .to_string()
+}
+
+const LY143_ROM: &str = "test/wilbertpol/wilbertpol/acceptance/gpu/ly143_144_mode3_0.gb";
+const SPRITES_NOPS_ROM: &str =
+    "test/wilbertpol/wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites_nops.gb";
+
+#[test]
+#[ignore = "§24.25.3 differential IRQ trace: ly143_144_mode3_0 DMG; copy to main + diff"]
+fn irq_trace_ly143_144_mode3_0_dmg() {
+    irq_dispatch_trace(LY143_ROM, ConsoleModel::GameBoy, 1_500_000);
+}
+
+#[test]
+#[ignore = "§24.25.3 differential IRQ trace: ly143_144_mode3_0 CGB; copy to main + diff"]
+fn irq_trace_ly143_144_mode3_0_cgb() {
+    irq_dispatch_trace(LY143_ROM, ConsoleModel::GameBoyColor, 1_500_000);
+}
+
+#[test]
+#[ignore = "§24.25.3 differential IRQ trace: intr_2_mode0_timing_sprites_nops DMG; copy to main + diff"]
+fn irq_trace_intr_2_sprites_nops_dmg() {
+    irq_dispatch_trace(SPRITES_NOPS_ROM, ConsoleModel::GameBoy, 1_500_000);
+}
+
+#[test]
+#[ignore = "§24.25.3 differential IRQ trace: intr_2_mode0_timing_sprites_nops CGB; copy to main + diff"]
+fn irq_trace_intr_2_sprites_nops_cgb() {
+    irq_dispatch_trace(SPRITES_NOPS_ROM, ConsoleModel::GameBoyColor, 1_500_000);
+}
+
 #[test]
 #[ignore = "Cut 1.0 grounding probe (manual run with --nocapture); revert at Cut 1 close"]
 fn cut1_grounding_internal_ly_phase() {

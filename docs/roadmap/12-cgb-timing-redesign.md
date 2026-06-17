@@ -2352,3 +2352,72 @@ tests (the last group is the IRQ-visibility/item-3 surface the convergence must 
 `ppu/tests/oracle.rs`: `cut1_grounding_internal_ly_phase` (bare-rig phase scan, 1.0) + `cut1_trace_ly143_144_mode3_0`
 (real-ROM read trace). RESUME: differential dispatch-IRQ trace (A′-branch vs main) of a failing case, capturing
 `ServiceInterrupt{LcdStat}` + IF reads (not just register reads), to pin the IRQ-latch↔readback dot offset.
+
+#### 24.25.4 CUT A LANDED + DIFFERENTIAL TRACE RE-DIAGNOSES THE RESIDUAL — half the regressions are NOT STAT-IRQ; they are the LCD-re-enable restart phase under the reorder (2026-06-17)
+
+A 4-agent characterization workflow (`stat-irq-convergence-map`) + a feasible differential ROM trace (the prior brute-force
+attempt was abandoned: the gb-test-runner is the fast oracle — these ROMs terminate at ~1.1–1.9M T-cycles; the per-cycle
+probe runs ~80k cyc/s, and the "legacy fibonacci" terminal is opcode `0xED`, not `0x40`, so the earlier probe never
+detected it) produced a sharper, partly **corrected** picture of the §24.25.3 residual.
+
+**CUT A LANDED (zero-risk, validated): restored `main`'s same-cycle CPU-IF hide family.** The branch had deleted
+`mode0_/mode2_/mode1_/lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if` + `ordinary_mode2_stat_pretrigger_edge` +
+`stat_request_hidden_from_same_cycle_cpu_if` in cefd6484 ("retire hide") and hard-coded
+`queue_interrupt_request_with_cpu_if_visibility(LcdStat, true)`. Cut A re-adds those 6 methods verbatim from `main` and
+re-couples BOTH LcdStat edge queues (`irq.rs refresh_stat_irq_line` + `registers.rs write_stat`) to
+`!stat_request_hidden_from_same_cycle_cpu_if()`. Result: **15 → 10 red unit tests** (the 5 `*_hidden`/`line144_mode2_hidden`
+tests go green), wilbertpol-acceptance gate **unchanged at 94/105** (the exact same 11 fails), fmt+lint clean. This is a
+**no-op in the full machine** and proves the reorder model: under the reorder the PPU pending is committed+cleared every
+cycle at `InterruptAggregation` (via `take_pending_interrupt_request_mask`, which is RAW/ignores hidden), so
+`cpu_visible_pending_interrupt_request_mask` is ~always 0 during `CpuMicroOperation` and the hide flag never reaches the
+full-machine IF read. The hide family is the canonical predicate the bare-PPU unit tests assert; restoring it deletes the
+"retire hide" divergence (net seams ↓) with zero ROM risk. Dispatch uses `interrupts.highest_pending()` (scheduler IF);
+the IF read uses scheduler IF | `cpu_visible_pending` (= scheduler IF only, in practice).
+
+**THE 11 REGRESSIONS SPLIT INTO TWO CLASSES (from reading the wilbertpol `.s` sources, corroborated by the trace):**
+- **Class A — STAT-IRQ-edge-vs-readback (5): `intr_2_mode0_timing_sprites_{nops,scx1..4_nops}`.** A Mode2 STAT IRQ
+  HALT-wake is the time origin; the test then polls FF41 until mode0 (Drawing→HBlank), with mode3 length extended by the
+  §245 sprite penalty (+scx). A′ moved the mode0 readback while the Mode2 IRQ edge stayed put → desync. The 3 TARGETS
+  (`intr_2_mode0_scx3/scx7_timing_nops`, `intr_2_mode0_timing_sprites`) are the same mechanism and now PASS.
+- **Class B — pure readback across an LCD-re-enable / line transition (6): `ly143_144_{145,152_153,mode0_1,mode3_0}`,
+  `lcdon_mode_timing`, `hblank_ly_scx_timing_variant_nops`.** **These DISABLE interrupts** (`xor a; ldh IE; ldh IF;
+  LYC=$f0`) and busy-poll FF44 / read FF41 once per round; most do an **LCD off→on per round**. The §24.25.3 framing that
+  ly143_144 uses the VBlank IRQ is **REFUTED** — confirmed by the trace (IF=0xE1 is the unhandled VBlank flag; no
+  ServiceInterrupt ever fires). So half the residual is **NOT** IRQ↔readback coupling — it is pure readback.
+
+**DECISIVE DIFFERENTIAL TRACE (`ly143_144_mode3_0`, DMG, branch-A′ vs `../gb-cycle-main`, CPU-observable fields only):**
+the entire (ly, read-value, pc) sequence is **byte-identical except ONE read** — at `pc=0x01EC`, the FF41 read returns
+**branch `0x80` (mode0/HBlank) vs main `0x83` (mode3/Drawing)**, both at the SAME absolute T-cycle (@196939). Root cause,
+pinned: the branch PPU's internal `line_dot` runs **exactly 1 dot AHEAD** of main from a specific point onward (post-step
+branch dot=253 / main 252; the offset first appears at @65755, ly=0, **right after the ROM's first LCD off→on**, where the
+mode reads HBlank in the early dots = blank_frame_active = LCD re-enable). The trace START is byte-identical (no init
+offset); `LCD_REENABLE_*` constants + `enter_lcd_enabled_restart_state` (`line_dot=0`) are **identical branch↔main**. So
+the +1 dot is the **reorder × LCD-enable handoff**: the branch's LCDC-enable write (CpuMicroOp/MmioCommit, phases 5/6)
+precedes the PPU tick (phase 7), while `main`'s PPU tick (phase 4) precedes the write — so the re-enable lands in a
+different phase and the branch restart ends one dot ahead.
+
+**Implication — A′'s readback formula is CORRECT; the residual for Class B is the LCD-restart PPU phase, NOT readback and
+NOT IRQ.** At the divergent read both PPUs are at internal `line_dot=252` at the CPU read instant; A′ reads
+`access(reference−1)=access(252)=HBlank`, main reads `access(line_dot−1)=access(251)=Drawing`. **If the branch PPU were
+phase-aligned** (not 1 ahead), the branch pre-tick `line_dot` would be 251 and A′ would read `access(251)=Drawing` =
+correct. ⇒ **fixing the LCD-re-enable restart phase so the branch PPU is not 1 dot ahead after re-enable closes Class B
+without touching A′ or the IRQ.** This is the documented LCD-restart seam (cf. CGB `LCD_REENABLE_LINE0_*` workstream), here
+on DMG and with a clear target (+1 dot, post-step branch 253 vs main 252).
+
+**REVISED PLAN (supersedes the §24.25.3 single "converge STAT-IRQ" framing):**
+- **Cut A — hide family restore: DONE** (uncommitted; 94/105 unchanged, 5 unit tests green). Canon-positive prerequisite.
+- **Workstream B (Class B, 6 ROMs): LCD-re-enable restart phase alignment.** Make the branch PPU NOT run 1 dot ahead of
+  main after an LCD enable under the reorder. Gate per-ROM on the fast suite; this is a PPU-phase fix, independent of A′.
+  RISK: the LCD-restart seam has a refuted history (CGB §M3); but here the target is concrete (DMG, +1 dot).
+- **Workstream A (Class A, 5 ROMs + keep 3 targets): IRQ-edge-vs-readback for the sprite-extended mode0 boundary.** The
+  Mode2 STAT IRQ edge vs the A′-moved mode0 readback; candidate is the `published_stat` mode0 override interacting with the
+  §245-extended `mode0_start` (not the deferral seams — those protect ly_lyc_*/intr_2_timing, which currently PASS;
+  guard-risk = medium/high to touch).
+- **Deferral seams (item-1/E1/item-3/batch-4): do NOT remove yet.** guard-risk workflow: each protects a currently-PASSING
+  ROM (item-1→ly_lyc_0, E1→ly_lyc, item-3→ly_lyc_144+intr_1_timing, batch-4→intr_2_timing) on the IRQ-source/IF-read path
+  that A′ did not move; §24.16 already gates item-3's deletion on the deeper rephase. The 3 `irq-readback-coupling` red
+  unit tests are tied to these and stay red until Workstream A resolves the edge phase.
+
+Temp diagnostic probes in `ppu/tests/oracle.rs`: `irq_dispatch_trace` + `irq_trace_ly143_144_mode3_0_{dmg,cgb}` /
+`irq_trace_intr_2_sprites_nops_{dmg,cgb}` (`#[ignore]`, write `/tmp/irq_trace_*.txt`; copy the fn block into
+`../gb-cycle-main` to re-diff). Revert at close.

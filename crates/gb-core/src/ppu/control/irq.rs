@@ -291,6 +291,118 @@ impl Ppu {
                 >= self.current_scanline_length()
     }
 
+    // Edge-narrow companion to `ordinary_mode2_stat_pretrigger_source` (the source is the
+    // level `>= len`; the edge is the exact `== len` rising dot). Feeds the same-cycle
+    // hide family below (Cut A: restored from `main`, deleted on the branch in cefd6484).
+    fn ordinary_mode2_stat_pretrigger_edge(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly + 1 < VISIBLE_SCANLINES
+            && self.line_dot + self.ordinary_mode2_stat_pretrigger_lead_dots()
+                == self.current_scanline_length()
+    }
+
+    // ============================================================================
+    // SAME-CYCLE CPU-IF HIDE FAMILY (Cut A — restored from `main`, byte-equivalent).
+    // A freshly risen STAT IRQ edge is not readable in IF on the exact cycle it rises;
+    // it becomes visible one read-position later. On `main` (PPU ticks before the CPU)
+    // this hides the edge from the same-cycle live PPU pending; under the branch reorder
+    // the PPU pending is committed+cleared every cycle at InterruptAggregation, so this
+    // family is a no-op for the full-machine IF read (cpu_visible_pending is already 0 in
+    // CpuMicroOp) — but it is the canonical predicate the bare-PPU unit tests assert, and
+    // restoring it deletes the `retire hide` seam without changing any ROM behaviour.
+    // ============================================================================
+    fn mode0_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        if self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT == 0
+            || !self.is_lcd_enabled()
+            || self.ly >= VISIBLE_SCANLINES
+        {
+            return false;
+        }
+
+        let real_boot_scx_seam_suppresses_pretrigger = self
+            .runtime
+            .stat_state
+            .real_boot_handoff_mode0_scx_seam_phase_active
+            && matches!(self.scx & 0x07, 3 | 7);
+        let ordinary_pretrigger_allowed = !self
+            .runtime
+            .stat_state
+            .suppress_mode0_pretrigger_until_vblank
+            && !self.runtime.stat_state.startup_mode0_irq_phase_active
+            && !real_boot_scx_seam_suppresses_pretrigger;
+        let ordinary_pretrigger_source = ordinary_pretrigger_allowed
+            && self.line_dot < self.current_mode0_start_dot()
+            && self.line_dot + 4 >= self.current_mode0_start_dot();
+        if ordinary_pretrigger_source {
+            return true;
+        }
+
+        let mode0_start_dot = if self
+            .lcd_restart_phase
+            .is_first_line_after_enable_active(self.ly)
+        {
+            self.lcd_reenable_line0_mode0_irq_dot()
+        } else {
+            self.current_mode0_stat_irq_start_dot()
+        };
+
+        self.line_dot == mode0_start_dot
+            && self.current_stat_irq_access_mode() == PpuAccessMode::HBlank
+    }
+
+    fn mode2_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        if self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT == 0
+            || !self.is_lcd_enabled()
+        {
+            return false;
+        }
+
+        self.ordinary_mode2_stat_pretrigger_edge() || self.mode2_vblank_entry_stat_source()
+    }
+
+    fn mode1_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        self.stat_interrupt_enable & STAT_MODE1_INTERRUPT_ENABLE_BIT != 0
+            && self.is_lcd_enabled()
+            && self.ly == VISIBLE_SCANLINES
+            && self.line_dot == 0
+            && self.current_access_mode() == PpuAccessMode::VBlank
+    }
+
+    fn lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        if self.stat_interrupt_enable & STAT_LYC_INTERRUPT_ENABLE_BIT == 0 || !self.is_lcd_enabled()
+        {
+            return false;
+        }
+
+        if self.line_153_lyc0_stat_irq_pretrigger_source() {
+            return true;
+        }
+
+        if self.regular_line_dot0_compare_window() && self.ly == self.lyc {
+            return true;
+        }
+
+        if !self.live_lyc_coincidence() {
+            return false;
+        }
+
+        if self.ly == TOTAL_SCANLINES - 1 && !self.console_model.is_cgb_family() {
+            return (self.lyc == TOTAL_SCANLINES - 1
+                && self.line_dot == LINE_153_LYC153_COMPARE_START_DOT)
+                || (self.lyc == 0 && self.line_dot == LINE_153_LYC0_COMPARE_START_DOT);
+        }
+
+        false
+    }
+
+    pub(in crate::ppu) fn stat_request_hidden_from_same_cycle_cpu_if(&self) -> bool {
+        self.mode0_stat_irq_edge_hidden_from_same_cycle_cpu_if()
+            || self.mode2_stat_irq_edge_hidden_from_same_cycle_cpu_if()
+            || self.mode1_stat_irq_edge_hidden_from_same_cycle_cpu_if()
+            || self.lyc_stat_irq_edge_hidden_from_same_cycle_cpu_if()
+    }
+
     fn mode2_vblank_entry_stat_pretrigger_dots(&self) -> Option<u16> {
         if self.console_model.is_dmg_family() {
             return Some(DMG_MODE2_VBLANK_ENTRY_STAT_PRETRIGGER_DOTS);
@@ -450,7 +562,10 @@ impl Ppu {
             && new_line
             && self.line_153_lyc0_stat_irq_pretrigger_source();
         if !self.runtime.stat_state.irq_line && new_line {
-            self.queue_interrupt_request_with_cpu_if_visibility(InterruptSource::LcdStat, true);
+            self.queue_interrupt_request_with_cpu_if_visibility(
+                InterruptSource::LcdStat,
+                !self.stat_request_hidden_from_same_cycle_cpu_if(),
+            );
             if self.dot0_lyc_stat_irq_edge_is_cancellable() {
                 self.runtime.stat_state.dot0_lyc_stat_irq_edge_pending = true;
             }
