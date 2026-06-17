@@ -201,50 +201,57 @@ impl Ppu {
         }
     }
 
+    // The CPU-first reorder makes every CPU register read observe the PPU at the PRE-tick
+    // `line_dot` (one dot behind the post-tick raster that `main` publishes). The canonical
+    // readback model therefore evaluates `main`'s exact register bodies at the post-tick
+    // reference `line_dot + 1` (with the natural end-of-line / line-153 wrap), undoing the
+    // reorder in ONE place instead of the scattered per-path `+1` compensations.
+    pub(in crate::ppu) fn readback_reference(&self) -> (u8, u16) {
+        let next_dot = self.line_dot + 1;
+        if next_dot >= self.current_scanline_length() {
+            let next_ly = if self.ly + 1 == TOTAL_SCANLINES {
+                0
+            } else {
+                self.ly + 1
+            };
+            (next_ly, 0)
+        } else {
+            (self.ly, next_dot)
+        }
+    }
+
     fn read_ly_without_skip_boot_lag(&self) -> u8 {
-        if self.line_153_reads_as_ly0() {
+        let (ref_ly, ref_dot) = self.readback_reference();
+
+        if self.line_153_reads_as_ly0_at(ref_ly, ref_dot) {
             return 0;
         }
 
         if self.is_lcd_enabled()
             && !self.runtime.blank_frame_active
-            && self.ly < VISIBLE_SCANLINES
+            && ref_ly < VISIBLE_SCANLINES
             && !self.vblank_wrap_line0_ly_read_delay_active()
-            && self.line_dot >= self.current_ly_read_advance_start_dot()
-            && self.ly + 1 < TOTAL_SCANLINES
+            && ref_dot >= self.current_ly_read_advance_start_dot()
+            && ref_ly + 1 < TOTAL_SCANLINES
         {
-            return self.ly + 1;
+            return ref_ly + 1;
         }
 
-        // VBlank lines have no 6-dot read lead, but the CPU-first reorder observes the
-        // pre-tick `line_dot`, so the LY increment at the final dot of a vblank line must
-        // publish the next line one dot early for the same-cycle CPU read, mirroring the
-        // mode0-publish overrides (wilbertpol vblank_if_timing round5: LY reads 145 at the
-        // 144->145 wrap). Line 153 is excluded by `ly + 1 < TOTAL_SCANLINES` and handled by
-        // `line_153_reads_as_ly0`.
-        if self.is_lcd_enabled()
-            && self.ly >= VISIBLE_SCANLINES
-            && self.ly + 1 < TOTAL_SCANLINES
-            && self.line_dot + 1 >= self.current_scanline_length()
-        {
-            return self.ly + 1;
-        }
-
-        self.ly
+        ref_ly
     }
 
     fn skip_boot_ly_read_lag_active(&self) -> bool {
         self.runtime.stat_state.skip_boot_ly_read_lag_active && self.is_lcd_enabled()
     }
 
-    fn line_153_reads_as_ly0(&self) -> bool {
+    fn line_153_reads_as_ly0_at(&self, ref_ly: u8, ref_dot: u16) -> bool {
         let ly0_dot = if self.console_model.is_cgb_family() {
             CGB_LINE_153_LY_READ_ZERO_DOT
         } else {
             LINE_153_LY_READ_ZERO_DOT
         };
 
-        self.is_lcd_enabled() && self.ly == TOTAL_SCANLINES - 1 && self.line_dot >= ly0_dot
+        self.is_lcd_enabled() && ref_ly == TOTAL_SCANLINES - 1 && ref_dot >= ly0_dot
     }
 
     fn vblank_wrap_line0_ly_read_delay_active(&self) -> bool {

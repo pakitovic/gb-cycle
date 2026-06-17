@@ -14,7 +14,7 @@ impl Ppu {
 
         Some(PpuPublishedStatModeContext {
             published_mode: self.access_mode_for_line_dot(published_line_dot),
-            current_mode: self.access_mode_for_line_dot(self.line_dot),
+            current_mode: self.access_mode_for_line_dot(self.line_dot + 1),
         })
     }
 
@@ -25,7 +25,11 @@ impl Ppu {
                 .checked_sub(LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS);
         }
 
-        self.line_dot.checked_sub(1)
+        // Canonical post-tick reference (`reference = line_dot + 1`): the published base
+        // is `access(reference - 1) = access(line_dot)`, and the line-start fallback is
+        // preserved at `line_dot == 0`. (Was `line_dot - 1`, one dot too far behind under
+        // the CPU-first reorder.)
+        (self.line_dot != 0).then_some(self.line_dot)
     }
 
     fn vblank_wrap_line0_stat_readback_delay_active(&self) -> bool {
@@ -62,51 +66,27 @@ impl Ppu {
         &self,
         context: PpuPublishedStatModeContext,
     ) -> bool {
-        if self.vblank_wrap_line0_stat_readback_delay_active()
-            || self.runtime.blank_frame_active
-            || self.ly >= VISIBLE_SCANLINES
-            || !(self.scx == 0 || self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0)
-        {
-            return false;
-        }
-
-        let mode0_start_dot = self.current_mode0_start_dot();
-
-        if context.published_mode == PpuAccessMode::Drawing
+        // `main`'s exact body, evaluated at the post-tick reference `line_dot + 1` (the
+        // context already carries `published = access(line_dot)`, `current = access(ref)`).
+        context.published_mode == PpuAccessMode::Drawing
             && context.current_mode == PpuAccessMode::HBlank
-            && self.line_dot == mode0_start_dot
-        {
-            return true;
-        }
-
-        // The CPU micro-op observes the pre-tick `line_dot`, so the Drawing→HBlank
-        // boundary must publish one dot earlier to match the same-cycle CPU read, exactly
-        // like the OamScan→Drawing override above (wilbertpol/mooneye intr_2_mode0_timing).
-        self.line_dot + 1 == mode0_start_dot
-            && self.access_mode_for_line_dot(self.line_dot) == PpuAccessMode::Drawing
-            && self.access_mode_for_line_dot(self.line_dot + 1) == PpuAccessMode::HBlank
+            && !self.vblank_wrap_line0_stat_readback_delay_active()
+            && !self.runtime.blank_frame_active
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot + 1 == self.current_mode0_start_dot()
+            && (self.scx == 0 || self.stat_interrupt_enable & STAT_MODE0_INTERRUPT_ENABLE_BIT != 0)
     }
 
     fn published_stat_mode2_to_mode3_override_applies(
         &self,
         context: PpuPublishedStatModeContext,
     ) -> bool {
-        if context.published_mode != PpuAccessMode::OamScan
-            || self.vblank_wrap_line0_stat_readback_delay_active()
-            || self.runtime.blank_frame_active
-            || self.ly >= VISIBLE_SCANLINES
-        {
-            return false;
-        }
-
-        if context.current_mode == PpuAccessMode::Drawing && self.line_dot == MODE2_DOTS {
-            return true;
-        }
-
-        // The CPU micro-op observes the pre-tick `line_dot`, so the OamScan→Drawing
-        // boundary must publish one dot earlier to match the same-cycle CPU read.
-        self.line_dot == MODE2_DOTS - 1
-            && self.access_mode_for_line_dot(self.line_dot + 1) == PpuAccessMode::Drawing
+        context.published_mode == PpuAccessMode::OamScan
+            && context.current_mode == PpuAccessMode::Drawing
+            && !self.vblank_wrap_line0_stat_readback_delay_active()
+            && !self.runtime.blank_frame_active
+            && self.ly < VISIBLE_SCANLINES
+            && self.line_dot + 1 == MODE2_DOTS
     }
 
     pub(in crate::ppu) fn current_published_oam_write_access_mode(&self) -> PpuAccessMode {

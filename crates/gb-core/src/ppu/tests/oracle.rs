@@ -157,3 +157,131 @@ fn sample_real_ashiepaws_strikethrough_line68_dma_obj_overlap() {
     let (selected_sprites, events, _, _) = sample_ashiepaws_strikethrough_line(68, 64);
     assert!(!selected_sprites.is_empty() || !events.is_empty());
 }
+
+// ====================================================================
+// Cut 1.0 GROUNDING PROBE (§24.25 rephase) — TEMPORARY, revert at Cut 1 close.
+// Bare-rig per-dot phase scan: dumps, for each dot around the end-of-line /
+// vblank-entry / line-153 transitions, the internal raster (ly, line_dot) and
+// every CPU-observable readback (LY with the +1 lead, STAT mode, LYC coincidence).
+// Run on THIS branch and on ../gb-cycle-main and diff the output to pin:
+//   D = line_dot where the observable LY first reads N+1 on a normal line
+//   K = line_dot where the observable LY first reads 0 on line 153
+// and to confirm main resolves LY+STAT+LYC as one consistent post-tick phase.
+// Sample point: AFTER tick() (post-tick settled PPU state). The machine-level
+// pre-tick CPU read offset is cross-checked separately by the ROM probe (1.0b).
+// ====================================================================
+
+fn cut1_grounding_setup(model: ConsoleModel, lyc: u8) -> PpuTestRig {
+    let mut rig = PpuTestRig::with_model(model);
+    rig.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: STAT_LYC_INTERRUPT_ENABLE_BIT,
+        scy: 0x00,
+        scx: 0x00,
+        ly: 0,
+        lyc,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+    rig.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    rig.blank_frame_active = false;
+    rig.stat_state.irq_line = false;
+    // Settle two frames so the startup latch / restart phase clear.
+    rig.tick_n(2 * TOTAL_SCANLINES as u64 * DOTS_PER_SCANLINE as u64);
+    rig
+}
+
+fn cut1_dump_phase(model: ConsoleModel, label: &str, target_ly: u8, lyc: u8) {
+    let mut rig = cut1_grounding_setup(model, lyc);
+    let mut guard = 0u64;
+    while !(rig.ly == target_ly && rig.line_dot == 444) {
+        rig.tick();
+        guard += 1;
+        assert!(guard < 4 * TOTAL_SCANLINES as u64 * DOTS_PER_SCANLINE as u64);
+    }
+    let model_tag = if model.is_cgb_family() { "CGB" } else { "DMG" };
+    // ~24 dots: tail of target line (444..=455) + head of next line (0..=16).
+    for _ in 0..(12 + 1 + 17) {
+        rig.tick();
+        let ly = rig.ly;
+        let line_dot = rig.line_dot;
+        if !(line_dot >= 444 || line_dot <= 16) {
+            continue;
+        }
+        let obs_ly = rig.read_ly(PpuRegisterReadSource::CpuBusOperation);
+        let stat_mode = rig.cpu_visible_stat_mode();
+        let internal_mode = rig.current_access_mode();
+        let lyc_coin = rig.live_lyc_coincidence();
+        println!(
+            "CUT1GND {model_tag} {label} ly={ly:>3} dot={line_dot:>3} | obs_ly={obs_ly:>3} stat_mode={stat_mode:?} internal_mode={internal_mode:?} lyc_coin={lyc_coin}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "Cut 1.0 real-ROM trace: ly143_144_mode3_0 FF41/FF44 reads; revert after"]
+fn cut1_trace_ly143_144_mode3_0() {
+    for (name, model) in [
+        ("ly143_144_mode3_0-GS", ConsoleModel::GameBoy),
+        ("ly143_144_mode3_0-C", ConsoleModel::GameBoyColor),
+    ] {
+        let candidates = [
+            format!(
+                "{}/../../test/wilbertpol/wilbertpol/acceptance/gpu/{name}.gb",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+            format!(
+                "{}/../../test/wilbertpol/wilbertpol/acceptance/gpu/ly143_144_mode3_0.gb",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        ];
+        let rom = candidates
+            .iter()
+            .find_map(|p| std::fs::read(p).ok())
+            .expect("ly143_144_mode3_0 ROM present");
+        let mut machine =
+            Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+        machine.load_cartridge(rom).expect("rom loads");
+        let tag = if model.is_cgb_family() { "CGB" } else { "DMG" };
+        let mut count = 0u32;
+        for _ in 0..3_000_000 {
+            machine.step_t_cycle();
+            let cpu = machine.cpu().snapshot();
+            if let Some(act) = cpu.last_bus_activity
+                && act.kind == crate::CpuBusAccessKind::DataRead
+                && (act.address == 0xFF41 || act.address == 0xFF44)
+            {
+                let s = machine.ppu().snapshot();
+                if (142..=145).contains(&s.ly) {
+                    println!(
+                        "L143TRACE {tag} addr={:#06X} val={:#04X} ly={} dot={} mode={:?}",
+                        act.address, act.value, s.ly, s.line_dot, s.mode
+                    );
+                    count += 1;
+                    if count > 60 {
+                        break;
+                    }
+                }
+            }
+            if machine.cpu().execution_state() == crate::CpuExecutionState::Halted {
+                break;
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "Cut 1.0 grounding probe (manual run with --nocapture); revert at Cut 1 close"]
+fn cut1_grounding_internal_ly_phase() {
+    for model in [ConsoleModel::GameBoy, ConsoleModel::GameBoyColor] {
+        // Normal visible line: where does observable LY flip 40->41 (= D)?
+        cut1_dump_phase(model, "normal(ly40,lyc41)", 40, 41);
+        // VBlank entry: 143->144 mode + LY + (mode2/vblank IRQ edge context).
+        cut1_dump_phase(model, "vblank_entry(ly143,lyc144)", 143, 144);
+        // Line 153 wrap: where does observable LY flip 153->0 (= K), LYC153/LYC0.
+        cut1_dump_phase(model, "line153(ly152,lyc153)", 152, 153);
+        cut1_dump_phase(model, "line153(ly152,lyc0)", 152, 0);
+    }
+}
