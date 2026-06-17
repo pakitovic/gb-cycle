@@ -330,11 +330,30 @@ fn irq_dispatch_trace(rom_relpath: &str, model: ConsoleModel, max_cycles: u64) {
 
         if log_read || iff_change {
             let (raddr, rval) = read.map(|a| (a.address, a.value)).unwrap_or((0, 0));
-            let mode = machine.ppu().current_access_mode();
+            let p = machine.ppu();
+            let mode = p.current_access_mode();
+            let ld = p.line_dot();
+            // Layer-(a) diagnostic: for FF41 reads near ly=0, reconstruct the published_stat
+            // inputs (the CPU read pre-tick, so the relevant dots are ld-2..ld).
+            let extra = if raddr == 0xFF41 && p.ly() <= 2 {
+                let am = |d: u16| p.access_mode_for_line_dot(d);
+                format!(
+                    " | m0s={} blank={} am[{},{},{}]={:?}/{:?}/{:?}",
+                    p.current_mode0_start_dot(),
+                    p.snapshot().blank_frame_active,
+                    ld.wrapping_sub(2),
+                    ld.wrapping_sub(1),
+                    ld,
+                    am(ld.wrapping_sub(2)),
+                    am(ld.wrapping_sub(1)),
+                    am(ld),
+                )
+            } else {
+                String::new()
+            };
             out.push(format!(
-                "T {tag} ly={:>3} dot={:>3} mode={mode:?} IF={iff:#04X} | rd={raddr:#06X}:{rval:#04X} pc={:#06X} @{cycle}",
-                machine.ppu().ly(),
-                machine.ppu().line_dot(),
+                "T {tag} ly={:>3} dot={ld:>3} mode={mode:?} IF={iff:#04X} | rd={raddr:#06X}:{rval:#04X} pc={:#06X} @{cycle}{extra}",
+                p.ly(),
                 cpu.registers.pc,
             ));
         }

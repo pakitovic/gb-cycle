@@ -2549,3 +2549,23 @@ their +1 enters — separate from the pending countdown), (c) `ly_lyc` on-enable
 push; the branch stays at the committed clean 94/105 + Cut A until it lands. NEXT: re-ground (a) on top of the skip-advance
 and re-gate; iterate (b)(c) until net-positive, then delete the subsumed compensations (Cut 4) + A′-retest + re-ground
 tests (Cut 5).
+
+**Cut 1+2 SECOND ATTEMPT (skip-advance + ly=0 readback diagnostic) — pins the MECHANISTIC atomic coupling: the restart
+re-ground SHIFTS the restart-phase mode timeline, so `LCD_REENABLE_LINE0_*` must re-ground in lockstep (2026-06-17).**
+Re-applied the skip-advance restart re-ground and augmented the `irq_dispatch_trace` probe to dump, on FF41 reads at
+`ly<=2`, the published_stat inputs (`current_mode0_start_dot`, `blank_frame_active`, `access_mode_for_line_dot(ld-2..ld)`).
+The failing `ly00_mode3_0` read at pc=0x081A: `ly=0 dot=256 m0s=252 blank=false am[254,255,256]=HBlank/HBlank/HBlank` yet
+the CPU read returns **Drawing 0x83** — IMPOSSIBLE via the normal published_stat path (every `access_mode_for_line_dot`
+around the read is HBlank with `mode0_start=252`). Root: the skip-advance (returning `false` from the restart tick) is too
+blunt — it early-returns BEFORE `advance_mode3_register_latches` (the mode latch) AND `advance_lcd_restart_phase`, so the
+restart tick skips its mode-latch + restart-phase advance, corrupting the ly=0 mode. But the deeper, UNAVOIDABLE finding:
+even a refined "skip only the `line_dot += 1`" cannot work cleanly, because **delaying the restart by one cycle shifts the
+`PpuLcdRestartPhase` mode timeline by one dot** — `advance_lcd_restart_phase` would run from a different `line_dot`, so the
+re-enable mode sequence (mode3 from `LCD_REENABLE_LINE0_MODE3_START_DOT=72`, mode0 from +172=244) lands one dot off, which
+is EXACTLY what the `ly=0` readback (`ly00_*`, `lcdon_mode_timing`) measures. ⇒ **Cut 2 (the restart `line_dot` re-ground)
+and layer (a) (the `LCD_REENABLE_LINE0_*` restart-phase mode timeline) are mechanically the SAME cut and must re-ground in
+lockstep**: shift the restart one cycle later AND shift the restart-phase mode constants one dot to keep the re-enable mode
+sequence main-aligned. This is the precise atomic core of §24.18 for the re-enable family. The `intr_2`/`hblank_ly_scx`
+(+1 from a different path) and `ly_lyc` (on-enable `delay==2`/line-153) are the other two lockstep facets. REVERTED to the
+committed 94/105 + Cut A; the augmented probe stays as `#[ignore]` infra. The next focused session implements this lockstep
+restart+`LCD_REENABLE_LINE0_*` re-ground as one cut, per-dot-validated against the `../gb-cycle-main` re-enable trace.
