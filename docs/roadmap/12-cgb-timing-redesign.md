@@ -2253,3 +2253,47 @@ override/base bodies (drop the batch-1/2 early branches). Re-ground the `cpu_sta
 batch-1/2 rewrote (§24.19/§24.20) back toward main's boundary. Gate: scx sweep == main for all scx, base intr_2_* /
 oam_ok / vblank_if stay green, wilbertpol/mooneye no regression, §245 untouched (`current_mode0_start_dot` unchanged).
 The IRQ-edge reorder seams (E1, item-1, item-3) are NOT readback and are handled by Cut 1/3 (the LY-lead + last_* model).
+
+#### 24.25.2 CUT 2 STANDALONE REFUTED — the uniform STAT +1 shift closes the 3 targets but regresses 11 wilbertpol-acceptance ROMs; it is coupled to the LY/§245 model (2026-06-17)
+
+Implemented §24.25.1 exactly (helper `readback_reference_line_dot()=line_dot+1`; published base `access_mode(reference−1)`;
+overrides at `reference==mode0_start`/`reference==MODE2_DOTS`; restored main's bodies, dropped batch-1's dual branches;
+`vblank_wrap` left unshifted; line-start fallback preserved at `line_dot==0`). **Code reverted** — tree back at the
+clean branch baseline (`published_stat.rs` + the temporary trace probe in `ppu_oracle_sweep.rs` both reverted).
+
+**Gate evidence (the new fast oracle = `cargo rom-suite wilbertpol --suite wilbertpol-acceptance`, 105 cases):**
+- Clean baseline: **102 PASS / 3 FAIL** — the 3 FAILs are EXACTLY the targets `intr_2_mode0_scx3_timing_nops`,
+  `_scx7_timing_nops`, `intr_2_mode0_timing_sprites`. main worktree on this same suite: **0 FAIL** (105/105).
+- With the cut-2 STAT shift: **94 PASS / 11 FAIL**. The 3 targets FLIP to PASS (confirmed) — and the scx oracle column
+  now matches main exactly (CGB+DMG `49,50,50,50,51,51,51,51,50`; scx3 51→50, scx7 52→51, oracle-verified). **BUT 11 NEW
+  regressions appear**: `intr_2_mode0_timing_sprites{,-nops,-scx1..4}`, `hblank_ly_scx_timing_variant_nops`,
+  `lcdon_mode_timing`, `ly143_144_{145,152_153,mode0_1,mode3_0}`. Deterministic (reconfirmed twice on fresh builds).
+- ⇒ net **+3 / −11 = −8**. The standalone cut-2 is net-negative and cannot land.
+
+**Why it is coupled (not a fixable bug in the implementation):**
+- The fix is faithful to §24.25.1 and is provably a no-op for scx=0 STAT readback at every `line_dot` (the override path
+  result is unchanged; only the scx≠0 RAW base flips one dot earlier — which is the targets' correct fix, oracle-matched).
+- Yet `ly143_144_mode3_0` (a **scx=0** test) regresses. Per-read trace (`oracle_trace_regressing_roms`, reverted): its
+  FF41 reads (4 total, all scx=0: (143,253),(143,257),(143,453),(144,1)) AND its dense FF44/LY reads are **byte-identical**
+  branch↔fix up to (ly=144,line_dot=13), yet it ends non-fib. The divergence is **not** a changed FF41/FF44 value — it is
+  the STAT-readback *phase* interacting with the rest of the reorder-compensated model (LY-lead@450, batch-3 vblank-wrap,
+  item-3 IF, §245 sprite `mode0_start`), which is still on the branch phase, not main's. The STAT IRQ uses owner mode
+  (`current_access_mode`), so it is not the IRQ; the coupling is at the line transitions + sprite-precise timing that read
+  STAT to synchronise then measure LY.
+- main passes all 11 because its WHOLE readback (STAT+LY+IF) is one consistent post-tick phase. Shifting STAT alone to
+  main's phase, while LY/IF/§245 stay on the branch phase, breaks the tests that combine them. **This is exactly the
+  design's own fallback condition ("if coupled → Cut 1 first") and re-confirms §24.18 (root deletion needs the full
+  internal-`self.ly` mid-line rephase; bounded decoupling is dead).**
+
+**Conclusion — the cut order in §24.25 is REFUTED. Cut 2 is NOT independent of the LY-lead for the full suite** (only for
+the isolated mid-line scx single-read targets). The landable path is the coupled rephase: **Cut 1 (`self.ly` mid-line
+lead/wrap, re-anchor groups 1–6, delete the LY-read lead) FIRST/together with Cut 2**, so STAT+LY+IF share one phase, then
+Cut 3 (last_ly/last_lyc) + Cut 4 (delete interim seams) + Cut 5 (re-ground). This is §24.18's multi-cut core raster
+restructure (its own scoped, oracle-gated branch). The interim branch state (114/117 wilbertpol equiv, self-consistent
+reorder model; the 3 scx3/7/sprites + this suite's 3 are the documented debt) is the safe fallback if the rephase is
+deferred.
+
+**Decision pending (user):** (a) start the coupled Cut 1+2 self.ly rephase now (big, risky, multi-cut, re-grounds the
+whole ly/lyc/mode suite — the §24.18 restructure), or (b) keep the branch at its current self-consistent baseline and
+defer the rephase. The fast gate `cargo rom-suite wilbertpol --suite wilbertpol-acceptance` (102/105 baseline, pinpoints
+the targets + any regression in ~1 min) is the recommended loop for the rephase.
