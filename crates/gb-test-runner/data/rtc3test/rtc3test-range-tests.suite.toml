@@ -1,0 +1,58 @@
+family = "range-tests"
+suite_name = "rtc3test-range-tests"
+report = "rtc3test"
+timeout_frames = 900
+report_model_suffix = true
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "rtc3test-dmg-range-tests"
+rom = "rtc3test.gb"
+model = "dmg"
+oracle = { fixture = "rtc3test-range-tests-dmg.png" }
+
+[[case.stimulus]]
+frame = 30
+button = "down"
+pressed = true
+
+[[case.stimulus]]
+frame = 36
+button = "down"
+pressed = false
+
+[[case.stimulus]]
+frame = 48
+button = "a"
+pressed = true
+
+[[case.stimulus]]
+frame = 54
+button = "a"
+pressed = false
+
+[[case]]
+id = "rtc3test-cgb-range-tests"
+rom = "rtc3test.gb"
+model = "cgb"
+oracle = { source = "cgb", fixture = "rtc3test-range-tests-cgb.png" }
+
+[[case.stimulus]]
+frame = 30
+button = "down"
+pressed = true
+
+[[case.stimulus]]
+frame = 36
+button = "down"
+pressed = false
+
+[[case.stimulus]]
+frame = 48
+button = "a"
+pressed = true
+
+[[case.stimulus]]
+frame = 54
+button = "a"
+pressed = false

@@ -20,7 +20,7 @@ Use this order unless a subsystem handbook narrows it with a stronger source:
 4. Open-source emulator source or differential comparison when it provides comparable observables, without treating implementation behavior as hardware truth.
 5. Project-local assumptions, which must be documented as assumptions or TODOs rather than promoted to hardware fact.
 
-Current executable resources include promoted DMG/SGB, promoted CGB, green extra/internal, large DocBoy, RealBoot-local, private-manifest, archive-backed standalone, and linked-session lanes. Keep their report separation intact: `/test/gb-emulator-shootout/` for promoted GB Emulator Shootout rows, `/test/docboy/` for large DocBoy single-machine rows, `/test/gbmicrotest/` for gbmicrotest rows, standalone exploratory report roots such as `/test/mooneye/`, `/test/ax6/`, `/test/little-things-gb/`, `/test/magen/`, `/test/mealybug-tearoom-tests/`, `/test/samesuite/`, or `/test/wilbertpol/`, and stdout/artifacts for linked-session rows.
+Current executable resources include promoted DMG/SGB, promoted CGB, green extra/internal, large DocBoy, RealBoot-local, private-manifest, archive-backed standalone, and linked-session lanes. Keep their report separation intact: `/test/gb-emulator-shootout/` for promoted GB Emulator Shootout rows, `/test/docboy/` for large DocBoy single-machine rows, `/test/gbmicrotest/` for gbmicrotest rows, standalone exploratory report roots such as `/test/mooneye/`, `/test/little-things-gb/`, `/test/magen/`, `/test/mealybug-tearoom-tests/`, `/test/samesuite/`, `/test/wilbertpol/`, or `/test/rtc3test/`, and stdout/artifacts for linked-session rows.
 
 ## Timing vocabulary
 

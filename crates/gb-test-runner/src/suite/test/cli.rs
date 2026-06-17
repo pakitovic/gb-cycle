@@ -93,7 +93,7 @@ fn run_requires_report_and_lists_available_reports() {
     assert!(output.is_empty());
     assert_eq!(
         error,
-        "test ROM report must be provided; available reports: gb-emulator-shootout, docboy, gbmicrotest, blargg, mooneye, ax6, little-things-gb, nitro2k01, magen, mealybug-tearoom-tests, samesuite, wilbertpol, linked"
+        "test ROM report must be provided; available reports: gb-emulator-shootout, docboy, gbmicrotest, blargg, mooneye, little-things-gb, nitro2k01, magen, mealybug-tearoom-tests, samesuite, wilbertpol, rtc3test, linked"
     );
 }
 
