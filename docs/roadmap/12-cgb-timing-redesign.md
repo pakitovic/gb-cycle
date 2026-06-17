@@ -2524,3 +2524,28 @@ make the branch PPU phase vs main **consistent everywhere** (then ONE readback m
 and the per-path compensations delete). Cut 1+2 should therefore re-ground the re-enable restart to the SAME branch-vs-main
 phase as steady state, and re-test whether A′'s `+1` reference is still needed or also deletes. Probe:
 `irq_trace_ly00_mode3_0_dmg` in `oracle.rs` (`#[ignore]`).
+
+**Cut 1+2 FIRST ATTEMPT (restart re-ground via skip-advance) — mechanism VALIDATED, atomic dependency map pinned;
+reverted (net 94→85, intentionally net-negative until the dependent readback layers re-ground) (2026-06-17).** Experiment:
+in the pending-enable countdown (`api.rs` ~822), when the restart fires, return `false` instead of `true` so the restart
+tick does NOT do its same-tick `RasterAdvance` — delaying the branch's first post-enable advance by one cycle to undo the
+reorder's early restart. **This is the CORRECT restart re-ground (NOT the scalar enable+1): Cut R0 re-trace confirms it
+makes `ly00`'s post-re-enable internal `line_dot` offset EXACTLY 0** (aligned with main, vs +1 before). Gate 94→85/105:
+- **FIXED (5):** `ly143_144_{145,152_153,mode0_1,mode3_0}` + `lcdon_mode_timing` — the CPU-pending LCD re-enable family,
+  now phase-aligned so A′'s readback reads the boundary correctly.
+- **STILL FAIL (6):** `intr_2_*_sprites` (5) + `hblank_ly_scx` (1) — UNCHANGED, so their +1 comes from a DIFFERENT path than
+  the pending-enable countdown (the skip only touches that path); their re-enable/restart route needs separate grounding.
+- **NEWLY EXPOSED (14):** `ly00_*` (5) + `ly_lyc_*` (9) — the DEPENDENT readback layers that were balanced against the old
+  +1 offset. With the phase now aligned (offset 0), A′'s readback has a RESIDUAL error in the `ly=0` blank-frame / re-enable
+  region: e.g. `ly00_mode3_0` now diverges at one FF41 read (pc=0x081A, ly=0, line_dot 255/256: branch publishes Drawing
+  `0x83` vs main HBlank `0x80`) — A′'s `current_published_stat_access_mode` over-publishes Drawing at `ly=0` once the offset
+  no longer cancels it. `ly_lyc_*` are the LYC-on-enable (`delay==2` refresh) + line-153 layers.
+⇒ **Cut 1+2 is confirmed ATOMIC and convergent (not endless): the restart re-ground (this skip-advance) + the `ly=0`
+blank-frame STAT readback re-ground + the `intr_2` restart-path grounding + the LYC-on-enable/line-153 grounding must land
+TOGETHER**, each net-negative alone, re-grounded as one cut, THEN A′ retested for deletion. The map is now precise: the
+skip-advance is the validated foundation; the remaining layers are (a) `ly=0` blank-frame published_stat (the
+`current_published_stat_access_mode` Drawing-at-ly0 residual), (b) the `intr_2`/`hblank_ly_scx` restart path (find where
+their +1 enters — separate from the pending countdown), (c) `ly_lyc` on-enable + line-153. This is a focused multi-session
+push; the branch stays at the committed clean 94/105 + Cut A until it lands. NEXT: re-ground (a) on top of the skip-advance
+and re-gate; iterate (b)(c) until net-positive, then delete the subsumed compensations (Cut 4) + A′-retest + re-ground
+tests (Cut 5).
