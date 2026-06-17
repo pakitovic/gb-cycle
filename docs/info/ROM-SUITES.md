@@ -22,7 +22,7 @@ Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`.
 | `docboy` | `cargo rom-suite`, `cargo rom-suite-link` | DocBoy single-machine suites plus DocBoy DMG linked session suite. |
 | `gbmicrotest` | `cargo rom-suite` | Flat gbmicrotest report. |
 | `blargg` | `cargo rom-suite` | Standalone exploratory Blargg channel archive-backed by c-sp `game-boy-test-roms` v7.0, with GB Emulator Shootout framebuffer fixtures where the promoted Blargg manifests already use them. |
-| `mooneye`, `ax6`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `samesuite` | `cargo rom-suite` | Standalone exploratory report channels; `mooneye` and `mealybug-tearoom-tests` are archive-backed by c-sp `game-boy-test-roms`, with Mealybug and SameSuite temporarily removed from `test-roms-extra` while their v7 inventories are validated manually. |
+| `mooneye`, `ax6`, `little-things-gb`, `magen`, `mealybug-tearoom-tests`, `samesuite` | `cargo rom-suite` | Standalone exploratory report channels; `mooneye`, `little-things-gb`, and `mealybug-tearoom-tests` are archive-backed by c-sp `game-boy-test-roms`, with Little Things, Mealybug, and SameSuite temporarily removed from `test-roms-extra` while their v7 inventories or exposed timing gaps are validated manually. |
 | `wilbertpol` | `cargo rom-suite` | Archive-backed standalone Mooneye-derived Wilbertpol channel; it is intentionally not mirrored by `test-roms-extra` until it has a verified green local baseline. |
 | `linked` | `cargo rom-suite-link` | Repo-local synthetic linked-session fixtures. |
 
@@ -31,6 +31,8 @@ Wilbertpol ROMs are related to Mooneye but are compiled and pinned as independen
 The standalone `blargg` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `blargg/` ROMs under one family root per original Blargg folder, plus a dedicated `halt_bug` family. It runs both multi-ROMs and individual ROMs; framebuffer fixtures come from the c-sp ZIP for aggregate screenshots and from the pinned GB Emulator Shootout source for individual screenshots already used by the promoted Blargg oracles, including `oam_bug/7-timing_effect.png`.
 
 The standalone `mooneye` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `mooneye-test-suite/` under `/test/mooneye/mooneye/`. Its upstream `utils/` directory is excluded because those ROMs are helper utilities rather than pass/fail tests.
+
+The standalone `little-things-gb` report keeps the existing DocBoy-sourced `double-halt-cancel.gb` and `whichboot.gb` DMG/CGB suites under the `old_little-things-gb` source family/root, and adds a c-sp `game-boy-test-roms` v7.0 `little-things-gb` suite under `/test/little-things-gb/little-things-gb/`. The c-sp `firstwhite` DMG/CGB rows use upstream framebuffer fixtures and are green with `until-match`; the c-sp `tellinglys` DMG/CGB rows are active with deterministic button stimuli and currently fail by reaching the upstream fail framebuffer, exposing a joypad interrupt timing entropy gap rather than a fetch or fixture problem. The GitHub `test-roms-extra` matrix entry is temporarily commented out until that gap is fixed or the suite policy is changed.
 
 The standalone `magen` report materializes the official alloncm/MagenTests 0.5.0 release assets under `/test/magen/magen/` and uses the committed local framebuffer fixtures under `crates/gb-test-runner/data/magen/fixtures/`. Magen uses `file_base_url` source fetching because the official release publishes each `.gbc` as an individual asset rather than a single ZIP archive or committed build output.
 
@@ -156,7 +158,7 @@ Same-ROM model variants are ordered DMG before MGB before GBC before AGB before 
 - Local pre-commit checks and `make coverage` do not fetch or run external ROM suites.
 - GitHub `ci` mirrors Rust checks and coverage.
 - GitHub `test-roms` runs the promoted `gb-emulator-shootout` matrix with `cargo rom-suite gb-emulator-shootout --suite <suite>`.
-- GitHub `test-roms-extra` runs explicitly promoted standalone report lanes with `cargo rom-suite <report>`; `mealybug-tearoom-tests` and `samesuite` are temporarily commented out while their c-sp v7 inventories are validated manually, and `wilbertpol` stays out of this workflow until a green local baseline is verified and promotion is intentional.
+- GitHub `test-roms-extra` runs explicitly promoted standalone report lanes with `cargo rom-suite <report>`; `little-things-gb` is temporarily commented out while the c-sp v7 Telling LYs joypad IRQ entropy gap is investigated, `mealybug-tearoom-tests` and `samesuite` are temporarily commented out while their c-sp v7 inventories are validated manually, and `wilbertpol` stays out of this workflow until a green local baseline is verified and promotion is intentional.
 - RealBoot, commercial, red, linked, and local-only lanes stay outside GitHub ROM workflows unless promoted intentionally.
 
 ## Private and commercial ROMs

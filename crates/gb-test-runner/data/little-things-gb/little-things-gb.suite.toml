@@ -1,0 +1,191 @@
+family = "little-things-gb"
+suite_name = "little-things-gb"
+report = "little-things-gb"
+timeout_frames = 30
+report_model_suffix = true
+
+[[case]]
+id = "little-things-gb-dmg-firstwhite"
+rom = "firstwhite.gb"
+model = "dmg"
+oracle = { type = "framebuffer", mode = "until-match", fixture = "firstwhite-dmg-cgb.png" }
+
+[[case]]
+id = "little-things-gb-cgb-firstwhite"
+rom = "firstwhite.gb"
+model = "cgb"
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "firstwhite-dmg-cgb.png" }
+
+[[case]]
+id = "little-things-gb-dmg-tellinglys"
+rom = "tellinglys.gb"
+model = "dmg"
+timeout_frames = 480
+oracle = { type = "framebuffer", mode = "until-match", fixture = "tellinglys-dmg.png" }
+
+[[case.stimulus]]
+tcycle = 8427880
+button = "a"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8431880
+button = "a"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8506104
+button = "b"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8510104
+button = "b"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8585328
+button = "select"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8589328
+button = "select"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8664552
+button = "start"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8668552
+button = "start"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8743776
+button = "right"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8747776
+button = "right"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8823000
+button = "left"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8827000
+button = "left"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8902224
+button = "up"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8906224
+button = "up"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8981448
+button = "down"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8985448
+button = "down"
+pressed = false
+
+[[case]]
+id = "little-things-gb-cgb-tellinglys"
+rom = "tellinglys.gb"
+model = "cgb"
+timeout_frames = 480
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "tellinglys-cgb.png" }
+
+[[case.stimulus]]
+tcycle = 8427880
+button = "a"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8431880
+button = "a"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8506104
+button = "b"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8510104
+button = "b"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8585328
+button = "select"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8589328
+button = "select"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8664552
+button = "start"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8668552
+button = "start"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8743776
+button = "right"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8747776
+button = "right"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8823000
+button = "left"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8827000
+button = "left"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8902224
+button = "up"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8906224
+button = "up"
+pressed = false
+
+[[case.stimulus]]
+tcycle = 8981448
+button = "down"
+pressed = true
+
+[[case.stimulus]]
+tcycle = 8985448
+button = "down"
+pressed = false

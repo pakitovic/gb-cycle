@@ -5,7 +5,9 @@ use serde::Deserialize;
 
 use crate::oracle::Oracle;
 
-use super::super::manifest::{load_reports, load_selected_suites, parse_suite_manifest_for_test};
+use super::super::manifest::{
+    load_reports, load_selected_suite_families, load_selected_suites, parse_suite_manifest_for_test,
+};
 use super::super::model::{ReportModel, SuiteStimulusTime};
 use super::common::{
     basic_manifest, unique_temp_dir, write_manifest, write_reports, write_source_manifest,
@@ -1734,42 +1736,73 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         (
             "mooneye",
             &[
-                ("mooneye-acceptance", 75, "mooneye"),
-                ("mooneye-emulator-only", 28, "mooneye"),
-                ("mooneye-madness", 0, "mooneye"),
-                ("mooneye-manual", 2, "mooneye"),
-                ("mooneye-misc", 8, "mooneye"),
+                ("mooneye-acceptance", 75, "mooneye", "mooneye"),
+                ("mooneye-emulator-only", 28, "mooneye", "mooneye"),
+                ("mooneye-madness", 0, "mooneye", "mooneye"),
+                ("mooneye-manual", 2, "mooneye", "mooneye"),
+                ("mooneye-misc", 8, "mooneye", "mooneye"),
             ][..],
         ),
-        ("ax6", &[("ax6-dmg", 3, "ax6")][..]),
+        ("ax6", &[("ax6-dmg", 3, "ax6", "ax6")][..]),
         (
             "little-things-gb",
             &[
-                ("little-things-gb-dmg", 2, "little-things-gb"),
-                ("little-things-gb-cgb", 1, "little-things-gb"),
+                (
+                    "little-things-gb-dmg",
+                    2,
+                    "old_little-things-gb",
+                    "old_little-things-gb",
+                ),
+                (
+                    "little-things-gb-cgb",
+                    1,
+                    "old_little-things-gb",
+                    "old_little-things-gb",
+                ),
+                (
+                    "little-things-gb",
+                    4,
+                    "little-things-gb",
+                    "little-things-gb",
+                ),
             ][..],
         ),
-        ("magen", &[("magen", 8, "magen")][..]),
+        ("magen", &[("magen", 8, "magen", "magen")][..]),
         (
             "mealybug-tearoom-tests",
             &[
-                ("mealybug-tearoom-tests-dma", 2, "mealybug-tearoom-tests"),
-                ("mealybug-tearoom-tests-mbc", 1, "mealybug-tearoom-tests"),
-                ("mealybug-tearoom-tests-ppu", 76, "mealybug-tearoom-tests"),
+                (
+                    "mealybug-tearoom-tests-dma",
+                    2,
+                    "mealybug-tearoom-tests",
+                    "mealybug-tearoom-tests",
+                ),
+                (
+                    "mealybug-tearoom-tests-mbc",
+                    1,
+                    "mealybug-tearoom-tests",
+                    "mealybug-tearoom-tests",
+                ),
+                (
+                    "mealybug-tearoom-tests-ppu",
+                    76,
+                    "mealybug-tearoom-tests",
+                    "mealybug-tearoom-tests",
+                ),
             ][..],
         ),
         (
             "samesuite",
             &[
-                ("samesuite-apu", 5, "samesuite"),
-                ("samesuite-apu-channel-1", 20, "samesuite"),
-                ("samesuite-apu-channel-2", 15, "samesuite"),
-                ("samesuite-apu-channel-3", 15, "samesuite"),
-                ("samesuite-apu-channel-4", 13, "samesuite"),
-                ("samesuite-dma", 4, "samesuite"),
-                ("samesuite-interrupt", 1, "samesuite"),
-                ("samesuite-ppu", 1, "samesuite"),
-                ("samesuite-sgb", 2, "samesuite"),
+                ("samesuite-apu", 5, "samesuite", "samesuite"),
+                ("samesuite-apu-channel-1", 20, "samesuite", "samesuite"),
+                ("samesuite-apu-channel-2", 15, "samesuite", "samesuite"),
+                ("samesuite-apu-channel-3", 15, "samesuite", "samesuite"),
+                ("samesuite-apu-channel-4", 13, "samesuite", "samesuite"),
+                ("samesuite-dma", 4, "samesuite", "samesuite"),
+                ("samesuite-interrupt", 1, "samesuite", "samesuite"),
+                ("samesuite-ppu", 1, "samesuite", "samesuite"),
+                ("samesuite-sgb", 2, "samesuite", "samesuite"),
             ][..],
         ),
     ];
@@ -1783,7 +1816,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             &source_path,
             &read_report_source_manifest(report_id),
         );
-        for (suite_name, _, target_root) in suites {
+        for (suite_name, _, _, target_root) in suites {
             let text = read_report_suite_manifest(report_id, suite_name);
             write_manifest(
                 &workspace,
@@ -1798,7 +1831,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             .iter()
             .find(|report| report.id == report_id)
             .expect("report should exist");
-        for (suite_name, case_count, family) in suites {
+        for (suite_name, case_count, family, target_root) in suites {
             let loaded = load_selected_suites(&workspace, report, Some(suite_name), None)
                 .unwrap_or_else(|error| panic!("{report_id}/{suite_name} should load: {error}"));
             assert_eq!(loaded.len(), 1);
@@ -1806,6 +1839,13 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             assert_eq!(suite.suite_name, *suite_name);
             assert_eq!(suite.family, *family);
             assert_eq!(suite.cases.len(), *case_count);
+            assert!(
+                suite
+                    .cases
+                    .iter()
+                    .all(|case| case.target_root == Path::new(target_root)),
+                "{report_id}/{suite_name} should resolve cases below target root {target_root:?}"
+            );
         }
 
         if report_id == "samesuite" {
@@ -1910,6 +1950,94 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
 
         fs::remove_dir_all(workspace).expect("workspace should be removable");
     }
+}
+
+#[test]
+fn real_little_things_split_selects_old_and_csp_fetch_families_independently() {
+    let workspace = unique_temp_dir("little-things-family-selection");
+    let report_id = "little-things-gb";
+    let source_path = "little-things-gb/sources.report.toml";
+    write_reports(&workspace, report_id, source_path);
+    write_source_manifest(
+        &workspace,
+        source_path,
+        &read_report_source_manifest(report_id),
+    );
+    for (suite_name, target_root) in [
+        ("little-things-gb-dmg", "old_little-things-gb"),
+        ("little-things-gb-cgb", "old_little-things-gb"),
+        ("little-things-gb", "little-things-gb"),
+    ] {
+        let text = read_report_suite_manifest(report_id, suite_name);
+        write_manifest(
+            &workspace,
+            &format!("{report_id}/{suite_name}.suite.toml"),
+            &text,
+        );
+        write_manifest_fixture_placeholders(&workspace, report_id, target_root, &text);
+    }
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == report_id)
+        .expect("report should exist");
+
+    assert_eq!(
+        load_selected_suite_families(&workspace, report, Some("little-things-gb-dmg"), None)
+            .expect("old DMG suite families should load"),
+        vec!["old_little-things-gb".to_string()]
+    );
+    assert_eq!(
+        load_selected_suite_families(
+            &workspace,
+            report,
+            Some("little-things-gb-dmg"),
+            Some("little-things-gb-dmg-whichboot")
+        )
+        .expect("old DMG case family should load"),
+        vec!["old_little-things-gb".to_string()]
+    );
+    assert_eq!(
+        load_selected_suite_families(&workspace, report, Some("little-things-gb-cgb"), None)
+            .expect("old CGB suite families should load"),
+        vec!["old_little-things-gb".to_string()]
+    );
+    assert_eq!(
+        load_selected_suite_families(&workspace, report, Some("little-things-gb"), None)
+            .expect("c-sp suite families should load"),
+        vec!["little-things-gb".to_string()]
+    );
+    assert_eq!(
+        load_selected_suite_families(
+            &workspace,
+            report,
+            Some("little-things-gb"),
+            Some("little-things-gb-dmg-firstwhite")
+        )
+        .expect("c-sp firstwhite case family should load"),
+        vec!["little-things-gb".to_string()]
+    );
+
+    let old_suite = load_selected_suites(&workspace, report, Some("little-things-gb-dmg"), None)
+        .expect("old DMG suite should load");
+    assert!(
+        old_suite[0]
+            .cases
+            .iter()
+            .all(|case| case.target_root == Path::new("old_little-things-gb"))
+    );
+
+    let csp_suite = load_selected_suites(&workspace, report, Some("little-things-gb"), None)
+        .expect("c-sp suite should load");
+    assert!(
+        csp_suite[0]
+            .cases
+            .iter()
+            .all(|case| case.target_root == Path::new("little-things-gb"))
+    );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 
 #[test]

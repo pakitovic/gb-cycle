@@ -30,6 +30,8 @@ PPU hardening toward a hardware-true engine (post PR #245): the sprite Mode 3 pe
 
 ## Phase 5 — Input and simple peripherals
 
+- [JOYPAD][TELLINGLYS-IRQ-ENTROPY] c-sp v7 `little-things-gb/tellinglys.gb` is now source-tracked as active DMG/CGB rows with deterministic one-button-at-a-time stimuli, but both rows reach the upstream fail framebuffer because the sampled joypad-interrupt `LY` values do not vary enough. Evidence: `firstwhite` passes with the same archive/fixture path, while `tellinglys` fails after `480` frames and `test-roms-extra` temporarily comments out `little-things-gb`. Superseded direction: do not treat this as a missing fixture or remove the c-sp rows to hide the gap. Highest-value next step: trace `FF00` listen-for-everything writes, button ingress, visible `High -> Low` edge detection, `IF.4` publication, and CPU interrupt service timing against a trusted emulator or hardware-facing oracle until Telling LYs reaches the pass framebuffer.
+
 - [SERIAL][DOCBOY-SC00-LINK-ORACLE] DocBoy's `serial_two_players_basic_transfer_slave_sc_00.gb` linked row asserts that a slave-side transfer can complete after writing `SC = 0`, while the serial handbook follows Pan Docs in requiring external-clock receivers to arm with `SC.7 = 1`; keep the DocBoy row visible as a blocking extra-suite failure, but resolve the source conflict with hardware-facing evidence before changing serial gating.
 
 ## Phase 6 — Banked cartridges, special cartridges, and cartridge persistence
