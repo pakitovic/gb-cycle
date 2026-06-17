@@ -26,6 +26,7 @@ fn built_in_reports_manifest_loads_all_reports() {
             "mooneye",
             "ax6",
             "little-things-gb",
+            "nitro2k01",
             "magen",
             "mealybug-tearoom-tests",
             "samesuite",

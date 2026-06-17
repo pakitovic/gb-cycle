@@ -1746,26 +1746,12 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         ("ax6", &[("ax6-dmg", 3, "ax6", "ax6")][..]),
         (
             "little-things-gb",
-            &[
-                (
-                    "little-things-gb-dmg",
-                    2,
-                    "old_little-things-gb",
-                    "old_little-things-gb",
-                ),
-                (
-                    "little-things-gb-cgb",
-                    1,
-                    "old_little-things-gb",
-                    "old_little-things-gb",
-                ),
-                (
-                    "little-things-gb",
-                    4,
-                    "little-things-gb",
-                    "little-things-gb",
-                ),
-            ][..],
+            &[(
+                "little-things-gb",
+                4,
+                "little-things-gb",
+                "little-things-gb",
+            )][..],
         ),
         ("magen", &[("magen", 8, "magen", "magen")][..]),
         (
@@ -1933,15 +1919,6 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 300
             );
         }
-        if report_id == "little-things-gb" {
-            let suites =
-                load_selected_suites(&workspace, report, Some("little-things-gb-cgb"), None)
-                    .expect("little-things CGB suite should load");
-            assert_eq!(
-                suites[0].cases[0].startup_mode,
-                gb_core::StartupMode::CustomBoot
-            );
-        }
         if report_id == "magen" {
             let suites = load_selected_suites(&workspace, report, Some("magen"), None)
                 .expect("magen suite should load");
@@ -1953,7 +1930,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
 }
 
 #[test]
-fn real_little_things_split_selects_old_and_csp_fetch_families_independently() {
+fn real_little_things_report_selects_only_csp_family() {
     let workspace = unique_temp_dir("little-things-family-selection");
     let report_id = "little-things-gb";
     let source_path = "little-things-gb/sources.report.toml";
@@ -1963,19 +1940,14 @@ fn real_little_things_split_selects_old_and_csp_fetch_families_independently() {
         source_path,
         &read_report_source_manifest(report_id),
     );
-    for (suite_name, target_root) in [
-        ("little-things-gb-dmg", "old_little-things-gb"),
-        ("little-things-gb-cgb", "old_little-things-gb"),
-        ("little-things-gb", "little-things-gb"),
-    ] {
-        let text = read_report_suite_manifest(report_id, suite_name);
-        write_manifest(
-            &workspace,
-            &format!("{report_id}/{suite_name}.suite.toml"),
-            &text,
-        );
-        write_manifest_fixture_placeholders(&workspace, report_id, target_root, &text);
-    }
+
+    let text = read_report_suite_manifest(report_id, "little-things-gb");
+    write_manifest(
+        &workspace,
+        "little-things-gb/little-things-gb.suite.toml",
+        &text,
+    );
+    write_manifest_fixture_placeholders(&workspace, report_id, "little-things-gb", &text);
 
     let reports = load_reports(&workspace).expect("reports should load");
     let report = reports
@@ -1983,26 +1955,6 @@ fn real_little_things_split_selects_old_and_csp_fetch_families_independently() {
         .find(|report| report.id == report_id)
         .expect("report should exist");
 
-    assert_eq!(
-        load_selected_suite_families(&workspace, report, Some("little-things-gb-dmg"), None)
-            .expect("old DMG suite families should load"),
-        vec!["old_little-things-gb".to_string()]
-    );
-    assert_eq!(
-        load_selected_suite_families(
-            &workspace,
-            report,
-            Some("little-things-gb-dmg"),
-            Some("little-things-gb-dmg-whichboot")
-        )
-        .expect("old DMG case family should load"),
-        vec!["old_little-things-gb".to_string()]
-    );
-    assert_eq!(
-        load_selected_suite_families(&workspace, report, Some("little-things-gb-cgb"), None)
-            .expect("old CGB suite families should load"),
-        vec!["old_little-things-gb".to_string()]
-    );
     assert_eq!(
         load_selected_suite_families(&workspace, report, Some("little-things-gb"), None)
             .expect("c-sp suite families should load"),
@@ -2017,15 +1969,6 @@ fn real_little_things_split_selects_old_and_csp_fetch_families_independently() {
         )
         .expect("c-sp firstwhite case family should load"),
         vec!["little-things-gb".to_string()]
-    );
-
-    let old_suite = load_selected_suites(&workspace, report, Some("little-things-gb-dmg"), None)
-        .expect("old DMG suite should load");
-    assert!(
-        old_suite[0]
-            .cases
-            .iter()
-            .all(|case| case.target_root == Path::new("old_little-things-gb"))
     );
 
     let csp_suite = load_selected_suites(&workspace, report, Some("little-things-gb"), None)
@@ -2105,7 +2048,7 @@ fn real_docboy_suite_manifests_load_memory_framebuffer_and_stimuli() {
     );
     let manifests = [
         ("docboy-dmg", "docboy-dmg", "dmg", 2326, 4),
-        ("docboy-cgb", "docboy-cgb", "cgb", 6172, 643),
+        ("docboy-cgb", "docboy-cgb", "cgb", 6172, 642),
         ("docboy-cgb-dmg", "docboy-cgb-dmg", "cgb-dmg", 467, 0),
         (
             "docboy-cgb-dmg-ext",

@@ -1,0 +1,11 @@
+family = "windesync"
+suite_name = "nitro2k01-windesync"
+report = "nitro2k01"
+model = "dmg"
+timeout_frames = 180
+oracle = { type = "framebuffer", local = true }
+
+[[case]]
+id = "nitro2k01-windesync-dmg"
+rom = "windesync-validate.gb"
+oracle = { fixture = "fixtures/windesync-validate-dmg.png" }

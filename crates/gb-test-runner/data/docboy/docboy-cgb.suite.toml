@@ -3436,13 +3436,6 @@ id = "docboy-cgb-docboy-undocumented-ff75-write-read"
 rom = "undocumented/ff75_write_read.gbc"
 
 [[case]]
-id = "docboy-cgb-mattcurrie-cgb-acid-hell"
-rom = "mattcurrie/cgb-acid-hell.gbc"
-oracle = { type = "framebuffer", local = true, mode = "until-match", source = "cgb", fixture = "fixtures/cgb/mattcurrie/cgb-acid-hell.png" }
-disabled = true
-comment = "This does not pass even on real CGB-E!"
-
-[[case]]
 id = "docboy-cgb-docboy-ppu-bcpd-write-read"
 rom = "ppu/bcpd_write_read.gbc"
 

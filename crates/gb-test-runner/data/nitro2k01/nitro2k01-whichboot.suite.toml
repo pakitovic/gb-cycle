@@ -1,0 +1,58 @@
+family = "whichboot"
+suite_name = "nitro2k01-whichboot"
+report = "nitro2k01"
+timeout_frames = 180
+report_model_suffix = true
+oracle = { type = "framebuffer", local = true }
+
+[[case]]
+id = "nitro2k01-whichboot-dmg0"
+rom = "whichboot.gb"
+model = "dmg"
+revision = "dmg-cpu-0"
+report_revision_suffix = true
+oracle = { fixture = "fixtures/whichboot-dmg0.png" }
+
+[[case]]
+id = "nitro2k01-whichboot-dmg"
+rom = "whichboot.gb"
+model = "dmg"
+oracle = { fixture = "fixtures/whichboot-dmg.png" }
+
+[[case]]
+id = "nitro2k01-whichboot-mgb"
+rom = "whichboot.gb"
+model = "mgb"
+oracle = { fixture = "fixtures/whichboot-mgb.png" }
+
+[[case]]
+id = "nitro2k01-whichboot-sgb"
+rom = "whichboot.gb"
+model = "sgb"
+oracle = { fixture = "fixtures/whichboot-sgb.png" }
+
+[[case]]
+id = "nitro2k01-whichboot-sgb2"
+rom = "whichboot.gb"
+model = "sgb2"
+oracle = { fixture = "fixtures/whichboot-sgb2.png" }
+
+[[case]]
+id = "nitro2k01-whichboot-cgb0"
+rom = "whichboot.gb"
+model = "cgb"
+revision = "cpu-cgb-0"
+report_revision_suffix = true
+oracle = { source = "cgb", fixture = "fixtures/whichboot-cgb0.png" }
+
+[[case]]
+id = "nitro2k01-whichboot-cgb"
+rom = "whichboot.gb"
+model = "cgb"
+oracle = { source = "cgb", fixture = "fixtures/whichboot-cgb.png" }
+
+[[case]]
+id = "nitro2k01-whichboot-agb"
+rom = "whichboot.gb"
+model = "agb"
+oracle = { source = "cgb", fixture = "fixtures/whichboot-agb.png" }
