@@ -1,0 +1,62 @@
+[[source]]
+id = "game-boy-test-roms"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
+
+[[source.family]]
+id = "basic-tests"
+target_root = "basic-tests"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test.gb"
+target = "rtc3test.gb"
+sha256 = "a271013fb37ea1d927b854798401320b220d57abb3ca77f3d318ceb8a9def30d"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test-basic-tests-dmg.png"
+target = "rtc3test-basic-tests-dmg.png"
+sha256 = "6d54a13d2540d5900fadb43243d0979b064212617128a730ce1cb0edee453ea9"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test-basic-tests-cgb.png"
+target = "rtc3test-basic-tests-cgb.png"
+sha256 = "b5ba1f3d5740f592922bdcf548909e0a9a796b914cb5a94d64ba6174b30e54c2"
+
+[[source.family]]
+id = "range-tests"
+target_root = "range-tests"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test.gb"
+target = "rtc3test.gb"
+sha256 = "a271013fb37ea1d927b854798401320b220d57abb3ca77f3d318ceb8a9def30d"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test-range-tests-dmg.png"
+target = "rtc3test-range-tests-dmg.png"
+sha256 = "317deaf29e579225c49099eff44dcf547b7c06f6c6676d37b3ec7ca863d65963"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test-range-tests-cgb.png"
+target = "rtc3test-range-tests-cgb.png"
+sha256 = "dc7eb39c8a4c9c6cdc54acb972abd38baf2ab0d4705a05440cd4de15b478db44"
+
+[[source.family]]
+id = "sub-second-writes"
+target_root = "sub-second-writes"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test.gb"
+target = "rtc3test.gb"
+sha256 = "a271013fb37ea1d927b854798401320b220d57abb3ca77f3d318ceb8a9def30d"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test-sub-second-writes-dmg.png"
+target = "rtc3test-sub-second-writes-dmg.png"
+sha256 = "6cf68b5bdb42dfaa67d07e033b3336d01d04ef6913aeaebebc6df196f609ddd8"
+
+[[source.family.file]]
+path = "rtc3test/rtc3test-sub-second-writes-cgb.png"
+target = "rtc3test-sub-second-writes-cgb.png"
+sha256 = "e239bf8f4d498694461893d46df5be93667102f941599810dc25a51bf154948c"

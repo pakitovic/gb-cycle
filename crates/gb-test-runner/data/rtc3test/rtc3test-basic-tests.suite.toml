@@ -1,0 +1,38 @@
+family = "basic-tests"
+suite_name = "rtc3test-basic-tests"
+report = "rtc3test"
+timeout_frames = 1140
+report_model_suffix = true
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "rtc3test-dmg-basic-tests"
+rom = "rtc3test.gb"
+model = "dmg"
+oracle = { fixture = "rtc3test-basic-tests-dmg.png" }
+
+[[case.stimulus]]
+frame = 30
+button = "a"
+pressed = true
+
+[[case.stimulus]]
+frame = 36
+button = "a"
+pressed = false
+
+[[case]]
+id = "rtc3test-cgb-basic-tests"
+rom = "rtc3test.gb"
+model = "cgb"
+oracle = { source = "cgb", fixture = "rtc3test-basic-tests-cgb.png" }
+
+[[case.stimulus]]
+frame = 30
+button = "a"
+pressed = true
+
+[[case.stimulus]]
+frame = 36
+button = "a"
+pressed = false

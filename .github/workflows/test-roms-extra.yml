@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: ax6
+          - name: rtc3test
           # Temporarily disabled while the standalone SameSuite v7 report is imported and baselined.
           # - name: samesuite
           # Temporarily disabled while the c-sp v7 Telling LYs joypad IRQ entropy gap is investigated.

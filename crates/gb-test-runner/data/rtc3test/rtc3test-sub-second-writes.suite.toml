@@ -1,0 +1,78 @@
+family = "sub-second-writes"
+suite_name = "rtc3test-sub-second-writes"
+report = "rtc3test"
+timeout_frames = 2400
+report_model_suffix = true
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "rtc3test-dmg-sub-second-writes"
+rom = "rtc3test.gb"
+model = "dmg"
+oracle = { fixture = "rtc3test-sub-second-writes-dmg.png" }
+
+[[case.stimulus]]
+frame = 30
+button = "down"
+pressed = true
+
+[[case.stimulus]]
+frame = 36
+button = "down"
+pressed = false
+
+[[case.stimulus]]
+frame = 48
+button = "down"
+pressed = true
+
+[[case.stimulus]]
+frame = 54
+button = "down"
+pressed = false
+
+[[case.stimulus]]
+frame = 66
+button = "a"
+pressed = true
+
+[[case.stimulus]]
+frame = 72
+button = "a"
+pressed = false
+
+[[case]]
+id = "rtc3test-cgb-sub-second-writes"
+rom = "rtc3test.gb"
+model = "cgb"
+oracle = { source = "cgb", fixture = "rtc3test-sub-second-writes-cgb.png" }
+
+[[case.stimulus]]
+frame = 30
+button = "down"
+pressed = true
+
+[[case.stimulus]]
+frame = 36
+button = "down"
+pressed = false
+
+[[case.stimulus]]
+frame = 48
+button = "down"
+pressed = true
+
+[[case.stimulus]]
+frame = 54
+button = "down"
+pressed = false
+
+[[case.stimulus]]
+frame = 66
+button = "a"
+pressed = true
+
+[[case.stimulus]]
+frame = 72
+button = "a"
+pressed = false
