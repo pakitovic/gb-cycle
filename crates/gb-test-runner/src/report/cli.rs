@@ -113,7 +113,12 @@ fn run_options<W: Write>(
         options.boot_rom_dir.as_deref(),
         output,
     )?;
-    let document = build_report_document(workspace_root, report, statuses)?;
+    let document = build_report_document(
+        workspace_root,
+        report,
+        statuses,
+        options.boot_rom_dir.as_deref(),
+    )?;
     write_report_files(workspace_root, report, &document, options.html, output)
 }
 

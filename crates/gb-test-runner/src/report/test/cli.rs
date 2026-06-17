@@ -5,7 +5,8 @@ use super::super::cli::{
 };
 use super::super::manifest::load_reports;
 use super::super::model::{
-    REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
+    PersistedCaseStatus, PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI,
+    REPORT_STATUS_PASS_EMOJI,
 };
 use super::super::render::render_markdown;
 use super::super::status::{build_report_document, load_statuses};
@@ -411,8 +412,8 @@ status = "PASS"
         .find(|report| report.id == "sample-report")
         .expect("sample report should exist");
     let statuses = load_statuses(&workspace, report).expect("statuses should load");
-    let document =
-        build_report_document(&workspace, report, statuses).expect("report document should build");
+    let document = build_report_document(&workspace, report, statuses, None)
+        .expect("report document should build");
     let report = render_markdown(&document);
     let which_dmg = report
         .find(&format!(
@@ -429,6 +430,46 @@ status = "PASS"
         .expect("later ROM row should be rendered");
     assert!(which_dmg < which_gbc);
     assert!(which_gbc < later);
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn report_document_uses_boot_rom_dir_placeholder_in_reproduction_command() {
+    let workspace = unique_temp_dir("real-boot-report-command");
+    write_basic_reports(&workspace);
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "sample-report")
+        .expect("sample report should exist");
+    let private_boot_rom_dir = workspace.join("private-real-boot-roms");
+    let statuses = vec![PersistedSuiteStatus {
+        suite_name: "sample-suite".to_string(),
+        family: "acid".to_string(),
+        cases: vec![PersistedCaseStatus {
+            family: None,
+            rom: "which.gb".to_string(),
+            status: "PASS".to_string(),
+        }],
+    }];
+
+    let document = build_report_document(
+        &workspace,
+        report,
+        statuses,
+        Some(private_boot_rom_dir.as_path()),
+    )
+    .expect("report document should build");
+
+    assert_eq!(
+        document.command,
+        "cargo rom-report sample-report --boot-rom-dir path/to/real/boot-rom"
+    );
+    assert!(
+        !document
+            .command
+            .contains(&private_boot_rom_dir.display().to_string())
+    );
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 
