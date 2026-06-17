@@ -2297,3 +2297,58 @@ deferred.
 whole ly/lyc/mode suite — the §24.18 restructure), or (b) keep the branch at its current self-consistent baseline and
 defer the rephase. The fast gate `cargo rom-suite wilbertpol --suite wilbertpol-acceptance` (102/105 baseline, pinpoints
 the targets + any regression in ~1 min) is the recommended loop for the rephase.
+
+#### 24.25.3 GROUNDING 1.0 + A′ (uniform readback-reference) VALIDATED — closes targets, residual is IRQ↔readback coupling, NOT pure readback (2026-06-17)
+
+**Grounding 1.0 (bare-rig per-dot phase scan, `cut1_grounding_internal_ly_phase` in `ppu/tests/oracle.rs`, run on
+branch + `../gb-cycle-main`, reverted after):** over 224 per-dot samples (DMG+CGB; normal line, vblank-entry 143→144,
+line 153), the ONLY branch-vs-main difference is the observable LY leading by EXACTLY 1 dot (branch `obs_ly` flips at
+dot 450 / main 451; 152→153 branch@455 / main@456). STAT mode, internal mode, `lyc_coin`, the line-153 LY-zero dots
+(DMG 4 / CGB 8), and the LYC153/LYC0 windows are **byte-identical**. Mechanism confirmed: branch scheduler has the
+reorder (`AutonomousPeripheralTicks` LAST → PPU ticks after CPU → pre-tick reads); main has PPU first (post-tick). The
+branch's `LY_READ_ADVANCE_START_DOT=450` vs main's `451` is exactly the −1 that compensates the +1 scheduler shift —
+same machine-observable behavior. ⇒ **the branch's LY/mode/LYC phase is already main-equivalent** (1-dot pre-tick
+shift, nothing else); the 3 targets fail purely on the STAT mode0-boundary readback (mid-line), which 1.0 did not sample.
+
+**A′ design chosen (user, over the §24.18 counter rephase):** one uniform readback reference `readback_reference() =
+(ly, line_dot+1)` (with end-of-line / line-153 wrap) feeding `read_ly` + STAT-published + (OAM) with `main`'s EXACT
+bodies, deleting the scattered per-path `+1` compensations — the generalisation of §24.25.1 that §24.25.2 pointed to but
+ran only on STAT. Landed (uncommitted WIP): `readback_reference()` helper + `read_ly_without_skip_boot_lag` rewritten to
+main's 2-branch body on the reference (deletes the batch-3 vblank end-lead; line-153 LY-zero shifts −1 to main's machine
+phase); `LY_READ_ADVANCE_START_DOT` 450→451 (main's); `published_stat` base `line_dot−1`→`line_dot` + overrides at
+`line_dot+1==mode0_start`/`==MODE2_DOTS` (drops batch-1 dual branches). Bare-rig before/after diff: the ONLY transition
+change is line-153 LY (−1, converges to main); everything else identical.
+
+**Gate result (`cargo rom-suite wilbertpol --suite wilbertpol-acceptance`):** baseline 102/105 (3 FAIL = the targets).
+A′ → **94/105: the 3 targets FLIP to PASS, 11 NEW regressions** — `intr_2_mode0_timing_sprites{-nops,-scx1..4-nops}`
+(5), `hblank_ly_scx_timing_variant_nops`, `lcdon_mode_timing`, `ly143_144_{145,152_153,mode0_1,mode3_0}` (4). This
+**reproduces §24.25.2 EXACTLY even with `read_ly` now shifted** — so the LY-lead is NOT the cause. Ruled out: OAM
+(`intr_2_oam_ok` stays green), LYC (`lyc_coin` unchanged in 1.0).
+
+**Root cause (diagnosed, decisive):** the wilbertpol intr_2/sprite/ly143 tests measure the **STAT-IRQ ↔ STAT-readback
+relationship**. A′ moved the readback to main's post-tick phase; the IRQ side stays on the branch's reorder phase. Proof
+by contrast: clean-branch PASSES the sprite variants but FAILS scx3/7; A′ inverts both. They want OPPOSITE branch STAT
+phases — only possible if clean-branch had IRQ-edge + readback consistently-wrong-TOGETHER (variants pass by mutual
+compensation) while scx3/7 (pure readback) failed; A′ fixed the readback alone and desynced them. Note: `ordinary_stat_irq_line`
+is byte-identical branch↔main (same mode0/mode2 pretriggers), so the IRQ *firing predicate* is not the diff — the
+coupling is finer (candidate: the mode0/OAM readback override is `line_dot+1==mode0_start` (early) on A′ vs the
+clean-branch's BOTH exact+early 2-dot window; sprites add the §245 penalty to `mode0_start`. Needs a real-ROM trace of
+`intr_2_mode0_timing_sprites-nops` to pin whether sprites need the exact branch retained alongside the reference).
+
+**Conclusion:** A′ (pure readback reference) is **necessary but not sufficient** — it closes the targets but the 11 need
+the IRQ side brought onto the same phase. User chose **"A′ + converge the STAT-IRQ subsystem to main"** (keep the
+readback reference; port main's `ordinary_mode2_stat_pretrigger_source`/`_edge` split + re-anchor the group-3 IRQ edges /
+resolve the mode0-override exact-vs-early so the measured IRQ↔readback relationship matches main) over the full counter
+rephase. WIP in tree; next concrete step = real-ROM trace of a failing sprite variant to pin the override model, then the
+IRQ-edge convergence, gated on the fast suite back to 105/105.
+
+**WIP checkpoint committed (branch `ppu/fetcher-lead-hardening`, INTENTIONALLY RED — do not ship):** A′ readback
+reference landed in `registers.rs` (`readback_reference()` + `read_ly`), `ppu.rs` (`LY_READ_ADVANCE_START_DOT` 450→451),
+`published_stat.rs` (base `line_dot`→ + overrides at `line_dot+1==boundary`, batch-1 dual branches dropped). Gate:
+**94/105** wilbertpol-acceptance (3 targets PASS, 11 regress). `cargo fmt-check` + `cargo lint` clean. **15 PPU unit
+tests fail** (pinned to the pre-A′ readback phase — Cut 5 re-grounds them; verbatim list at handoff): the
+`published_stat`/`ly_read`/`sprite_extended_mode0`/`lyc_zero_window` boundary tests + the `*_hidden_from_same_cycle_cpu_if`
+tests (the last group is the IRQ-visibility/item-3 surface the convergence must address). `#[ignore]` diagnostics kept in
+`ppu/tests/oracle.rs`: `cut1_grounding_internal_ly_phase` (bare-rig phase scan, 1.0) + `cut1_trace_ly143_144_mode3_0`
+(real-ROM read trace). RESUME: differential dispatch-IRQ trace (A′-branch vs main) of a failing case, capturing
+`ServiceInterrupt{LcdStat}` + IF reads (not just register reads), to pin the IRQ-latch↔readback dot offset.
