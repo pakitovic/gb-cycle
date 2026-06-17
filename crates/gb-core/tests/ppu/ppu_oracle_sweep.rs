@@ -589,6 +589,161 @@ fn run_intr_2_mode0_timing_probe(model: ConsoleModel, delay: usize, target_mode:
     None
 }
 
+// ---- faithful intr_2_mode0_timing_sprites probe (wilbertpol: set up N sprites at
+// Y=$52,X=given, enable OBJ, mode2 IRQ, nops delay, poll STAT until mode0 counting in b).
+// Real test: round_a delay=41+extra -> count 1; round_b delay=40+extra -> count 2. ----
+fn build_intr_2_sprites_probe_rom(sprite_xs: &[u8], delay: usize) -> Vec<u8> {
+    let base = PROBE_ENTRY;
+    let mut program = Vec::new();
+    program.extend_from_slice(&[0x31, 0x00, 0xE0]); // ld sp,$E000
+    program.push(0xAF); // xor a
+    program.push(0x57); // ld d,a  (d=0, not the marker)
+    // wait_ly 144 (vblank; OAM writable)
+    let w144 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]);
+    program.extend_from_slice(&[0xFE, 144]);
+    emit_jr_nz_at(&mut program, w144);
+    // Clear OAM ($FE00..$FE9F) then write sprites.
+    program.extend_from_slice(&[0x21, 0x00, 0xFE]); // ld hl,$FE00
+    for (i, &x) in sprite_xs.iter().enumerate() {
+        program.extend_from_slice(&[0x3E, 0x52]); // ld a,$52 (Y)
+        program.push(0x22); // ld (hl+),a
+        program.extend_from_slice(&[0x3E, x]); // ld a,x
+        program.push(0x22); // ld (hl+),a
+        program.extend_from_slice(&[0x3E, 0x30 + i as u8]); // ld a,tile
+        program.push(0x22); // ld (hl+),a
+        program.push(0xAF); // xor a
+        program.push(0x22); // ld (hl+),a (flags=0)
+    }
+    // Enable OBJ (LCDC.1)
+    program.extend_from_slice(&[0x21, 0x40, 0xFF]); // ld hl,$FF40
+    program.extend_from_slice(&[0xCB, 0xCE]); // set 1,(hl)
+    program.extend_from_slice(&[0x3E, 0x02]); // ld a,2
+    program.extend_from_slice(&[0xE0, 0xFF]); // ldh (IE),a = STAT
+    program.extend_from_slice(&[0x21, 0x41, 0xFF]); // ld hl,$FF41 (STAT)
+
+    program.push(0xCD); // call setup_and_wait_mode2
+    let setup_operand = program.len();
+    program.extend_from_slice(&[0x00, 0x00]);
+
+    program.extend(std::iter::repeat_n(0x00, delay)); // nops delay
+    program.push(0x06); // ld b,$00
+    program.push(0x00);
+    let loop_pc = base + program.len() as u16;
+    program.push(0x04); // inc b
+    program.push(0x7E); // ld a,(hl)  ; read STAT
+    program.extend_from_slice(&[0xE6, 0x03]); // and $03
+    emit_jr_nz_at(&mut program, loop_pc); // jr nz,loop (until mode0)
+
+    program.push(0x48); // ld c,b  (count -> c)
+    program.extend_from_slice(&[0x3E, 0xAA]); // ld a,$AA
+    program.push(0x57); // ld d,a  (marker)
+    program.push(0x76); // halt
+    let done = base + program.len() as u16;
+    emit_jr_at(&mut program, done);
+
+    // setup_and_wait_mode2 (identical to the mode0 timing probe):
+    let setup_pc = base + program.len() as u16;
+    let wly = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]); // ldh a,(LY)
+    program.extend_from_slice(&[0xFE, 0x42]); // cp $42
+    emit_jr_nz_at(&mut program, wly);
+    let wm0 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]);
+    program.extend_from_slice(&[0xE6, 0x03]);
+    program.extend_from_slice(&[0xFE, 0x00]);
+    emit_jr_nz_at(&mut program, wm0);
+    let wm3 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x41]);
+    program.extend_from_slice(&[0xE6, 0x03]);
+    program.extend_from_slice(&[0xFE, 0x03]);
+    emit_jr_nz_at(&mut program, wm3);
+    program.extend_from_slice(&[0x3E, 0x20]); // ld a,$20 (mode2 enable)
+    program.extend_from_slice(&[0xE0, 0x41]); // ldh (STAT),a
+    program.push(0xAF); // xor a
+    program.extend_from_slice(&[0xE0, 0x0F]); // ldh (IF),a
+    program.push(0xFB); // ei
+    program.push(0x76); // halt
+    program.push(0x00); // nop
+    let fl = base + program.len() as u16;
+    emit_jr_at(&mut program, fl); // jr . (fail loop)
+
+    patch_abs16(&mut program, setup_operand, setup_pc);
+
+    let mut rom = build_nom_bc_test_rom_with_program_entry(&program, 0x00, base as usize, &[]);
+    rom[0x0048] = 0xE8; // add sp,+2
+    rom[0x0049] = 0x02;
+    rom[0x004A] = 0xC9; // ret
+    rom
+}
+
+fn run_intr_2_sprites_probe(model: ConsoleModel, sprite_xs: &[u8], delay: usize) -> Option<u8> {
+    let mut machine =
+        Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+    machine
+        .load_cartridge(build_intr_2_sprites_probe_rom(sprite_xs, delay))
+        .expect("probe ROM should load");
+    for _ in 0..3_000_000 {
+        machine.step_t_cycle();
+        if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
+            && machine.cpu().registers().d == 0xAA
+        {
+            return Some(machine.cpu().registers().c);
+        }
+    }
+    None
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_sweep_intr_2_sprites() {
+    // (extra, sprite_xs) drawn from intr_2_mode0_timing_sprites.s. Real test asserts
+    // round_a (delay=41+extra) -> count 1, round_b (delay=40+extra) -> count 2.
+    let cases: &[(i32, Vec<u8>)] = &[
+        (2, vec![0]),
+        (4, vec![0, 0]),
+        (5, vec![0, 0, 0]),
+        (16, vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        (16, vec![1; 10]),
+        (15, vec![2; 10]),
+        (15, vec![3; 10]),
+        (15, vec![4; 10]),
+        (15, vec![7; 10]),
+        (16, vec![8; 10]),
+        (16, vec![9; 10]),
+        (2, vec![0]),
+        (1, vec![4]),
+        (1, vec![5]),
+        (2, vec![8]),
+        (1, vec![12]),
+        (27, vec![0, 8, 16, 24, 32, 40, 48, 56, 64, 72]),
+    ];
+    for model in [ConsoleModel::GameBoy, ConsoleModel::GameBoyColor] {
+        println!("=== intr_2_mode0_timing_sprites model={model:?} (a:41+x->1, b:40+x->2) ===");
+        for (extra, xs) in cases {
+            let da = (41 + extra) as usize;
+            let db = (40 + extra) as usize;
+            let a = run_intr_2_sprites_probe(model, xs, da);
+            let b = run_intr_2_sprites_probe(model, xs, db);
+            // Also locate the real boundary (first delay whose count==1).
+            let mut boundary = None;
+            for d in db.saturating_sub(2)..=da + 3 {
+                if run_intr_2_sprites_probe(model, xs, d) == Some(1) {
+                    boundary = Some(d);
+                    break;
+                }
+            }
+            let pass = a == Some(1) && b == Some(2);
+            println!(
+                "extra={extra:3} n={:2} x={:?} a(d={da})={a:?} b(d={db})={b:?} boundary={boundary:?} {}",
+                xs.len(),
+                xs.first().copied().unwrap_or(0),
+                if pass { "PASS" } else { "FAIL" }
+            );
+        }
+    }
+}
+
 // ---- faithful intr_2_mode0_scxN_timing_nops probe (wilbertpol: set SCX, mode2 IRQ,
 // nops delay, then a SINGLE `ld a,(STAT); and $03` read = the mode bits at that dot).
 // Returns the mode bits. Real test (scx3): delay 49 -> 0x03 (mode3), delay 50 -> 0x00
@@ -660,17 +815,42 @@ fn build_intr_2_scx_single_read_probe_rom(scx: u8, delay: usize) -> Vec<u8> {
 }
 
 fn run_intr_2_scx_single_read_probe(model: ConsoleModel, scx: u8, delay: usize) -> Option<u8> {
+    run_intr_2_scx_single_read_probe_detailed(model, scx, delay).map(|(m, _, _, _)| m)
+}
+
+// Returns (observed_mode, line_dot_at_read, mode0_start_dot_at_read, internal_access_mode_bits).
+fn run_intr_2_scx_single_read_probe_detailed(
+    model: ConsoleModel,
+    scx: u8,
+    delay: usize,
+) -> Option<(u8, u16, u16, u8)> {
     let mut machine =
         Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
     machine
         .load_cartridge(build_intr_2_scx_single_read_probe_rom(scx, delay))
         .expect("probe ROM should load");
+    let mut read_at: Option<(u16, u16, u8)> = None;
     for _ in 0..3_000_000 {
         machine.step_t_cycle();
+        // Keep the LAST $FF41 read (the measurement read), not the setup wait_mode polls.
+        if let Some(event) = machine.cpu().last_address_event()
+            && event.kind == CpuAddressEventKind::Read
+            && event.access_address == Some(0xFF41)
+        {
+            let s = machine.ppu().snapshot();
+            let internal = match s.mode {
+                PpuAccessMode::HBlank => 0,
+                PpuAccessMode::VBlank => 1,
+                PpuAccessMode::OamScan => 2,
+                PpuAccessMode::Drawing => 3,
+            };
+            read_at = Some((s.line_dot, s.mode0_start_dot, internal));
+        }
         if machine.cpu().execution_state() == gb_core::CpuExecutionState::Halted
             && machine.cpu().registers().d == 0xAA
         {
-            return Some(machine.cpu().registers().c);
+            let (line_dot, m0, internal) = read_at?;
+            return Some((machine.cpu().registers().c, line_dot, m0, internal));
         }
     }
     None
@@ -689,6 +869,156 @@ fn oracle_sweep_intr_2_mode0_scx_timing() {
             for delay in 44..=58 {
                 match run_intr_2_scx_single_read_probe(model, scx, delay) {
                     Some(m) => println!("delay={delay:3} mode={m:#04X}"),
+                    None => println!("delay={delay:3} <timeout>"),
+                }
+            }
+        }
+    }
+}
+
+// ---- internal mode3-length probe: set SCX, then sample the PPU's own
+// `mode0_start_dot()` on a steady visible line (ly=70, deep HBlank). Answers whether
+// the per-scx mode3 LENGTH differs between trees, or it is purely the readback skew. ----
+fn build_scx_spin_rom(scx: u8) -> Vec<u8> {
+    let base = PROBE_ENTRY;
+    let mut program = Vec::new();
+    program.extend_from_slice(&[0x3E, scx]); // ld a,scx
+    program.extend_from_slice(&[0xE0, 0x43]); // ldh (SCX),a
+    let spin = base + program.len() as u16;
+    emit_jr_at(&mut program, spin); // jr .
+    build_nom_bc_test_rom_with_program_entry(&program, 0x00, base as usize, &[])
+}
+
+fn build_sprites_spin_rom(sprite_xs: &[u8]) -> Vec<u8> {
+    let base = PROBE_ENTRY;
+    let mut program = Vec::new();
+    // wait_ly 144 (vblank; OAM writable)
+    let w144 = base + program.len() as u16;
+    program.extend_from_slice(&[0xF0, 0x44]);
+    program.extend_from_slice(&[0xFE, 144]);
+    emit_jr_nz_at(&mut program, w144);
+    program.extend_from_slice(&[0x21, 0x00, 0xFE]); // ld hl,$FE00
+    for (i, &x) in sprite_xs.iter().enumerate() {
+        program.extend_from_slice(&[0x3E, 0x52]); // ld a,$52 (Y)
+        program.push(0x22);
+        program.extend_from_slice(&[0x3E, x]); // ld a,x
+        program.push(0x22);
+        program.extend_from_slice(&[0x3E, 0x30 + i as u8]); // tile
+        program.push(0x22);
+        program.push(0xAF); // xor a
+        program.push(0x22); // flags=0
+    }
+    program.extend_from_slice(&[0x21, 0x40, 0xFF]); // ld hl,$FF40
+    program.extend_from_slice(&[0xCB, 0xCE]); // set 1,(hl)  OBJ enable
+    let spin = base + program.len() as u16;
+    emit_jr_at(&mut program, spin);
+    build_nom_bc_test_rom_with_program_entry(&program, 0x00, base as usize, &[])
+}
+
+fn run_sprites_internal_length_probe(model: ConsoleModel, sprite_xs: &[u8]) -> Option<(u16, u16)> {
+    let mut machine =
+        Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+    machine
+        .load_cartridge(build_sprites_spin_rom(sprite_xs))
+        .expect("probe ROM should load");
+    let mut last_drawing: Option<(u16, u16)> = None; // (last_drawing_dot, mode0_start_dot)
+    for _ in 0..3_000_000 {
+        machine.step_t_cycle();
+        let s = machine.ppu().snapshot();
+        if s.ly == 68 && s.mode == PpuAccessMode::Drawing {
+            last_drawing = Some((s.line_dot, s.mode0_start_dot));
+        }
+        if s.ly == 69 && last_drawing.is_some() {
+            return last_drawing;
+        }
+    }
+    None
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_sweep_intr_2_sprites_internal_length() {
+    let cases: &[(i32, Vec<u8>)] = &[
+        (2, vec![0]),
+        (4, vec![0, 0]),
+        (5, vec![0, 0, 0]),
+        (16, vec![0; 10]),
+        (15, vec![3; 10]),
+        (16, vec![8; 10]),
+        (27, vec![0, 8, 16, 24, 32, 40, 48, 56, 64, 72]),
+        (2, vec![8]),
+    ];
+    for model in [ConsoleModel::GameBoy, ConsoleModel::GameBoyColor] {
+        println!(
+            "=== intr_2 sprites internal mode0_start_dot model={model:?} (ly68 last-Drawing) ==="
+        );
+        for (extra, xs) in cases {
+            match run_sprites_internal_length_probe(model, xs) {
+                Some((last_draw, len)) => println!(
+                    "extra={extra:3} n={:2} x={:3} last_drawing_dot={last_draw} mode0_start_dot={len} (len-252={})",
+                    xs.len(),
+                    xs.first().copied().unwrap_or(0),
+                    len as i32 - 252
+                ),
+                None => println!("extra={extra} <timeout>"),
+            }
+        }
+    }
+}
+
+fn run_scx_internal_mode0_start_dot_probe(model: ConsoleModel, scx: u8) -> Option<(u8, u16, u16)> {
+    let mut machine =
+        Machine::new(MachineConfig::new(model).with_startup_mode(StartupMode::SkipBoot));
+    machine
+        .load_cartridge(build_scx_spin_rom(scx))
+        .expect("probe ROM should load");
+    // Track, on ly=70, the last Drawing dot and the mode3-length at the mode3->HBlank flip.
+    let mut last_drawing: Option<(u8, u16, u16)> = None; // (scx, last_drawing_dot, len_there)
+    for _ in 0..3_000_000 {
+        machine.step_t_cycle();
+        let s = machine.ppu().snapshot();
+        if s.ly == 70 && s.mode == PpuAccessMode::Drawing {
+            last_drawing = Some((s.scx, s.line_dot, s.mode0_start_dot));
+        }
+        if s.ly == 71 {
+            return last_drawing;
+        }
+    }
+    None
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_sweep_intr_2_mode0_scx_internal_length() {
+    for model in [ConsoleModel::GameBoy, ConsoleModel::GameBoyColor] {
+        println!("=== intr_2 internal mode0_start_dot model={model:?} (ly70 last-Drawing) ===");
+        for scx in 0..=8_u8 {
+            match run_scx_internal_mode0_start_dot_probe(model, scx) {
+                Some((rscx, last_draw, len)) => println!(
+                    "scx_set={scx} scx_seen={rscx} last_drawing_dot={last_draw} mode0_start_dot={len}"
+                ),
+                None => println!("scx={scx} <timeout>"),
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "oracle sweep (manual run with --nocapture)"]
+fn oracle_sweep_intr_2_mode0_scx_timing_detailed() {
+    // For each scx, print observed STAT mode + the raster state at the read instant, so a
+    // canonical readback model can be derived offline. main column (oracle, §24.21):
+    // scx0..8 mode0@nop = 49,50,50,50,51,51,51,51,50.
+    for model in [ConsoleModel::GameBoy] {
+        for scx in 0..=8_u8 {
+            println!(
+                "=== scx{scx} model={model:?} (delay, observed, line_dot@read, mode0_start) ==="
+            );
+            for delay in 46..=54 {
+                match run_intr_2_scx_single_read_probe_detailed(model, scx, delay) {
+                    Some((m, ld, m0, internal)) => println!(
+                        "delay={delay:3} observed={m:#04X} line_dot@read={ld:3} mode0_start={m0} internal={internal}"
+                    ),
                     None => println!("delay={delay:3} <timeout>"),
                 }
             }
