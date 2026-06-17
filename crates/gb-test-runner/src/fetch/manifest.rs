@@ -140,6 +140,7 @@ pub(super) struct SourceFamily {
 pub(super) struct SourceFile {
     pub(super) path: PathBuf,
     pub(super) target: PathBuf,
+    pub(super) size: Option<u64>,
     pub(super) sha256: String,
 }
 

@@ -52,9 +52,12 @@ Mooneye and Wilbertpol `madness/mgb_oam_dma_halt_sprites.gb` are MGB-specific vi
 cargo rom-fetch gb-emulator-shootout
 cargo rom-fetch gb-emulator-shootout blargg acid
 cargo rom-fetch docboy
+cargo rom-fetch --boot-rom "$HOME/emu/roms/bootrom"
 ```
 
 `cargo rom-fetch <report> [family ...]` materializes all report families when no family is provided, or only the explicit families otherwise. It rejects `local = true` reports, uses temporary pinned `git` checkouts, verified ZIP archives, or hashed file-base release assets, verifies hashes, and preserves report runtime directories such as `.status` and `.artifacts`. Remote ZIP and file-base sources use `curl` for the download step before file-hash validation.
+
+`cargo rom-fetch --boot-rom <dir>` is a manual-only firmware convenience path that reads `crates/gb-test-runner/data/sources.boot-rom.toml`, downloads the pinned boot ROM files from `https://gbdev.gg8.se/files/roms/bootroms/`, verifies declared size and SHA-256 before materialization, and writes only the manifest-declared canonical filenames into `<dir>` without deleting unrelated files. No suite, report, CI, or auto-materialization path invokes this mode implicitly; pass it only when you intentionally want to populate a private local boot-ROM directory.
 
 `cargo rom-suite` and `cargo rom-suite-link` auto-fetch missing or stale assets for fetchable reports before running selected cases, so explicit `cargo rom-fetch` is only needed when you want a separate materialization step.
 
@@ -131,9 +134,10 @@ Supported `model` values are `dmg`, `mgb`, `cgb`, `agb`, `sgb`, and `sgb2`. Supp
 ```bash
 cargo rom-report gb-emulator-shootout
 cargo rom-report gb-emulator-shootout --html
+cargo rom-report gb-emulator-shootout --boot-rom-dir "$HOME/emu/roms/bootrom"
 ```
 
-`cargo rom-report <report>` validates that the report has single-machine suite manifests, runs `cargo rom-suite <report>`, and renders the fresh current single-machine status files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. The delegated suite run owns selected single-machine `.status/<suite>.toml` and `.artifacts/<suite>/` cleanup after preflight; if it fails before reaching that guarded cleanup point, `cargo rom-report` preserves existing evidence and returns an error instead of rendering stale statuses. The renderer filters status files to current single-machine suite names so mixed reports such as `docboy` can retain linked-session status/artifacts beside single-machine output. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
+`cargo rom-report <report>` validates that the report has single-machine suite manifests, runs `cargo rom-suite <report>`, and renders the fresh current single-machine status files into `test/<report-store>/test-report.md`, using `report_file` and `family_order` from `crates/gb-test-runner/data/reports.toml`. Pass `--boot-rom-dir <dir>` to forward the same directory to the delegated `cargo rom-suite <report> --boot-rom-dir <dir>` run; this forces the selected single-machine report cases through verified RealBoot just as invoking `cargo rom-suite` directly would. The delegated suite run owns selected single-machine `.status/<suite>.toml` and `.artifacts/<suite>/` cleanup after preflight; if it fails before reaching that guarded cleanup point, `cargo rom-report` preserves existing evidence and returns an error instead of rendering stale statuses. The renderer filters status files to current single-machine suite names so mixed reports such as `docboy` can retain linked-session status/artifacts beside single-machine output. The header records the report id, the non-failing/total count, and the reproduction command such as `cargo rom-report gb-emulator-shootout`; RealBoot reports generated with `--boot-rom-dir` record a non-private placeholder such as `cargo rom-report gb-emulator-shootout --boot-rom-dir path/to/real/boot-roms` instead of the local boot-ROM directory. `PASS` and `INFO` rows count as non-failing, while `FAIL` rows do not.
 
 Fetchable report rows are sorted by `family_order`, then by each family's pinned `sources.report.toml` ROM order, then by same-ROM model variant order, then by suite/case order and lexical fallback for rows not present in the source manifest.
 
@@ -146,6 +150,8 @@ Pass `--html` to also write `test/<report-store>/test-report.html` from the same
 `cargo rom-suite` and `cargo rom-suite-link` do not use startup or boot-ROM environment variables. Pass `--boot-rom-dir <dir>` explicitly to force all selected cases or participants through RealBoot.
 
 The directory must contain the required private firmware assets with canonical filenames such as `dmg_boot.bin`, `mgb_boot.bin`, `cgb_boot.bin`, `cgbE_boot.bin`, `cgb_agb0_boot.bin`, or `cgb_agb_boot.bin`. The runner verifies only the assets required by the selected model/host profiles.
+
+Use `cargo rom-fetch --boot-rom <dir>` only as an explicit local setup step when you want the test-runner tooling to populate that private directory from the pinned boot-ROM source manifest; this is not part of report or suite auto-fetch.
 
 Use RealBoot runs as local comparison evidence. Rerun the matching default startup command afterward when status/artifacts should represent the baseline lane again.
 

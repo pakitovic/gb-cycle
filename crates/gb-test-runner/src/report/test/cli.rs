@@ -5,7 +5,8 @@ use super::super::cli::{
 };
 use super::super::manifest::load_reports;
 use super::super::model::{
-    REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI, REPORT_STATUS_PASS_EMOJI,
+    PersistedCaseStatus, PersistedSuiteStatus, REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_INFO_EMOJI,
+    REPORT_STATUS_PASS_EMOJI,
 };
 use super::super::render::render_markdown;
 use super::super::status::{build_report_document, load_statuses};
@@ -19,15 +20,31 @@ fn help_mentions_report_contract() {
     let help = report_help_text();
     assert!(help.contains("<report-id>"));
     assert!(help.contains("--html"));
+    assert!(help.contains("--boot-rom-dir <dir>"));
     assert!(help.contains("cargo rom-suite <report-id>"));
 }
 
 #[test]
 fn parse_accepts_report_and_html() {
-    let action = parse_report_arguments_for_test(["gb-emulator-shootout", "--html"])
-        .expect("arguments should parse");
+    let action = parse_report_arguments_for_test([
+        "gb-emulator-shootout",
+        "--html",
+        "--boot-rom-dir",
+        "/tmp/bootroms",
+    ])
+    .expect("arguments should parse");
     assert!(format!("{action:?}").contains("report_id: Some"));
     assert!(format!("{action:?}").contains("html: true"));
+    assert!(format!("{action:?}").contains("boot_rom_dir: Some"));
+}
+
+#[test]
+fn parse_rejects_missing_boot_rom_dir_value() {
+    assert!(
+        parse_report_arguments_for_test(["gb-emulator-shootout", "--boot-rom-dir"])
+            .expect_err("missing boot ROM dir should fail")
+            .contains("--boot-rom-dir requires a value")
+    );
 }
 
 #[test]
@@ -157,6 +174,31 @@ status = "PASS"
     )));
     assert!(!report.contains("stale.gb"));
     assert!(!report.contains("linked-case"));
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn report_command_forwards_boot_rom_dir_to_delegated_suite() {
+    let workspace = unique_temp_dir("report-forwards-boot-rom-dir");
+    write_local_report_with_missing_rom_suite(&workspace);
+    let boot_rom_dir = workspace.join("missing-bootroms");
+    let mut output = Vec::new();
+
+    let error = run_report_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--boot-rom-dir",
+            boot_rom_dir.to_str().expect("path should be UTF-8"),
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("missing boot ROM dir should fail during delegated suite preflight");
+
+    let output = String::from_utf8(output).expect("output should be UTF-8");
+    assert!(output.contains("cargo rom-suite sample-report --boot-rom-dir"));
+    assert!(error.contains("boot ROM asset directory does not exist"));
+    assert!(error.contains("failed before runtime cleanup"));
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 
@@ -370,8 +412,8 @@ status = "PASS"
         .find(|report| report.id == "sample-report")
         .expect("sample report should exist");
     let statuses = load_statuses(&workspace, report).expect("statuses should load");
-    let document =
-        build_report_document(&workspace, report, statuses).expect("report document should build");
+    let document = build_report_document(&workspace, report, statuses, None)
+        .expect("report document should build");
     let report = render_markdown(&document);
     let which_dmg = report
         .find(&format!(
@@ -388,6 +430,46 @@ status = "PASS"
         .expect("later ROM row should be rendered");
     assert!(which_dmg < which_gbc);
     assert!(which_gbc < later);
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn report_document_uses_boot_rom_dir_placeholder_in_reproduction_command() {
+    let workspace = unique_temp_dir("real-boot-report-command");
+    write_basic_reports(&workspace);
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == "sample-report")
+        .expect("sample report should exist");
+    let private_boot_rom_dir = workspace.join("private-real-boot-roms");
+    let statuses = vec![PersistedSuiteStatus {
+        suite_name: "sample-suite".to_string(),
+        family: "acid".to_string(),
+        cases: vec![PersistedCaseStatus {
+            family: None,
+            rom: "which.gb".to_string(),
+            status: "PASS".to_string(),
+        }],
+    }];
+
+    let document = build_report_document(
+        &workspace,
+        report,
+        statuses,
+        Some(private_boot_rom_dir.as_path()),
+    )
+    .expect("report document should build");
+
+    assert_eq!(
+        document.command,
+        "cargo rom-report sample-report --boot-rom-dir path/to/real/boot-roms"
+    );
+    assert!(
+        !document
+            .command
+            .contains(&private_boot_rom_dir.display().to_string())
+    );
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 

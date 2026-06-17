@@ -53,6 +53,7 @@ fn derives_report_families_alphabetically_when_family_order_is_omitted() {
                     files: vec![SourceFile {
                         path: PathBuf::from("roms/family-b/test.gb"),
                         target: PathBuf::from("test.gb"),
+                        size: None,
                         sha256: "0".repeat(64),
                     }],
                 },
@@ -63,6 +64,7 @@ fn derives_report_families_alphabetically_when_family_order_is_omitted() {
                     files: vec![SourceFile {
                         path: PathBuf::from("roms/family-a/test.gb"),
                         target: PathBuf::from("test.gb"),
+                        size: None,
                         sha256: "1".repeat(64),
                     }],
                 },

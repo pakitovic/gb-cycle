@@ -70,6 +70,15 @@ pub(super) fn validate_source_files(
     for file in &family.files {
         validate_relative_path(&file.path, "source family file path", false)?;
         validate_relative_path(&file.target, "source family file target", false)?;
+        if matches!(file.size, Some(0)) {
+            return Err(format!(
+                "invalid size 0 for source {} file {} in report {:?} family {:?}",
+                source.id,
+                file.path.display(),
+                report.id,
+                family.id
+            ));
+        }
         validate_sha256(&file.sha256, source, report, family, file)?;
         if !source_paths.insert(file.path.to_string_lossy().to_string()) {
             return Err(format!(

@@ -20,6 +20,7 @@ const REPORT_MODEL_SUFFIXES: [(&str, usize); 6] = [
     (" (SGB)", 4),
     (" (SGB2)", 5),
 ];
+const REAL_BOOT_ROM_DIR_PLACEHOLDER: &str = "path/to/real/boot-roms";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct SourceManifestFile {
@@ -82,6 +83,7 @@ pub(super) fn build_report_document(
     workspace_root: &Path,
     report: &Report,
     statuses: Vec<PersistedSuiteStatus>,
+    boot_rom_dir: Option<&Path>,
 ) -> Result<ReportDocument, String> {
     let mut rows = Vec::new();
     let mut non_failing_cases = 0;
@@ -109,11 +111,20 @@ pub(super) fn build_report_document(
 
     Ok(ReportDocument {
         report_id: report.id.clone(),
-        command: format!("cargo rom-report {}", report.id),
+        command: report_command_display(report, boot_rom_dir),
         non_failing_cases,
         total_cases,
         rows,
     })
+}
+
+fn report_command_display(report: &Report, boot_rom_dir: Option<&Path>) -> String {
+    let mut command = format!("cargo rom-report {}", report.id);
+    if boot_rom_dir.is_some() {
+        command.push_str(" --boot-rom-dir ");
+        command.push_str(REAL_BOOT_ROM_DIR_PLACEHOLDER);
+    }
+    command
 }
 
 pub(super) fn store_root_for_report(workspace_root: &Path, report: &Report) -> PathBuf {
