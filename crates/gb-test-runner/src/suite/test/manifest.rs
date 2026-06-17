@@ -1743,7 +1743,6 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 ("mooneye-misc", 8, "mooneye", "mooneye"),
             ][..],
         ),
-        ("ax6", &[("ax6-dmg", 3, "ax6", "ax6")][..]),
         (
             "little-things-gb",
             &[(
@@ -1789,6 +1788,19 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 ("samesuite-interrupt", 1, "samesuite", "samesuite"),
                 ("samesuite-ppu", 1, "samesuite", "samesuite"),
                 ("samesuite-sgb", 2, "samesuite", "samesuite"),
+            ][..],
+        ),
+        (
+            "rtc3test",
+            &[
+                ("rtc3test-basic-tests", 2, "basic-tests", "basic-tests"),
+                ("rtc3test-range-tests", 2, "range-tests", "range-tests"),
+                (
+                    "rtc3test-sub-second-writes",
+                    2,
+                    "sub-second-writes",
+                    "sub-second-writes",
+                ),
             ][..],
         ),
     ];
@@ -1923,6 +1935,31 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             let suites = load_selected_suites(&workspace, report, Some("magen"), None)
                 .expect("magen suite should load");
             assert!(suites[0].cases.iter().all(|case| case.timeout_frames == 72));
+        }
+        if report_id == "rtc3test" {
+            let suites =
+                load_selected_suites(&workspace, report, Some("rtc3test-basic-tests"), None)
+                    .expect("rtc3test basic suite should load");
+            let basic = &suites[0];
+            assert!(
+                basic.cases.iter().all(|case| case.report_model_suffix
+                    && matches!(&case.oracle, Oracle::Framebuffer(_)))
+            );
+            let dmg = basic
+                .cases
+                .iter()
+                .find(|case| case.id == "rtc3test-dmg-basic-tests")
+                .expect("DMG basic row should exist");
+            assert_eq!(dmg.hardware_revision, gb_core::HardwareRevision::DmgCpuC);
+            assert_eq!(dmg.report_rom(), "rtc3test.gb (DMG)");
+            assert_eq!(dmg.stimuli[0].when, SuiteStimulusTime::Frame(30));
+            let cgb = basic
+                .cases
+                .iter()
+                .find(|case| case.id == "rtc3test-cgb-basic-tests")
+                .expect("CGB basic row should exist");
+            assert_eq!(cgb.hardware_revision, gb_core::HardwareRevision::CpuCgbE);
+            assert_eq!(cgb.report_rom(), "rtc3test.gb (GBC)");
         }
 
         fs::remove_dir_all(workspace).expect("workspace should be removable");

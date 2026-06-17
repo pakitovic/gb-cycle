@@ -32,7 +32,7 @@ jobs:
         id: reports
         run: |
           set -euo pipefail
-          reports_json='["gb-emulator-shootout","ax6","gbmicrotest","little-things-gb","magen","mealybug-tearoom-tests","mooneye","samesuite"]'
+          reports_json='["gb-emulator-shootout","rtc3test","gbmicrotest","little-things-gb","magen","mealybug-tearoom-tests","mooneye","samesuite"]'
           echo "reports_json=${reports_json}" >> "${GITHUB_OUTPUT}"
 
       - name: Build ROM report runner
