@@ -2112,3 +2112,110 @@ DMG closed). Pre-existing reorder debt unchanged (9 lib `mode_edges` + 18 trace/
 
 The full internal-`self.ly` mid-line raster rephase (§24.18) remains the end-state that would subsume the interim
 reorder compensations (E1, item-1 line-153 pretrigger, item-3 vblank IF mask, batch-2 OAM mode0, batch-3 vblank LY-wrap).
+
+### 24.25 REPHASE DESIGN — diagnosis sharpened, DocBoy+SameBoy grounded, cut sequence (user authorized the rephase, 2026-06-17)
+
+**Re-measured the workstream-A ROMs; the §24.21/§24.24 "fetcher/§245 mode3-length" framing is REFUTED. The 3 ROMs
+(`intr_2_mode0_scx3/scx7_timing_nops`, `intr_2_mode0_timing_sprites`) fail PURELY on the CPU↔PPU reorder readback, NOT
+on mode3 length.** Evidence (all reproduced this session; probes in `ppu_oracle_sweep.rs`, `#[ignore]`):
+- Internal mode3 length is hardware-true and main-identical: a spin-ROM probe sampling `ppu.mode0_start_dot()` on a
+  steady visible line gives `252 + (scx&7)` exactly for scx 0-8 (scx8→252) = the canonical Pan Docs `172 + scx&7`.
+- `git diff main..branch` proves the length engine is byte-identical: `MODE0_START_DOT=252`, `MODE3_BASELINE_DOTS=172`,
+  `capture_initial_scx (+= scx&7)`, `obj_fetch.rs` (§245 penalty), `OBJ_FETCH_MAX_ALIGNMENT_STALL_DOTS=5`,
+  `extend_mode3_by_one_dot` — none changed. The branch only added M1 (`startup_fetch_idle_dots`, moves *when* mode3
+  fetches, not the total length) + the reorder + the readback overrides.
+- The scx readback fails exactly where `boundary ≡ 3 (mod 4)` (scx3, scx7); no binary scx gate matches main (§24.21).
+  This is the boundary's mod-4 phase vs the nop-read alignment under the reorder, not a length error.
+
+⇒ Workstream A is the reorder-readback model = the §24.18 canonical work, not independent fetcher work. The user
+**authorized starting the rephase**. The "§245 frozen, prove sprite cost unchanged" guard still applies as a regression
+check, but the fix is NOT in the fetcher.
+
+**CRITICAL SCOPE REFINEMENT — the user's target ROMs (scx3/7 + sprites) are the mode0 READBACK, mid-line, and are
+INDEPENDENT of the `self.ly` mid-line LY-lead.** The mode0 boundary is at `line_dot 252+scx&7` (mid-line); the LY-lead
+window is dots 453-455; on a visible line `ly < VISIBLE` throughout, so the leading-vs-trailing `ly` never changes the
+mode0 readback. ⇒ closing scx3/7+sprites = the **mode-from-delayed-registers** readback model (the §24.13 "item-2"
+piece), which can land **independently of and before** the risky `self.ly` LY-lead. The LY-lead rephase closes/deletes
+the LYC + line-153 + vblank-LY cluster (already green via interim fixes E1/item-1/item-3/batch-3), reducing net seams; it
+does NOT itself close new target ROMs. So the cut order is REVISED: **mode-readback (closes the targets) FIRST, then the
+LY-lead rephase + LYC-seam deletion (net seams down)**.
+
+**Canonical model — DocBoy and SameBoy CONVERGE (both extracted from source this session):**
+- **Mode is NOT derived from `ly`.** DocBoy: `mode` is a stored member written only by `update_mode<M>()` from the
+  per-dot `tick_selector` state machine (ppu.cpp:1772-1776, :511). SameBoy: mode bits live in `io_registers[STAT]`,
+  stamped by the display state machine. gb-cycle's `access_mode_from_raster(ly,line_dot,…)` DERIVES mode from `ly`
+  (`ly>=VISIBLE→VBlank`) — this is the only reason a leading `ly` corrupts mode, and the reason re-anchoring is needed.
+- **LY increment:** DMG increments LY at dot **453** (DocBoy `end_increase_ly`/`++ly` in `hblank_453`, ppu.cpp:823-829,
+  :1279). SameBoy agrees (writes `GB_IO_LY` at line-boundary +2..3, display.c:1774). Line 153: LY→0 at dot **2** DMG /
+  dot **3** CGB (DocBoy vblank_last_line, ppu.cpp:1446-1449/:1473); SameBoy DMG wraps ~dot 6 (a noted ≤4-dot phase
+  nuance — ground the exact gb-cycle dot vs the oracle, do NOT copy 2/3 literally).
+- **LYC coincidence:** `is_lyc_eq_ly() = (last_lyc==last_ly) && enable_lyc_eq_ly_irq` (DMG); CGB retains prior
+  `stat.lyc_eq_ly` while disabled. `last_ly`/`last_lyc` captured at END of tick (ppu.cpp:554-560) = 1-T-cycle delay.
+  `enable_lyc_eq_ly_irq` disabled at dot 453 (normal line) / 454 (vblank line) / dots 2:6 (line 153). SameBoy realizes
+  the same via one `ly_for_comparison` sentinel (-1 at line start, set 1 dot later) feeding BOTH IRQ and readback — no
+  irq-vs-readback split (gb-cycle's split is the seam).
+- **STAT mode read:** DMG reads `stat.mode` recomputed each tick by `tick_stat` (ppu.cpp:740-768) with OAM→HBLANK force
+  glitches; no extra delay register. SameBoy reads live `io_registers[STAT]` after full sync, with a SEPARATE
+  `mode_for_interrupt` that **leads** the readback by 1 dot at the mode2→OAM edge but flips **together** at mode3→mode0
+  (display.c:1778-1792, :2090-2108, state 22). So mode3→mode0 readback has NO early offset on hardware — the gb-cycle
+  mode0-publish "+1 early" override is purely a reorder artifact.
+
+**Target gb-cycle phase:**
+- `self.ly` increments at `line_dot ≈ 453` (ground exact vs oracle), wraps to 0 mid-line-153; mode derivation
+  re-anchored so the lead never flips VBlank/mode2 early.
+- CPU LY readback = `self.ly` directly (delete the +1 lead-from-450 and the vblank LY-wrap branch).
+- LYC = `last_ly`/`last_lyc` + a single `enable_lyc_eq_ly_irq` (line_dot-coord windows, DMG forces 0 / CGB retains).
+- STAT mode readback = mode-from-(delayed)-registers replacing the published_stat dot-window overrides.
+
+**Re-anchor list (from the 4-agent map, full file:line in the workflow result; the must-fix-together set):**
+1. Mode-derivation leaves: `access_mode_from_raster` (common.rs:21), `current_access_mode` (registers.rs:254),
+   `access_mode_for_line_dot` (registers.rs:272), `current_bus_access_mode`/`current_raster_state` (mode2.rs),
+   `bus_access_mode_for_line_dot` (registers.rs:292) — all gate VBlank on `ly>=VISIBLE`.
+2. VBlank-entry edge (api.rs:940), the wrap side-effects + post-increment guards (api.rs:885-929),
+   `finalize_dmg_bgp_cpu_commit_scanline` order (boundary_repaint.rs:42, needs `previous_ly+1==self.ly`).
+3. End-of-line `ly±1 / line_dot+N>=scanline_length` IRQ sources (fire in 452-456): `ordinary_mode2_stat_pretrigger_source`
+   (irq.rs:286), `mode2_vblank_entry_stat_source` (irq.rs:306), `dmg_mode2_vblank_entry_halt_wake/_interrupt_service`
+   (irq.rs:409/427), `dmg_mode2_oam_halt_wake_deferred` (irq.rs:403).
+4. Line-153 LYC cluster keyed to `ly==TOTAL-1`: `live_ly_for_lyc_compare` (irq.rs:30/46), `line_153_lyc0_*`
+   (irq.rs:325/339/359), `line_153_reads_as_ly0` (registers.rs:240).
+5. LY-read lead seam (DIRECT COLLISION — would double-count to ly+2): `read_ly_without_skip_boot_lag` (registers.rs:204),
+   `current_ly_read_advance_start_dot=450` (api.rs:1221).
+6. Restart/boot (maybe): `advance_lcd_restart_phase` (irq.rs:580), `PpuLcdRestartPhase` (raster.rs:40),
+   `current_scanline_length` ly-keyed cache (api.rs:1197).
+   SAFE (rendering, mid-line, never in 453-455): framebuffer row `ly*SCREEN_WIDTH`, `bg_fetch.rs:222` `(scy+ly)%8`,
+   `prepare_line` WY, palette recolor guards; boot one-shots (api.rs:660/702/727).
+
+**Deletion list (interim reorder seams the rephase subsumes — with their pinned unit tests, from the map):**
+mode0-publish overrides + `scx==0||mode0-int` gate (published_stat.rs:61-110), OAM read/write overrides
+(published_stat.rs:121-169), E1 dot0 latch + `regular_line_dot0_compare_window` (irq.rs:82-101), item-1
+`last_line_153_lyc0_pretrigger_window` (irq.rs:114-125/325-357), item-3 `cpu_if_read_suppress_mask`
+(interrupts.rs/step.rs), batch-3 vblank LY-wrap (registers.rs:219-231), batch-4 mode2_vblank_entry blank-frame
+(irq.rs:294-323), the LY-read lead (registers.rs:204-217 + ppu.rs:59/63), `line_153_reads_as_ly0` + the 11 LINE_153_*/
+CGB_LINE_153_* / *_LY_READ_ZERO_DOT / CGB_LINE_END_LYC_COMPARE_BLANK_DOTS / LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS
+constants (ppu.rs:70-83), `live_ly_for_lyc_compare`/`lyc_compare_latch`/readback-irq split (irq.rs:24-112).
+NOT reorder seams — LEAVE: `dmg_boot_power_on_*` tables, `real_boot_handoff_mode0_scx_seam`, `lcd_restart_phase`,
+`dmg_stat_write_quirk_*`, halt-wake deferral helpers (genuine hardware/boot/quirk behavior).
+
+**Cut sequence (each cut: shadow-diff in parallel first where possible, then flip, then per-ROM oracle gate; accept
+temporary unit-test red, re-ground after; `cargo fmt-check`+`lint`+`tests`+`rom-report blargg`+target ROM + zero
+regression vs the 27-baseline; suites via `cargo rom-suite`):**
+- **Cut 2 FIRST (the user's targets): mode-from-delayed-registers STAT readback.** Empirically derive (against
+  `oracle_sweep_intr_2_mode0_scx_timing` scx 0-8 + a faithful sprites probe + the main worktree) a CLEAN canonical
+  readback model with NO per-scx gate that matches main for all scx. Candidate: published mode from a tick-end-registered
+  `stat_mode` / a uniform `access_mode_for_line_dot(line_dot+k)` that undoes the reorder pre-tick, deleting the
+  `scx==0||mode0-int` gate + the mode0/OAM "+1 early" overrides. Closes `scx3/scx7_nops` + `intr_2_mode0_timing_sprites`
+  (+ keeps base intr_2_*). If no gate-free model matches without the LY-lead, it is coupled → fall back to Cut 1 first.
+- **Cut 1: `self.ly` mid-line lead + re-anchor groups 1-6** above; delete the LY-read lead (group 5). Foundation for the
+  LYC seam deletion. Ground the exact increment dot vs `oracle_sweep_ly_lyc`/`oracle_run_ly_lyc_roms`.
+- **Cut 3: canonical `last_ly`/`last_lyc` + `enable_lyc_eq_ly_irq`**, delete the LYC seam constants + the irq/readback
+  split + `live_ly_for_lyc_compare`; resolve the write-vs-tick model (immediate LYC re-eval vs pending-write+next-tick).
+- **Cut 4: delete the subsumed interim compensations** (E1, item-1 pretrigger, item-3 mask, batch-3/4); verify net
+  manual-seam count FALLS (canon P4 gate).
+- **Cut 5: re-ground the ~9 mode_edges + stat/registers/bus/orchestration unit tests + regenerate the ~17 trace
+  fixtures** (`GB_CYCLE_ACCEPT_*_FIXTURES=1`); final full-suite gate.
+
+**Open questions to ground empirically (do NOT assume):** (a) the exact gb-cycle `line_dot` where `self.ly` must
+increment to match the oracle (DocBoy 453 is in DocBoy `dots`; gb-cycle `line_dot` shares 0..455 but the reorder shifts
+phase — ground vs the sweep); (b) whether a gate-free mode-readback model exists without the LY-lead (Cut 2's make-or-break);
+(c) the line-153 wrap dot (DocBoy 2/3 vs SameBoy ~6 — ground vs `ly_lyc`); (d) the write-vs-tick LYC re-eval (item-1 §24.17
+found gb's immediate re-eval load-bearing for `ly_lyc_write`).
