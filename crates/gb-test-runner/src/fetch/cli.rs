@@ -1,6 +1,7 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use super::boot_rom::{BootRomFetchRequest, run_boot_rom_fetch_request};
 use super::git::{cleanup_fetched_sources, fetch_sources_into_temps};
 use super::manifest::{
     Report, filter_sources_for_families, load_report_manifest, load_source_manifest,
@@ -15,6 +16,7 @@ use super::validate::validate_materialization_targets;
 pub(super) enum FetchAction {
     ShowHelp,
     Fetch(FetchRequest),
+    FetchBootRom(BootRomFetchRequest),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,8 +34,10 @@ pub(super) struct FetchOptions<'a> {
 pub fn fetch_help_text() -> &'static str {
     concat!(
         "Usage: cargo run -p gb-test-runner --bin fetch -- <report-id> [family ...]\n",
+        "       cargo run -p gb-test-runner --bin fetch -- --boot-rom <dir>\n",
         "\n",
         "Fetches pinned upstream ROM source(s) through the report registry, verifies SHA-256 hashes, materializes selected families under test/<report-store>, and removes temporary checkout(s).\n",
+        "With --boot-rom <dir>, manually downloads the pinned boot ROM source manifest into <dir>; this mode is never invoked automatically by suite or report commands.\n",
         "Report ids are read from crates/gb-test-runner/data/reports.toml.\n",
         "Reports marked local = true are registry entries for repo-local assets and cannot be fetched.\n",
     )
@@ -52,6 +56,9 @@ where
     match parse_fetch_arguments(arguments)? {
         FetchAction::ShowHelp => write_all(output, fetch_help_text()),
         FetchAction::Fetch(request) => run_fetch_request(request, workspace_root, output),
+        FetchAction::FetchBootRom(request) => {
+            run_boot_rom_fetch_request(request, workspace_root, output)
+        }
     }
 }
 
@@ -62,10 +69,21 @@ where
 {
     let mut report_id = None;
     let mut requested_families = Vec::new();
+    let mut boot_rom_dir = None;
+    let mut arguments = arguments.into_iter();
 
-    for argument in arguments {
+    while let Some(argument) = arguments.next() {
         match argument.as_ref() {
             "--help" | "-h" => return Ok(FetchAction::ShowHelp),
+            "--boot-rom" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--boot-rom requires a value".to_string());
+                };
+                if boot_rom_dir.is_some() {
+                    return Err("--boot-rom may only be provided once".to_string());
+                }
+                boot_rom_dir = Some(PathBuf::from(value.as_ref()));
+            }
             "--report" => {
                 return Err("fetch expects the report as the first positional argument".to_string());
             }
@@ -75,6 +93,17 @@ where
             other if report_id.is_none() => report_id = Some(other.to_string()),
             other => requested_families.push(other.to_string()),
         }
+    }
+
+    if let Some(output_dir) = boot_rom_dir {
+        if report_id.is_some() || !requested_families.is_empty() {
+            return Err(
+                "fetch --boot-rom cannot be combined with report or family arguments".to_string(),
+            );
+        }
+        return Ok(FetchAction::FetchBootRom(BootRomFetchRequest {
+            output_dir,
+        }));
     }
 
     Ok(FetchAction::Fetch(FetchRequest {

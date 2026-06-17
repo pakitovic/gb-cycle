@@ -374,6 +374,19 @@ fn verify_required_file(
             family.id
         )
     })?;
+    if let Some(expected_size) = file.size {
+        let actual_size = u64::try_from(bytes.len()).expect("usize should fit into u64");
+        if actual_size != expected_size {
+            return Err(format!(
+                "size mismatch for source {} family {} file {}: expected {} bytes, got {}",
+                source.id,
+                family.id,
+                file.path.display(),
+                expected_size,
+                actual_size
+            ));
+        }
+    }
     let actual_hash = sha256_hex(&bytes);
     if !sha256_hex_eq(&file.sha256, &actual_hash) {
         return Err(format!(

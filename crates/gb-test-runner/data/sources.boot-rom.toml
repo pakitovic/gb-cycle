@@ -1,0 +1,67 @@
+[[source]]
+id = "gbdev-bootroms"
+file_base_url = "https://gbdev.gg8.se/files/roms/bootroms/"
+
+[[source.family]]
+id = "boot-roms"
+target_root = ""
+
+[[source.family.file]]
+path = "dmg0_boot.bin"
+target = "dmg0_boot.bin"
+size = 256
+sha256 = "26e71cf01e301e5dc40e987cd2ecbf6d0276245890ac829db2a25323da86818e"
+
+[[source.family.file]]
+path = "dmg_boot.bin"
+target = "dmg_boot.bin"
+size = 256
+sha256 = "cf053eccb4ccafff9e67339d4e78e98dce7d1ed59be819d2a1ba2232c6fce1c7"
+
+[[source.family.file]]
+path = "mgb_boot.bin"
+target = "mgb_boot.bin"
+size = 256
+sha256 = "a8cb5f4f1f16f2573ed2ecd8daedb9c5d1dd2c30a481f9b179b5d725d95eafe2"
+
+[[source.family.file]]
+path = "sgb_boot.bin"
+target = "sgb_boot.bin"
+size = 256
+sha256 = "0e4ddff32fc9d1eeaae812a157dd246459b00c9e14f2f61751f661f32361e360"
+
+[[source.family.file]]
+path = "sgb2_boot.bin"
+target = "sgb2_boot.bin"
+size = 256
+sha256 = "fd243c4fb27008986316ce3df29e9cfbcdc0cd52704970555a8bb76edbec3988"
+
+[[source.family.file]]
+path = "cgb0_boot.bin"
+target = "cgb0_boot.bin"
+size = 2304
+sha256 = "3a307a41689bee99a9a32ea021bf45136906c86b2e4f06c806738398e4f92e45"
+
+[[source.family.file]]
+path = "cgb_boot.bin"
+target = "cgb_boot.bin"
+size = 2304
+sha256 = "b4f2e416a35eef52cba161b159c7c8523a92594facb924b3ede0d722867c50c7"
+
+[[source.family.file]]
+path = "cgbE_boot.bin"
+target = "cgbE_boot.bin"
+size = 2304
+sha256 = "c56299bedd56debdbf36442238636bf5887a65c5173b33995682052353804da9"
+
+[[source.family.file]]
+path = "cgb_agb0_boot.bin"
+target = "cgb_agb0_boot.bin"
+size = 2304
+sha256 = "fe2d45405531756d87622abde6127c804bd675cb968081b2c052497a470ffeb2"
+
+[[source.family.file]]
+path = "cgb_agb_boot.bin"
+target = "cgb_agb_boot.bin"
+size = 2304
+sha256 = "fe3cceb79930c4cb6c6f62f742c2562fd4c96b827584ef8ea89d49b387bd6860"
