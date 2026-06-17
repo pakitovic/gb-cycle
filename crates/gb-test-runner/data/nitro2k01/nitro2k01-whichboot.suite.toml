@@ -3,6 +3,7 @@ suite_name = "nitro2k01-whichboot"
 report = "nitro2k01"
 timeout_frames = 180
 report_model_suffix = true
+startup = "real-boot"
 oracle = { type = "framebuffer", local = true }
 
 [[case]]

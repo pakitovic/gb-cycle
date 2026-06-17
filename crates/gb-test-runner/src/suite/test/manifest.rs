@@ -1754,6 +1754,19 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         ),
         ("magen", &[("magen", 8, "magen", "magen")][..]),
         (
+            "nitro2k01",
+            &[
+                ("nitro2k01-whichboot", 8, "whichboot", "whichboot"),
+                ("nitro2k01-windesync", 1, "windesync", "windesync"),
+                (
+                    "nitro2k01-double-halt-cancel",
+                    3,
+                    "double-halt-cancel",
+                    "double-halt-cancel",
+                ),
+            ][..],
+        ),
+        (
             "mealybug-tearoom-tests",
             &[
                 (
@@ -1936,6 +1949,17 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 .expect("magen suite should load");
             assert!(suites[0].cases.iter().all(|case| case.timeout_frames == 72));
         }
+        if report_id == "nitro2k01" {
+            let suites =
+                load_selected_suites(&workspace, report, Some("nitro2k01-whichboot"), None)
+                    .expect("nitro2k01 whichboot suite should load");
+            assert!(
+                suites[0]
+                    .cases
+                    .iter()
+                    .all(|case| case.startup_mode == gb_core::StartupMode::RealBoot)
+            );
+        }
         if report_id == "rtc3test" {
             let suites =
                 load_selected_suites(&workspace, report, Some("rtc3test-basic-tests"), None)
@@ -2054,15 +2078,12 @@ fn real_gbmicrotest_suite_manifest_loads_memory_byte_oracles() {
             && matches!(&case.oracle, Oracle::MemoryByteEquals(_))
     }));
 
-    let custom_boot_case = suite
+    let real_boot_case = suite
         .cases
         .iter()
         .find(|case| case.id == "gbmicrotest-ppu-hblank-int-scx0-if-a")
-        .expect("custom boot case should exist");
-    assert_eq!(
-        custom_boot_case.startup_mode,
-        gb_core::StartupMode::CustomBoot
-    );
+        .expect("real boot case should exist");
+    assert_eq!(real_boot_case.startup_mode, gb_core::StartupMode::RealBoot);
 
     let long_timeout_case = suite
         .cases
@@ -2412,11 +2433,16 @@ fn write_manifest_fixture_placeholders(
 
 fn fixture_specs_from_manifest(manifest_text: &str) -> Vec<(bool, PathBuf)> {
     let mut paths = Vec::new();
+    let default_local = manifest_text
+        .lines()
+        .take_while(|line| line.trim() != "[[case]]")
+        .any(|line| line.contains("oracle") && line.contains("local = true"));
     for line in manifest_text.lines() {
         let Some((_, value)) = line.split_once("fixture =") else {
             continue;
         };
-        let local = line.contains("local = true");
+        let local =
+            line.contains("local = true") || (default_local && !line.contains("local = false"));
         for path in value
             .split('"')
             .enumerate()
