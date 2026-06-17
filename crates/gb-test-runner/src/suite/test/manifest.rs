@@ -1754,6 +1754,19 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         ),
         ("magen", &[("magen", 8, "magen", "magen")][..]),
         (
+            "nitro2k01",
+            &[
+                ("nitro2k01-whichboot", 8, "whichboot", "whichboot"),
+                ("nitro2k01-windesync", 1, "windesync", "windesync"),
+                (
+                    "nitro2k01-double-halt-cancel",
+                    3,
+                    "double-halt-cancel",
+                    "double-halt-cancel",
+                ),
+            ][..],
+        ),
+        (
             "mealybug-tearoom-tests",
             &[
                 (
@@ -1935,6 +1948,17 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             let suites = load_selected_suites(&workspace, report, Some("magen"), None)
                 .expect("magen suite should load");
             assert!(suites[0].cases.iter().all(|case| case.timeout_frames == 72));
+        }
+        if report_id == "nitro2k01" {
+            let suites =
+                load_selected_suites(&workspace, report, Some("nitro2k01-whichboot"), None)
+                    .expect("nitro2k01 whichboot suite should load");
+            assert!(
+                suites[0]
+                    .cases
+                    .iter()
+                    .all(|case| case.startup_mode == gb_core::StartupMode::RealBoot)
+            );
         }
         if report_id == "rtc3test" {
             let suites =
@@ -2409,11 +2433,16 @@ fn write_manifest_fixture_placeholders(
 
 fn fixture_specs_from_manifest(manifest_text: &str) -> Vec<(bool, PathBuf)> {
     let mut paths = Vec::new();
+    let default_local = manifest_text
+        .lines()
+        .take_while(|line| line.trim() != "[[case]]")
+        .any(|line| line.contains("oracle") && line.contains("local = true"));
     for line in manifest_text.lines() {
         let Some((_, value)) = line.split_once("fixture =") else {
             continue;
         };
-        let local = line.contains("local = true");
+        let local =
+            line.contains("local = true") || (default_local && !line.contains("local = false"));
         for path in value
             .split('"')
             .enumerate()
