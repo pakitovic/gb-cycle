@@ -2216,6 +2216,40 @@ regression vs the 27-baseline; suites via `cargo rom-suite`):**
 
 **Open questions to ground empirically (do NOT assume):** (a) the exact gb-cycle `line_dot` where `self.ly` must
 increment to match the oracle (DocBoy 453 is in DocBoy `dots`; gb-cycle `line_dot` shares 0..455 but the reorder shifts
-phase — ground vs the sweep); (b) whether a gate-free mode-readback model exists without the LY-lead (Cut 2's make-or-break);
-(c) the line-153 wrap dot (DocBoy 2/3 vs SameBoy ~6 — ground vs `ly_lyc`); (d) the write-vs-tick LYC re-eval (item-1 §24.17
-found gb's immediate re-eval load-bearing for `ly_lyc_write`).
+phase — ground vs the sweep); (b) whether a gate-free mode-readback model exists without the LY-lead (Cut 2's make-or-break
+— RESOLVED below: YES); (c) the line-153 wrap dot (DocBoy 2/3 vs SameBoy ~6 — ground vs `ly_lyc`); (d) the write-vs-tick
+LYC re-eval (item-1 §24.17 found gb's immediate re-eval load-bearing for `ly_lyc_write`).
+
+#### 24.25.1 CUT 2 SOLVED (on paper) — the reorder is a UNIFORM −1 readback shift; fix = uniform +1, restoring main's model (2026-06-17)
+
+Decisive dot-by-dot diff of the branch vs the main worktree (probe `oracle_sweep_intr_2_mode0_scx_timing_detailed`,
+capturing `line_dot` + `mode0_start` at the STAT-read instant via `last_address_event`):
+- **main ALREADY has the published_stat overrides + the `scx==0||mode0-int` gate** (they are PR #245, NOT branch-added).
+  main resolves the readback as `access_mode_for_line_dot(line_dot − 1)` (the published base) + override forcing HBlank at
+  `line_dot == mode0_start` (gated). For scx≠0/no-mode0-int it is just `access_mode(line_dot − 1)`.
+- The scx0-vs-scx8 paradox (same `mode0_start=252`, main reads scx0@49 / scx8@50): main's scx0 HBlank@49 comes from the
+  OVERRIDE (`line_dot==mode0_start`, 1 dot earlier than the raw `access_mode(line_dot−1)`); scx8 has no override (gate
+  fails) so it uses the raw base → @50. Both are main's single model; no per-scx length difference.
+- **The reorder makes the CPU read PRE-tick** (`self.line_dot` at the read = snapshot − 1; the probe snapshot is post-tick).
+  So the branch evaluates the readback at `access_mode(self.line_dot − 1) = access_mode(snapshot − 2)`, while main
+  evaluates `access_mode(snapshot − 1)` — the branch is **one dot further behind**. The batch-1/2/3 early-override branches
+  (`line_dot+1==mode0_start`, `MODE2_DOTS−1`, the vblank LY-wrap) compensated the +1 ONLY on the override paths, not on the
+  raw base path — so scx3/7 (raw, no override) stay 1 late, and that is the entire bug.
+
+**THE CANONICAL FIX (uniform, gate-free, deletes batch-1/2/3): evaluate the published readback at `self.line_dot + 1`
+(undo the reorder pre-tick), then apply main's EXACT readback model (the version WITHOUT the batch-1/2 early-override
+branches).** Equivalently: the published base becomes `access_mode(self.line_dot)` and the current/override reference
+becomes `self.line_dot + 1`, restoring main's `(base = access_mode(L−1), override at L==mode0_start)` with `L = self.line_dot + 1`.
+**Validated OFFLINE against the oracle data for scx 0,3,4,7,8 — ALL match main** (scx0@49 via override at L==mode0_start;
+scx3@50, scx4@51, scx7@51, scx8@50 via the +1-shifted raw base). This closes `scx3/scx7_nops` + `intr_2_mode0_timing_sprites`
+and is INDEPENDENT of the LY-lead (the mode0 boundary is mid-line, `ly<VISIBLE` throughout). It also subsumes/deletes the
+branch's batch-1 mode0 early branch + batch-2 OAM early branch + batch-3 vblank LY-wrap (net seams DOWN), since they were
+piecemeal +1s now replaced by one uniform readback-reference +1.
+
+**Implementation notes (delicate — do carefully, oracle-gated):** the `+1` needs wrap handling at `line_dot == scanline_length − 1`
+(→ next line dot 0, ly+1) and must compose with the existing `vblank_wrap_line0_stat_readback_delay` path; apply it as a
+single `readback_reference_line_dot()` helper feeding STAT mode + OAM read/write + LY readback, then restore main's
+override/base bodies (drop the batch-1/2 early branches). Re-ground the `cpu_stat_read_*` / `stat::bus` unit tests that
+batch-1/2 rewrote (§24.19/§24.20) back toward main's boundary. Gate: scx sweep == main for all scx, base intr_2_* /
+oam_ok / vblank_if stay green, wilbertpol/mooneye no regression, §245 untouched (`current_mode0_start_dot` unchanged).
+The IRQ-edge reorder seams (E1, item-1, item-3) are NOT readback and are handled by Cut 1/3 (the LY-lead + last_* model).
