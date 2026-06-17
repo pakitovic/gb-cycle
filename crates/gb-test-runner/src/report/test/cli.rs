@@ -463,7 +463,7 @@ fn report_document_uses_boot_rom_dir_placeholder_in_reproduction_command() {
 
     assert_eq!(
         document.command,
-        "cargo rom-report sample-report --boot-rom-dir path/to/real/boot-rom"
+        "cargo rom-report sample-report --boot-rom-dir path/to/real/boot-roms"
     );
     assert!(
         !document

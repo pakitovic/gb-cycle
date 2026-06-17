@@ -20,7 +20,7 @@ const REPORT_MODEL_SUFFIXES: [(&str, usize); 6] = [
     (" (SGB)", 4),
     (" (SGB2)", 5),
 ];
-const REAL_BOOT_ROM_DIR_PLACEHOLDER: &str = "path/to/real/boot-rom";
+const REAL_BOOT_ROM_DIR_PLACEHOLDER: &str = "path/to/real/boot-roms";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct SourceManifestFile {
