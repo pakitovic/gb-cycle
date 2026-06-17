@@ -1,0 +1,45 @@
+[[source]]
+id = "whichboot"
+archive_url = "https://github.com/nitro2k01/whichboot.gb/releases/download/v1.1/whichboot-v1_1.zip"
+archive_sha256 = "c2d1d064ce8871c476043f486be51f478650709943dbfab5052c77b34ce48569"
+archive_format = "zip"
+
+[[source.family]]
+id = "whichboot"
+target_root = "whichboot"
+
+[[source.family.file]]
+path = "whichboot.gb"
+target = "whichboot.gb"
+sha256 = "225c4cb0a237d74d8adf3aee2c7aa3b9e604a64e5bdd0b2f2fed05eb7a0dc679"
+
+[[source]]
+id = "windesync"
+file_base_url = "https://github.com/nitro2k01/little-things-gb/releases/download/Win-desync-v1.0"
+
+[[source.family]]
+id = "windesync"
+target_root = "windesync"
+
+[[source.family.file]]
+path = "windesync-validate.gb"
+target = "windesync-validate.gb"
+sha256 = "b4340d89fa49af87484484bc7869afc5f19e2d3cfecc95199670fcd62b88c501"
+
+[[source]]
+id = "double-halt-cancel"
+file_base_url = "https://github.com/nitro2k01/little-things-gb/releases/download/Double-halt-cancel-v1.0"
+
+[[source.family]]
+id = "double-halt-cancel"
+target_root = "double-halt-cancel"
+
+[[source.family.file]]
+path = "double-halt-cancel.gb"
+target = "double-halt-cancel.gb"
+sha256 = "a223bafbd93c0e89a36ecb99683953d1ca31403f0abcfe0376afb8fd7c7da0c3"
+
+[[source.family.file]]
+path = "double-halt-cancel-gbconly.gb"
+target = "double-halt-cancel-gbconly.gb"
+sha256 = "d06dd30b525a7e251e2f6d748441b35237c3f37848fb02f5113fdee40afa65d9"

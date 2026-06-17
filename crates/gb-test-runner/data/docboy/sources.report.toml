@@ -53094,11 +53094,6 @@ target = "undocumented/ff75_write_read.gbc"
 sha256 = "a4bec6f6bfd621fec2cec4257a27f39240010291612cfb033759e3e08a32fdea"
 
 [[source.family.file]]
-path = "tests/roms/cgb/mattcurrie/cgb-acid-hell.gbc"
-target = "mattcurrie/cgb-acid-hell.gbc"
-sha256 = "3dc6d301ec74ccafa972e4e111d78f7b1004791a5bfbede0ee763f364fded21e"
-
-[[source.family.file]]
 path = "tests/results/cgb/docboy/boot/boot_halt.png"
 target = "boot/boot_halt.png"
 sha256 = "4a17cdbaa7d108eab02da64e95bb08b350f32b290819319af9d6c611b66bb1b0"

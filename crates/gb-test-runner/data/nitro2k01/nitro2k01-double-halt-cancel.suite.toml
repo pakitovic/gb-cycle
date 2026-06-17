@@ -1,0 +1,24 @@
+family = "double-halt-cancel"
+suite_name = "nitro2k01-double-halt-cancel"
+report = "nitro2k01"
+timeout_frames = 180
+report_model_suffix = true
+oracle = { type = "framebuffer", local = true }
+
+[[case]]
+id = "nitro2k01-double-halt-cancel-dmg"
+rom = "double-halt-cancel.gb"
+model = "dmg"
+oracle = { fixture = "fixtures/double-halt-cancel-dmg.png" }
+
+[[case]]
+id = "nitro2k01-double-halt-cancel-cgb"
+rom = "double-halt-cancel.gb"
+model = "cgb"
+oracle = { source = "cgb", fixture = "fixtures/double-halt-cancel-cgb.png" }
+
+[[case]]
+id = "nitro2k01-double-halt-cancel-gbconly-cgb"
+rom = "double-halt-cancel-gbconly.gb"
+model = "cgb"
+oracle = { source = "cgb", fixture = "fixtures/double-halt-cancel-gbconly-cgb.png" }
