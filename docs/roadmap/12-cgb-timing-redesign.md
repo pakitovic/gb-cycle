@@ -2569,3 +2569,24 @@ sequence main-aligned. This is the precise atomic core of §24.18 for the re-ena
 (+1 from a different path) and `ly_lyc` (on-enable `delay==2`/line-153) are the other two lockstep facets. REVERTED to the
 committed 94/105 + Cut A; the augmented probe stays as `#[ignore]` infra. The next focused session implements this lockstep
 restart+`LCD_REENABLE_LINE0_*` re-ground as one cut, per-dot-validated against the `../gb-cycle-main` re-enable trace.
+
+**Cut 1+2 THIRD ATTEMPT — CONVERGENCE VALIDATED (the atomic rephase IS tractable, not refuted): enable+1 restart re-ground
++ layer-(a) fix moves 85→89/105 (2026-06-17).** Used the CLEAN restart re-ground (`enable+1`: `CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES
++ 1`, which keeps the `PpuLcdRestartPhase` timeline INTACT — the restart tick still does its full work one cycle later —
+unlike the skip-advance which corrupted it). Diagnosed the ly00 layer with the augmented probe: `ly00_mode3_0` fails at
+pc=0x081A because the read is in the **vblank-wrap (frame 153→0) readback-delay window** (`vblank_wrap_line0_stat_delay_active`),
+and that path in `current_published_stat_line_dot` uses raw `line_dot - 4` — **A′ applied its `+1` reference only to the
+NORMAL base, never to the vblank-wrap path**. Once the restart offset is re-grounded (offset 0), the un-shifted vblank-wrap
+read lands one dot behind main (`255-4=251`=Drawing vs main `256-4=252`=HBlank). **Layer-(a) fix (one line, a genuine A′
+completion):** `published_stat.rs current_published_stat_line_dot` vblank branch `line_dot - 4` → `(line_dot + 1) - 4`.
+Result with enable+1 + layer-(a): **89/105** — recovers `ly143_144_*`(4)+`lcdon`(1) [restart] AND `ly00_{mode1_2,mode2_3,mode3_0}`(3)+`ly_lyc_0-c`(1)
+[layer a], vs the bare enable+1's 85. **This validates the layer-by-layer atomic rephase CONVERGES.** Remaining 16 fails,
+each a mapped lockstep facet: (b) `ly00_{mode0_2,mode1_0}` (2, more ly=0 readback dots); (c) `ly_lyc_*` (8) — the **LYC
+coincidence readback phase**: `ly_lyc-GS` diverges at one read (pc=0x0647, ly=3: branch `0xC4` STAT.2=set vs main `0xC0`),
+the `lyc_coincidence_for_readback`/`live_ly_for_lyc_compare` window balanced against the old +1 — this is the §24.18 Cut 3
+(`last_ly`/`last_lyc`) restructure, not a one-line shift; (d) `intr_2_*_sprites`(5)+`hblank_ly_scx`(1) — +1 from a DIFFERENT
+restart path than the CPU-pending countdown (enable+1 left them unchanged; find their re-enable route). REVERTED to the
+committed clean 94/105 + Cut A (the partial cut is net-negative until all facets land — A′'s `+1` and the +1 offset are
+lockstep-balanced). The reproducible cut so far = {`enable+1` in `registers.rs:99`; vblank-wrap `+1` in
+`published_stat.rs current_published_stat_line_dot`}. NEXT: land (a)+(b)+restart as one cut, then Cut 3 for (c), then (d);
+keep iterating the fast gate past 94 before committing. Probes `irq_trace_{ly00_mode3_0,ly_lyc_gs}_dmg` added.

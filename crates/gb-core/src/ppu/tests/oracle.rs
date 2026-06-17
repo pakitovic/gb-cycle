@@ -399,11 +399,18 @@ const LY143_ROM: &str = "test/wilbertpol/wilbertpol/acceptance/gpu/ly143_144_mod
 const SPRITES_NOPS_ROM: &str =
     "test/wilbertpol/wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites_nops.gb";
 const LY00_ROM: &str = "test/wilbertpol/wilbertpol/acceptance/gpu/ly00_mode3_0.gb";
+const LY_LYC_ROM: &str = "test/wilbertpol/wilbertpol/acceptance/gpu/ly_lyc-GS.gb";
 
 #[test]
 #[ignore = "§24.25.5 Cut R0: ly00_mode3_0 (PASSES) DMG re-enable line_dot grounding; copy to main + diff"]
 fn irq_trace_ly00_mode3_0_dmg() {
     irq_dispatch_trace(LY00_ROM, ConsoleModel::GameBoy, 1_500_000);
+}
+
+#[test]
+#[ignore = "§24.25.5 layer c: ly_lyc-GS DMG LYC-coincidence trace; copy to main + diff"]
+fn irq_trace_ly_lyc_gs_dmg() {
+    irq_dispatch_trace(LY_LYC_ROM, ConsoleModel::GameBoy, 1_500_000);
 }
 
 #[test]
