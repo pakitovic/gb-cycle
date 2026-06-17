@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, btree_map::Entry};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+
+use crate::report_label::REPORT_REVISION_SUFFIXES;
 
 use super::model::{
     DATA_DIR, PersistedSuiteStatus, Report, ReportDocument, ReportRow, TEST_ROM_STORE_DIR,
@@ -18,6 +20,7 @@ const REPORT_MODEL_SUFFIXES: [(&str, usize); 6] = [
     (" (SGB)", 4),
     (" (SGB2)", 5),
 ];
+const REAL_BOOT_ROM_DIR_PLACEHOLDER: &str = "path/to/real/boot-roms";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct SourceManifestFile {
@@ -43,6 +46,11 @@ struct SourceFamilyFileEntry {
     target: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct SuiteManifestHeaderFile {
+    suite_name: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct ReportSourceOrder {
     rom_ranks: BTreeMap<String, BTreeMap<String, usize>>,
@@ -53,7 +61,8 @@ pub(super) fn load_statuses(
     report: &Report,
 ) -> Result<Vec<PersistedSuiteStatus>, String> {
     let status_root = status_root_for_report(workspace_root, report);
-    let status_files = status_files(&status_root)?;
+    let suite_status_files = single_machine_suite_status_files(workspace_root, report)?;
+    let status_files = status_files(&status_root, &suite_status_files)?;
     let mut statuses = Vec::with_capacity(status_files.len());
     for path in status_files {
         let text = fs::read_to_string(&path).map_err(|error| {
@@ -74,6 +83,7 @@ pub(super) fn build_report_document(
     workspace_root: &Path,
     report: &Report,
     statuses: Vec<PersistedSuiteStatus>,
+    boot_rom_dir: Option<&Path>,
 ) -> Result<ReportDocument, String> {
     let mut rows = Vec::new();
     let mut non_failing_cases = 0;
@@ -101,11 +111,20 @@ pub(super) fn build_report_document(
 
     Ok(ReportDocument {
         report_id: report.id.clone(),
-        command: format!("cargo rom-report {}", report.id),
+        command: report_command_display(report, boot_rom_dir),
         non_failing_cases,
         total_cases,
         rows,
     })
+}
+
+fn report_command_display(report: &Report, boot_rom_dir: Option<&Path>) -> String {
+    let mut command = format!("cargo rom-report {}", report.id);
+    if boot_rom_dir.is_some() {
+        command.push_str(" --boot-rom-dir ");
+        command.push_str(REAL_BOOT_ROM_DIR_PLACEHOLDER);
+    }
+    command
 }
 
 pub(super) fn store_root_for_report(workspace_root: &Path, report: &Report) -> PathBuf {
@@ -114,7 +133,51 @@ pub(super) fn store_root_for_report(workspace_root: &Path, report: &Report) -> P
         .join(&report.store_dir)
 }
 
-fn status_files(status_root: &Path) -> Result<Vec<PathBuf>, String> {
+fn single_machine_suite_status_files(
+    workspace_root: &Path,
+    report: &Report,
+) -> Result<BTreeSet<String>, String> {
+    let report_data_dir = report_data_dir(workspace_root, report);
+    let entries = fs::read_dir(&report_data_dir).map_err(|error| {
+        format!(
+            "failed to read suite manifest directory {}: {error}",
+            report_data_dir.display()
+        )
+    })?;
+    let mut file_names = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to read suite manifest entry in {}: {error}",
+                report_data_dir.display()
+            )
+        })?;
+        let path = entry.path();
+        let Some(manifest_file_name) = path.file_name().and_then(|file_name| file_name.to_str())
+        else {
+            continue;
+        };
+        if !is_single_machine_suite_manifest(manifest_file_name) {
+            continue;
+        }
+        let text = fs::read_to_string(&path).map_err(|error| {
+            format!("failed to read suite manifest {}: {error}", path.display())
+        })?;
+        let header: SuiteManifestHeaderFile = toml::from_str(&text).map_err(|error| {
+            format!(
+                "failed to parse suite manifest header {}: {error}",
+                path.display()
+            )
+        })?;
+        file_names.insert(format!("{}.toml", header.suite_name));
+    }
+    Ok(file_names)
+}
+
+fn status_files(
+    status_root: &Path,
+    suite_status_files: &BTreeSet<String>,
+) -> Result<Vec<PathBuf>, String> {
     if !status_root.exists() {
         return Ok(Vec::new());
     }
@@ -133,12 +196,31 @@ fn status_files(status_root: &Path) -> Result<Vec<PathBuf>, String> {
             )
         })?;
         let path = entry.path();
-        if path.extension().and_then(|extension| extension.to_str()) == Some("toml") {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("toml") {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|file_name| file_name.to_str()) else {
+            continue;
+        };
+        if suite_status_files.contains(file_name) {
             paths.push(path);
         }
     }
     paths.sort();
     Ok(paths)
+}
+
+fn report_data_dir(workspace_root: &Path, report: &Report) -> PathBuf {
+    let source_parent = report
+        .sources
+        .as_deref()
+        .and_then(Path::parent)
+        .unwrap_or(&report.store_dir);
+    workspace_root.join(DATA_DIR).join(source_parent)
+}
+
+fn is_single_machine_suite_manifest(file_name: &str) -> bool {
+    file_name.ends_with(".suite.toml") && !file_name.ends_with(".link.suite.toml")
 }
 
 fn compare_report_rows(
@@ -231,19 +313,49 @@ fn compare_report_model_variant(left: &ReportRow, right: &ReportRow) -> Ordering
 }
 
 fn report_rom_key(rom: &str) -> &str {
+    let mut base = rom;
+    while let Some(stripped) = strip_report_suffix(base) {
+        base = stripped;
+    }
+    base
+}
+
+fn strip_report_suffix(rom: &str) -> Option<&str> {
     for (suffix, _) in REPORT_MODEL_SUFFIXES {
         if let Some(base) = rom.strip_suffix(suffix) {
-            return base;
+            return Some(base.strip_suffix(' ').unwrap_or(base));
         }
     }
-    rom
+    for suffix in REPORT_REVISION_SUFFIXES {
+        if let Some(base) = rom.strip_suffix(suffix) {
+            return Some(base.strip_suffix(' ').unwrap_or(base));
+        }
+    }
+    None
 }
 
 fn report_model_variant_rank(rom: &str) -> usize {
+    let rom = strip_report_revision_suffixes(rom);
     REPORT_MODEL_SUFFIXES
         .iter()
         .find_map(|(suffix, rank)| rom.ends_with(suffix).then_some(*rank))
         .unwrap_or(usize::MAX)
+}
+
+fn strip_report_revision_suffixes(mut rom: &str) -> &str {
+    while let Some(stripped) = strip_report_revision_suffix(rom) {
+        rom = stripped;
+    }
+    rom
+}
+
+fn strip_report_revision_suffix(rom: &str) -> Option<&str> {
+    for suffix in REPORT_REVISION_SUFFIXES {
+        if let Some(base) = rom.strip_suffix(suffix) {
+            return Some(base.strip_suffix(' ').unwrap_or(base));
+        }
+    }
+    None
 }
 
 fn is_rom_source_target(path: &Path) -> bool {

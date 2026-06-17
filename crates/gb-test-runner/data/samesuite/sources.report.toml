@@ -1,87 +1,399 @@
 [[source]]
-id = "gbemu-shootout"
-git_url = "https://github.com/gbdev/GBEmulatorShootout.git"
-git_rev = "f2e95de5ae2293fdf07887b2f79e7f79baa9c63e"
+id = "game-boy-test-roms"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
 
 [[source.family]]
 id = "samesuite"
 target_root = "samesuite"
-sparse_paths = ["testroms/samesuite"]
 
 [[source.family.file]]
-path = "testroms/samesuite/apu/div_write_trigger.gb"
-target = "apu/div_write_trigger.gb"
-sha256 = "cc57fed1b1fffe6d16c1c5f405e2c7766ac305fafc6c924149929e4888906c5f"
+path = "same-suite/apu/div_write_trigger_volume.gb"
+target = "apu/div_write_trigger_volume.gb"
+sha256 = "c947767c6128afd21754c920eb5329e22e0a4ace0fb7185397e25a9e6f199da5"
 
 [[source.family.file]]
-path = "testroms/samesuite/apu/div_write_trigger_10.gb"
+path = "same-suite/apu/div_write_trigger_10.gb"
 target = "apu/div_write_trigger_10.gb"
-sha256 = "7d8d1739fc7367fa79822ee7652b22bd05a362f85419032c2338bc25cbdee8d1"
-
-[[source]]
-id = "docboy"
-git_url = "https://github.com/Docheinstein/docboy.git"
-git_rev = "214905562590c35ba2bc41f36da3a5d636d99378"
-
-[[source.family]]
-id = "samesuite"
-target_root = "samesuite"
-sparse_paths = [
-  "tests/roms/dmg/samesuite",
-  "tests/roms/cgb/samesuite",
-]
+sha256 = "4294c71882a375d8395c9aa7c1c20127bd285ffa3961521703a1ac69a80a373c"
 
 [[source.family.file]]
-path = "tests/roms/dmg/samesuite/interrupt/ei_delay_halt.gb"
-target = "interrupt/ei_delay_halt.gb"
-sha256 = "001d6572c192a630447afd2fffd1194d3105adaf7dd5ffdff7baf615930b8624"
+path = "same-suite/apu/div_write_trigger.gb"
+target = "apu/div_write_trigger.gb"
+sha256 = "437ed80ab7fdbcd6713b3b0633096ac4ba0181b2e1c099944cbfbb5f7dab8e84"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_12-cgbE.gb"
-target = "apu/channel_1/channel_1_align_12-cgbE.gb"
-sha256 = "6ac6e14276b6beb2add0c6f2d14bf3d3f6e8899ac3ea1dc89cac3f642dcef7d2"
+path = "same-suite/apu/div_write_trigger_volume_10.gb"
+target = "apu/div_write_trigger_volume_10.gb"
+sha256 = "96096cd8829ab37c5337bfde07ddddf00444e390abea34ead294df299b3552d4"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_25-cgbE.gb"
-target = "apu/channel_1/channel_1_align_25-cgbE.gb"
-sha256 = "c261515b9ee0aa831ba11f82ff0be09da8eb7b34a3e968df7a35755866da21a4"
+path = "same-suite/apu/div_trigger_volume_10.gb"
+target = "apu/div_trigger_volume_10.gb"
+sha256 = "3a310a45b7f3345960d2a8ff6df8293d3f8489c04763ff9fa40ebe98fa91797f"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_align_75-cgbE.gb"
-target = "apu/channel_1/channel_1_align_75-cgbE.gb"
-sha256 = "62d284ee8addf05692e4b316baf1a8645bceb4e6e526903adf96a34d6b9584c5"
+path = "same-suite/apu/channel_1/channel_1_freq_change.gb"
+target = "apu/channel_1/channel_1_freq_change.gb"
+sha256 = "144da4f576e67157f140a5d371c9d4db70298cd2e9a75dff29f60626b0eb93ce"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_freq_change_timing-cgbDE.gb"
+path = "same-suite/apu/channel_1/channel_1_freq_change_timing-cgb0BC.gb"
+target = "apu/channel_1/channel_1_freq_change_timing-cgb0BC.gb"
+sha256 = "f64f038c79ed9c8cc79dbcc362cdb057a891629496d75ebd101eea4d80dca7b8"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_duty_delay.gb"
+target = "apu/channel_1/channel_1_duty_delay.gb"
+sha256 = "4745e1fd06d9633b88fcd3c1d466409138d661fa9055575e41ca242fd5535cb2"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_align.gb"
+target = "apu/channel_1/channel_1_align.gb"
+sha256 = "1ca49fcd1113e49872c784a54d367e2fb892867d6bce05e77fc192e1956e41eb"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_restart_nrx2_glitch.gb"
+target = "apu/channel_1/channel_1_restart_nrx2_glitch.gb"
+sha256 = "d31b01e46355ea076d773856e5d442c93765b0e0043586ae26c7332fc515333c"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_delay.gb"
+target = "apu/channel_1/channel_1_delay.gb"
+sha256 = "85ec9c999ae0983bfe3acc49876b55d586c445db98170d71cbe123e5a728ebc0"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_stop_div.gb"
+target = "apu/channel_1/channel_1_stop_div.gb"
+sha256 = "423e31b01e9968b035c762261e6792d673084b76385d95ed5341c23e5221adc6"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_align_cpu.gb"
+target = "apu/channel_1/channel_1_align_cpu.gb"
+sha256 = "2bcb12b10e3634589a680827f832c58b25c96d08ab027a53e4365e0214bfd199"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_sweep_restart_2.gb"
+target = "apu/channel_1/channel_1_sweep_restart_2.gb"
+sha256 = "d49b383a5d6a479e510f5cd6603a878f6e9e46cceddd6152fa2a87dda7e2ffe6"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_volume_div.gb"
+target = "apu/channel_1/channel_1_volume_div.gb"
+sha256 = "82725bff6c14675a96c668fe85e5d0ca681dcea27248e49ccea2cb988e997fee"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_freq_change_timing-A.gb"
+target = "apu/channel_1/channel_1_freq_change_timing-A.gb"
+sha256 = "3b85fcad0e70d015da6952cbcaf191e99f68a833003ac225cd044837d0d4a5ad"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_sweep_restart.gb"
+target = "apu/channel_1/channel_1_sweep_restart.gb"
+sha256 = "5c9b41cedecbb45280039664f9bad7b671101c7fea20d686de6f456dec78b496"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_volume.gb"
+target = "apu/channel_1/channel_1_volume.gb"
+sha256 = "f8dd4bd75c401dcc4cd67bd610694c210112cfc096baac06a5d124884e7bc592"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_restart.gb"
+target = "apu/channel_1/channel_1_restart.gb"
+sha256 = "5be8768834657ddce7286f653068ac2680e2857bd23fd4c1e9f07f6e5577265c"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_stop_restart.gb"
+target = "apu/channel_1/channel_1_stop_restart.gb"
+sha256 = "0b2b73b930dfa0457c52e2937b6329c95810fee3f2cd923481da9385a3fb553d"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_1/channel_1_freq_change_timing-cgbDE.gb"
 target = "apu/channel_1/channel_1_freq_change_timing-cgbDE.gb"
-sha256 = "4b530bc25a9fbf1053b5594980a53ec65e558f5ed8f214d65ce927df02928794"
+sha256 = "2e33d96be99729bcb29ef16c340ae2b29b01a8cdc126ae33e755eaabae07c8ce"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_stop_div-cgbE.gb"
-target = "apu/channel_1/channel_1_stop_div-cgbE.gb"
-sha256 = "daec7e6c4054293e28ee30b0bffd3aa914106772941b5f67ad8b2fb1952ae37f"
+path = "same-suite/apu/channel_1/channel_1_sweep.gb"
+target = "apu/channel_1/channel_1_sweep.gb"
+sha256 = "eae5bbb953e814dc0ce6e9568ee0fc731287b6e1356f9695e2063fba8e742ec4"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep-cgbE.gb"
-target = "apu/channel_1/channel_1_sweep-cgbE.gb"
-sha256 = "c167a77b4471c589c11419e01c1fd7c2d500d3299fc0ea3ec999c4ea3c31702f"
+path = "same-suite/apu/channel_1/channel_1_duty.gb"
+target = "apu/channel_1/channel_1_duty.gb"
+sha256 = "b0eb7bc4fc01d17d96d28362e6e3eab6002a2d93fb5a3e19dbf1ddc2148ca650"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep_restart-cgbE.gb"
-target = "apu/channel_1/channel_1_sweep_restart-cgbE.gb"
-sha256 = "723cbfafe504bb8f016a303a3e93dcb5a500bc5455c8c7373ab429671c5705e9"
+path = "same-suite/apu/channel_1/channel_1_nrx2_speed_change.gb"
+target = "apu/channel_1/channel_1_nrx2_speed_change.gb"
+sha256 = "317f727c841ffaf935f55859942fc1944ff11ffbf11cb6e3df2d107901cc6eeb"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_sweep_restart_2-cgbE.gb"
-target = "apu/channel_1/channel_1_sweep_restart_2-cgbE.gb"
-sha256 = "bc925b2445ad9d1c15318d066b086e4e58043b0627a235deb9539711c37ec077"
+path = "same-suite/apu/channel_1/channel_1_nrx2_glitch.gb"
+target = "apu/channel_1/channel_1_nrx2_glitch.gb"
+sha256 = "45f8ab450948fe8f63d089c938d82cad51099f9b1da2334afb12d08da5fa4601"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_1/channel_1_volume_div-cgbE.gb"
-target = "apu/channel_1/channel_1_volume_div-cgbE.gb"
-sha256 = "27216e5c3b5ca3de26199fd241bfbf563b866f43a8cf58c8686ad50fc4dde07d"
+path = "same-suite/apu/channel_1/channel_1_extra_length_clocking-cgb0B.gb"
+target = "apu/channel_1/channel_1_extra_length_clocking-cgb0B.gb"
+sha256 = "4f0b370cb5428175bacb9b2f613bbec2c7829241ceafd879226c082456c53c34"
 
 [[source.family.file]]
-path = "tests/roms/cgb/samesuite/apu/channel_3/channel_3_wave_ram_dac_on_rw.gb"
+path = "same-suite/apu/channel_2/channel_2_duty_delay.gb"
+target = "apu/channel_2/channel_2_duty_delay.gb"
+sha256 = "d833c03053f6a90457bfaca5fdffcdfa2e358ea6229b29fc52634b8ad99dbd87"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_delay.gb"
+target = "apu/channel_2/channel_2_delay.gb"
+sha256 = "d28b23d6421bffd6b5fe89f1b3c38bf48415faca57c3f867e6f5757a54bd8409"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_align.gb"
+target = "apu/channel_2/channel_2_align.gb"
+sha256 = "ba59787e41d57378d9ec64ab6348e933775e4c212c48a9222e37052d1da61c26"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_nrx2_speed_change.gb"
+target = "apu/channel_2/channel_2_nrx2_speed_change.gb"
+sha256 = "9372b59dfa4bba522b69fbf4022531143ce5d56f0d1668b74ac86a1de6e9c0d5"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_restart.gb"
+target = "apu/channel_2/channel_2_restart.gb"
+sha256 = "664b8107c7c5e2ce657704dada29ca74c8eac4c59041a7a15d2abb4ac3e85bf4"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_extra_length_clocking-cgb0B.gb"
+target = "apu/channel_2/channel_2_extra_length_clocking-cgb0B.gb"
+sha256 = "f8950754be034f0d667e0160f1d78729e26a52b94dcbec61c66cf58602e5f4bf"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_duty.gb"
+target = "apu/channel_2/channel_2_duty.gb"
+sha256 = "a0d866352f61f2f5739e8ada6e6a85eae41ad295a7673fb6bde72cf391a7dc46"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_freq_change.gb"
+target = "apu/channel_2/channel_2_freq_change.gb"
+sha256 = "0cfe17b0afebaaf43a69d3acce1c2a20567719fc647e020b109be53644fc4868"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_stop_div.gb"
+target = "apu/channel_2/channel_2_stop_div.gb"
+sha256 = "c1bf9fb0cd8d4fef5ab0052747af52e3da8a14950b6dc118db5ecf308439efcc"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_stop_restart.gb"
+target = "apu/channel_2/channel_2_stop_restart.gb"
+sha256 = "2847535c6bef5c8580444111761b5afcb45b3aef0b91e0e96e26ee71dfa0eb02"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_restart_nrx2_glitch.gb"
+target = "apu/channel_2/channel_2_restart_nrx2_glitch.gb"
+sha256 = "9b02f43d6915322a14b4b531ba31e187a0b14bd6ebe39f41d55faa3bb0d05726"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_nrx2_glitch.gb"
+target = "apu/channel_2/channel_2_nrx2_glitch.gb"
+sha256 = "24aac2bff0fa15aa146f48e6fd719472b119cb2e77a8499a5137f8f8182a982a"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_align_cpu.gb"
+target = "apu/channel_2/channel_2_align_cpu.gb"
+sha256 = "f4305776a87faf2b7c7a14a21594faa9dafc5d4bca110751787c0580f100b942"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_volume_div.gb"
+target = "apu/channel_2/channel_2_volume_div.gb"
+sha256 = "ba0583bfcdd4bdc66feb53e081508376fef91fea530d828d806b26c7957f5c05"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_2/channel_2_volume.gb"
+target = "apu/channel_2/channel_2_volume.gb"
+sha256 = "457588c00ef49f54f4f73dcf4471ee83cf22b2e48ba18b021297335ab14513ad"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_stop_delay.gb"
+target = "apu/channel_3/channel_3_stop_delay.gb"
+sha256 = "3819b732b20919700aab263643c34e99a19fc2a7cda7162dbf564afa492dc94e"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_restart_stop_delay.gb"
+target = "apu/channel_3/channel_3_restart_stop_delay.gb"
+sha256 = "ee7fe7682191491450704121f88bbd92298cfe8aeeac980bf5c3187c110a54a4"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_extra_length_clocking-cgb0.gb"
+target = "apu/channel_3/channel_3_extra_length_clocking-cgb0.gb"
+sha256 = "1bd45cae70cd851b2997e9faaa0d805b8fb9d8ea91384a8f58159a6caf93311e"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_wave_ram_sync.gb"
+target = "apu/channel_3/channel_3_wave_ram_sync.gb"
+sha256 = "bc67b3de28609995ac3dae786484f723a33b8c2b3c321216ee85f8621084139e"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_wave_ram_locked_write.gb"
+target = "apu/channel_3/channel_3_wave_ram_locked_write.gb"
+sha256 = "44f805b342dcb2f209d4deef603dca0d078c274467493d81f12099c10fc16d31"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_wave_ram_dac_on_rw.gb"
 target = "apu/channel_3/channel_3_wave_ram_dac_on_rw.gb"
-sha256 = "9e12f7b4683c845019473d70ae582766084f864de2bcc8766714e5a3f7bb4182"
+sha256 = "2a22b2669b4a0a540f177846fa88d33e9d3f4c2448d60e375fd719c01525c9b3"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_and_glitch.gb"
+target = "apu/channel_3/channel_3_and_glitch.gb"
+sha256 = "4ef5c152c03abc525cbf2e7360489ea0c6e174f64d36e6618e890f2cb06ecdc0"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_shift_skip_delay.gb"
+target = "apu/channel_3/channel_3_shift_skip_delay.gb"
+sha256 = "1d361236b7dc945ae4d7e5a71bfd4f42c96280bcdf72f8d9c1c72e59af2f8fa1"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_freq_change_delay.gb"
+target = "apu/channel_3/channel_3_freq_change_delay.gb"
+sha256 = "7c7f6ba21eb3fbda1ff8ef122bc8e7bcc7d5a441333b9476e641888f59246b80"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_restart_during_delay.gb"
+target = "apu/channel_3/channel_3_restart_during_delay.gb"
+sha256 = "676d547959e60f636ae6af4d2e323b24522ab78e61fbd4467ae631cbe1965ab6"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_stop_div.gb"
+target = "apu/channel_3/channel_3_stop_div.gb"
+sha256 = "5e7aed963797926e9c81cda40db1fc2f465dbf72c3eb75c4a00e6087d70dca04"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_extra_length_clocking-cgbB.gb"
+target = "apu/channel_3/channel_3_extra_length_clocking-cgbB.gb"
+sha256 = "7a121035a5998435ab5cce7bfb9411fc1082887cad213a02f86776adb5a73181"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_first_sample.gb"
+target = "apu/channel_3/channel_3_first_sample.gb"
+sha256 = "180c0c7c67c41d28080939649d232c378c34792a3606018a0e7337eefa142807"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_restart_delay.gb"
+target = "apu/channel_3/channel_3_restart_delay.gb"
+sha256 = "f01bb28f9d8993108efe1e15d66b0331c95b7843ddb9c04c975f29b1b258c675"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_delay.gb"
+target = "apu/channel_3/channel_3_delay.gb"
+sha256 = "811a481191376ea81750835e7d7b7ba1c739264a46a5a76a978c9f0ab64227ca"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_3/channel_3_shift_delay.gb"
+target = "apu/channel_3/channel_3_shift_delay.gb"
+sha256 = "512fb6fc4551156090a81415b941e1c684ba35f1f7793f4455eec53926748fa5"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_lfsr15.gb"
+target = "apu/channel_4/channel_4_lfsr15.gb"
+sha256 = "e210a115c06e6bcd5507abfceac5926dbb99eaca3cf10cf8d69d1bf0f3dbae4d"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_volume_div.gb"
+target = "apu/channel_4/channel_4_volume_div.gb"
+sha256 = "ff8145597adf36b08dc0b32fa30cb855b230d70e082e77b33ee54279e1b9f642"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_equivalent_frequencies.gb"
+target = "apu/channel_4/channel_4_equivalent_frequencies.gb"
+sha256 = "2f518867a4426b590b4b650c2f4180b90d1d4206e3cfbf42e3fa23d7a5c4e7fd"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_frequency_alignment.gb"
+target = "apu/channel_4/channel_4_frequency_alignment.gb"
+sha256 = "eb3781e7686ad31b486f2af703c405705ce02bba66879b7d77e4d845b143567a"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_lfsr_15_7.gb"
+target = "apu/channel_4/channel_4_lfsr_15_7.gb"
+sha256 = "20d6e72c9166d1b4fc94ae70ca1530cebc5ae810df1834db62da404c73a8be9d"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_lfsr_restart.gb"
+target = "apu/channel_4/channel_4_lfsr_restart.gb"
+sha256 = "49d9e6c09ebde591ddb178ebd1b0bacefa70c7e7fd80311b9f91944cdd59581a"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_freq_change.gb"
+target = "apu/channel_4/channel_4_freq_change.gb"
+sha256 = "37f141efca6505ec37a3b1a131153867339eac0d4deeaf4e446152f75815eb2e"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_lfsr_7_15.gb"
+target = "apu/channel_4/channel_4_lfsr_7_15.gb"
+sha256 = "734d8be70f25828fb968c1852cf7cc33185fed3222b2b8a8b650a9720e98a557"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_extra_length_clocking-cgb0B.gb"
+target = "apu/channel_4/channel_4_extra_length_clocking-cgb0B.gb"
+sha256 = "e37dca76e6e9dc9d7f9d5ee96937dfea19c77d881e01db6d4357f7328436966d"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_delay.gb"
+target = "apu/channel_4/channel_4_delay.gb"
+sha256 = "f694ea8f238365be19b121dd346759deda801bab47fb4e1f277b4a4e9e56e23a"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_lfsr_restart_fast.gb"
+target = "apu/channel_4/channel_4_lfsr_restart_fast.gb"
+sha256 = "b7838d49ad08436cdcece65b35e786838298848bef523af9a7aa83347e2dc983"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_align.gb"
+target = "apu/channel_4/channel_4_align.gb"
+sha256 = "1230e7c4b3e2e7e60722cda039f3798c43218a71239cdde9be8bd570067c67a6"
+
+[[source.family.file]]
+path = "same-suite/apu/channel_4/channel_4_lfsr.gb"
+target = "apu/channel_4/channel_4_lfsr.gb"
+sha256 = "dd46439f07bdcfff8db0ac0fa49bcda4f9fccb8f722a9aa673325aa45196d98b"
+
+[[source.family.file]]
+path = "same-suite/dma/hdma_lcd_off.gb"
+target = "dma/hdma_lcd_off.gb"
+sha256 = "d6c3dde21fe7104129bc8ef0dde7f5d5f050b4de5498fc8f2f06e0d37bdfd0db"
+
+[[source.family.file]]
+path = "same-suite/dma/gdma_addr_mask.gb"
+target = "dma/gdma_addr_mask.gb"
+sha256 = "63c855b24300ac477ae783c17444ead5ec97be45a9e699b3dddd1a622955fbbf"
+
+[[source.family.file]]
+path = "same-suite/dma/gbc_dma_cont.gb"
+target = "dma/gbc_dma_cont.gb"
+sha256 = "d67cbce95838335a9946af1254a751f4a8532756b2e4851ee8a54fb73af4763f"
+
+[[source.family.file]]
+path = "same-suite/dma/hdma_mode0.gb"
+target = "dma/hdma_mode0.gb"
+sha256 = "e5ded5dc154004bdaafc443df6e63459ec7eb7d636687a4a578f91820557e0b2"
+
+[[source.family.file]]
+path = "same-suite/interrupt/ei_delay_halt.gb"
+target = "interrupt/ei_delay_halt.gb"
+sha256 = "69cdd4ab9e8b4d16364f3efcba4db90b050e09eed9db8412f395e11c9484d92c"
+
+[[source.family.file]]
+path = "same-suite/ppu/blocking_bgpi_increase.gb"
+target = "ppu/blocking_bgpi_increase.gb"
+sha256 = "3bb5ac17d140d54135c9d993f626de682d5160025a7dd702c733df273f3ff502"
+
+[[source.family.file]]
+path = "same-suite/sgb/command_mlt_req.gb"
+target = "sgb/command_mlt_req.gb"
+sha256 = "ab2b438be04957ab879d632670b3fb6e173747f112af5422fe49a9b33870a17b"
+
+[[source.family.file]]
+path = "same-suite/sgb/command_mlt_req_1_incrementing.gb"
+target = "sgb/command_mlt_req_1_incrementing.gb"
+sha256 = "fdc96316f94536bc04348c75b4b85644633cc8b8bfd8a6169db04b63e8cb645d"

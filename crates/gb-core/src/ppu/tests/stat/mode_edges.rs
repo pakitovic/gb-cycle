@@ -78,6 +78,48 @@ fn cpu_stat_read_switches_to_hblank_on_the_exact_mode0_start_dot() {
     );
 }
 
+#[test]
+fn cgb_scx1_stat_readback_lingers_drawing_for_the_first_two_hblank_dots() {
+    let mut ppu = Ppu::new(ConsoleModel::GameBoyColor);
+    ppu.apply_operating_mode_state(OperatingMode::Cgb);
+    ppu.apply_startup_state(PpuStartupState {
+        lcdc: 0x91,
+        stat: 0x08,
+        scy: 0x00,
+        scx: 0x01,
+        ly: 0x00,
+        lyc: 0x00,
+        bgp: 0xFC,
+        wy: 0x00,
+        wx: 0x00,
+        obj_palette_read_policy: DmgObjPaletteReadPolicy::ReadAsFfUntilWritten,
+    });
+
+    ppu.ly = 1;
+    ppu.lcd_restart_phase = PpuLcdRestartPhase::Inactive;
+    ppu.blank_frame_active = true;
+    ppu.startup_mode_latch = None;
+
+    let mode0_start_dot = ppu.current_mode0_start_dot();
+    assert_eq!(mode0_start_dot, MODE0_START_DOT + 1);
+
+    for line_dot in mode0_start_dot..=mode0_start_dot + 1 {
+        ppu.line_dot = line_dot;
+        assert_eq!(
+            ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+            0x03,
+            "CGB SCX=1 STAT readback should linger as Drawing at dot {line_dot}"
+        );
+        assert_eq!(ppu.current_access_mode(), PpuAccessMode::HBlank);
+    }
+
+    ppu.line_dot = mode0_start_dot + 2;
+    assert_eq!(
+        ppu.read_register_with_source(0xFF41, PpuRegisterReadSource::CpuBusOperation) & 0x03,
+        0x00
+    );
+}
+
 fn dmg_mode0_stat_ppu(scx: u8) -> Ppu {
     let mut ppu = Ppu::new(ConsoleModel::GameBoy);
     ppu.apply_startup_state(PpuStartupState {

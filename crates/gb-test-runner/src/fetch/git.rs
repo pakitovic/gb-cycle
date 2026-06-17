@@ -73,6 +73,9 @@ fn fetch_source_into_temp<W: Write>(
                 archive_format,
             )?;
         }
+        SourceLocation::FileBase { file_base_url } => {
+            fetch_file_base_source_into_temp(temp_root, source, file_base_url)?;
+        }
     }
     verify_required_files(temp_root, source)?;
     writeln_checked(
@@ -136,6 +139,49 @@ fn checkout_source_into_temp(
     Ok(())
 }
 
+fn fetch_file_base_source_into_temp(
+    temp_root: &Path,
+    source: &Source,
+    file_base_url: &str,
+) -> Result<(), String> {
+    fs::create_dir_all(temp_root).map_err(|error| {
+        format!(
+            "failed to create temporary fetch directory {} for source {}: {error}",
+            temp_root.display(),
+            source.id
+        )
+    })?;
+    for family in &source.families {
+        for file in &family.files {
+            fetch_file_base_source_file(temp_root, source, family, file_base_url, file)?;
+        }
+    }
+    Ok(())
+}
+
+fn fetch_file_base_source_file(
+    temp_root: &Path,
+    source: &Source,
+    family: &SourceFamily,
+    file_base_url: &str,
+    file: &SourceFile,
+) -> Result<(), String> {
+    let url = source_file_url(file_base_url, &file.path);
+    let target = temp_root.join(&file.path);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create downloaded file parent {} for source {} family {}: {error}",
+                parent.display(),
+                source.id,
+                family.id
+            )
+        })?;
+    }
+    download_url_to_path(&url, &target, source, "file")?;
+    Ok(())
+}
+
 fn fetch_archive_source_into_temp(
     temp_root: &Path,
     source: &Source,
@@ -151,7 +197,7 @@ fn fetch_archive_source_into_temp(
         )
     })?;
     let archive_path = temp_root.join("source-archive");
-    download_archive_to_path(archive_url, &archive_path, source)?;
+    download_url_to_path(archive_url, &archive_path, source, "archive")?;
     let archive_bytes = fs::read(&archive_path).map_err(|error| {
         format!(
             "failed to read downloaded archive {} for source {}: {error}",
@@ -171,12 +217,17 @@ fn fetch_archive_source_into_temp(
     }
 }
 
-fn download_archive_to_path(archive_url: &str, path: &Path, source: &Source) -> Result<(), String> {
-    if let Some(file_path) = archive_url.strip_prefix("file://") {
+fn download_url_to_path(
+    url: &str,
+    path: &Path,
+    source: &Source,
+    label: &str,
+) -> Result<(), String> {
+    if let Some(file_path) = url.strip_prefix("file://") {
         fs::copy(file_path, path).map_err(|error| {
             format!(
-                "failed to copy archive {} -> {} for source {}: {error}",
-                archive_url,
+                "failed to copy {label} {} -> {} for source {}: {error}",
+                url,
                 path.display(),
                 source.id
             )
@@ -192,10 +243,10 @@ fn download_archive_to_path(archive_url: &str, path: &Path, source: &Source) -> 
         .arg("--show-error")
         .arg("--output")
         .arg(path)
-        .arg(archive_url);
+        .arg(url);
     let output = command.output().map_err(|error| {
         format!(
-            "failed to spawn curl for archive download in source {}: {error}",
+            "failed to spawn curl for {label} download in source {}: {error}",
             source.id
         )
     })?;
@@ -203,12 +254,20 @@ fn download_archive_to_path(archive_url: &str, path: &Path, source: &Source) -> 
         return Ok(());
     }
     let mut message = format!(
-        "curl archive download failed for source {} with status {}",
+        "curl {label} download failed for source {} with status {}",
         source.id, output.status
     );
     append_command_output(&mut message, "stdout", &output.stdout);
     append_command_output(&mut message, "stderr", &output.stderr);
     Err(message)
+}
+
+fn source_file_url(file_base_url: &str, path: &Path) -> String {
+    format!(
+        "{}/{}",
+        file_base_url.trim_end_matches('/'),
+        source_path_key(path)
+    )
 }
 
 fn extract_required_zip_files(
@@ -315,6 +374,19 @@ fn verify_required_file(
             family.id
         )
     })?;
+    if let Some(expected_size) = file.size {
+        let actual_size = u64::try_from(bytes.len()).expect("usize should fit into u64");
+        if actual_size != expected_size {
+            return Err(format!(
+                "size mismatch for source {} family {} file {}: expected {} bytes, got {}",
+                source.id,
+                family.id,
+                file.path.display(),
+                expected_size,
+                actual_size
+            ));
+        }
+    }
     let actual_hash = sha256_hex(&bytes);
     if !sha256_hex_eq(&file.sha256, &actual_hash) {
         return Err(format!(

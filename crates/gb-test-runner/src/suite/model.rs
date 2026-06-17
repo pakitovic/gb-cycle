@@ -7,6 +7,7 @@ use gb_core::{
 use serde::Serialize;
 
 use crate::oracle::Oracle;
+use crate::report_label::hardware_revision_report_suffix;
 
 pub(super) const DATA_DIR: &str = "crates/gb-test-runner/data";
 pub(super) const REPORTS_MANIFEST_PATH: &str = "crates/gb-test-runner/data/reports.toml";
@@ -37,6 +38,7 @@ pub(super) struct SuiteCase {
     pub(super) target_root: PathBuf,
     pub(super) report_model: ReportModel,
     pub(super) report_model_suffix: bool,
+    pub(super) report_revision_suffix: bool,
     pub(super) console_model: ConsoleModel,
     pub(super) hardware_revision: HardwareRevision,
     pub(super) host_platform: HostPlatform,
@@ -49,12 +51,16 @@ pub(super) struct SuiteCase {
 
 impl SuiteCase {
     pub(super) fn report_rom(&self) -> String {
-        let rom = self.rom.to_string_lossy();
+        let mut rom = self.rom.to_string_lossy().into_owned();
         if self.report_model_suffix {
-            format!("{rom} {}", self.report_model.report_suffix())
-        } else {
-            rom.into_owned()
+            rom.push(' ');
+            rom.push_str(self.report_model.report_suffix());
         }
+        if self.report_revision_suffix {
+            rom.push(' ');
+            rom.push_str(hardware_revision_report_suffix(self.hardware_revision));
+        }
+        rom
     }
 }
 

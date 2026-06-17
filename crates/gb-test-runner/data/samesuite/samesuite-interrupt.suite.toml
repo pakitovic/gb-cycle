@@ -1,0 +1,10 @@
+family = "samesuite"
+suite_name = "samesuite-interrupt"
+report = "samesuite"
+model = "dmg"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-interrupt-ei-delay-halt"
+rom = "interrupt/ei_delay_halt.gb"

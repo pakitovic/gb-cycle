@@ -1,0 +1,61 @@
+family = "samesuite"
+suite_name = "samesuite-apu-channel-4"
+report = "samesuite"
+model = "cgb"
+revision = "cpu-cgb-e"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-lfsr15"
+rom = "apu/channel_4/channel_4_lfsr15.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-volume-div"
+rom = "apu/channel_4/channel_4_volume_div.gb"
+timeout_frames = 300
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-equivalent-frequencies"
+rom = "apu/channel_4/channel_4_equivalent_frequencies.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-frequency-alignment"
+rom = "apu/channel_4/channel_4_frequency_alignment.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-lfsr-15-7"
+rom = "apu/channel_4/channel_4_lfsr_15_7.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-lfsr-restart"
+rom = "apu/channel_4/channel_4_lfsr_restart.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-freq-change"
+rom = "apu/channel_4/channel_4_freq_change.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-lfsr-7-15"
+rom = "apu/channel_4/channel_4_lfsr_7_15.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-extra-length-clocking-cgb0b"
+rom = "apu/channel_4/channel_4_extra_length_clocking-cgb0B.gb"
+revision = "cpu-cgb-0"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-delay"
+rom = "apu/channel_4/channel_4_delay.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-lfsr-restart-fast"
+rom = "apu/channel_4/channel_4_lfsr_restart_fast.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-align"
+rom = "apu/channel_4/channel_4_align.gb"
+
+[[case]]
+id = "samesuite-apu-channel-4-channel-4-lfsr"
+rom = "apu/channel_4/channel_4_lfsr.gb"

@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::default_workspace_root;
 
@@ -19,14 +19,15 @@ pub(super) enum ReportAction {
 pub(super) struct ReportOptions {
     report_id: Option<String>,
     html: bool,
+    boot_rom_dir: Option<PathBuf>,
 }
 
 pub fn report_help_text() -> &'static str {
     concat!(
-        "Usage: cargo run -p gb-test-runner --bin report -- <report-id> [--html]\n",
+        "Usage: cargo run -p gb-test-runner --bin report -- <report-id> [--html] [--boot-rom-dir <dir>]\n",
         "\n",
-        "Renders a report-local test ROM status snapshot into test/<report>/test-report.md.\n",
-        "If test/<report>/.status is missing or empty, this command first runs cargo rom-suite <report-id>.\n",
+        "Validates that <report-id> has single-machine suites, runs cargo rom-suite <report-id>,\n",
+        "and renders the fresh report-local status snapshot into test/<report>/test-report.md; rom-suite owns guarded runtime cleanup after preflight.\n",
     )
 }
 
@@ -62,10 +63,18 @@ where
 {
     let mut report_id = None;
     let mut html = false;
-    for argument in arguments {
+    let mut boot_rom_dir = None;
+    let mut arguments = arguments.into_iter();
+    while let Some(argument) = arguments.next() {
         match argument.as_ref() {
             "--help" | "-h" => return Ok(ReportAction::ShowHelp),
             "--html" => html = true,
+            "--boot-rom-dir" => {
+                let Some(value) = arguments.next() else {
+                    return Err("--boot-rom-dir requires a value".to_string());
+                };
+                boot_rom_dir = Some(PathBuf::from(value.as_ref()));
+            }
             value if value.starts_with('-') => {
                 return Err(format!("unknown report option {value:?}; run with --help"));
             }
@@ -80,7 +89,11 @@ where
         }
     }
 
-    Ok(ReportAction::Run(ReportOptions { report_id, html }))
+    Ok(ReportAction::Run(ReportOptions {
+        report_id,
+        html,
+        boot_rom_dir,
+    }))
 }
 
 fn run_options<W: Write>(
@@ -93,44 +106,59 @@ fn run_options<W: Write>(
         return Err(missing_report_error(&reports));
     };
     let report = report_for_id(&report_id, &reports)?;
-    let statuses = load_or_create_statuses(workspace_root, report, output)?;
-    let document = build_report_document(workspace_root, report, statuses)?;
+    ensure_single_machine_suite_manifests(workspace_root, report)?;
+    let statuses = run_suite_and_load_statuses(
+        workspace_root,
+        report,
+        options.boot_rom_dir.as_deref(),
+        output,
+    )?;
+    let document = build_report_document(
+        workspace_root,
+        report,
+        statuses,
+        options.boot_rom_dir.as_deref(),
+    )?;
     write_report_files(workspace_root, report, &document, options.html, output)
 }
 
-fn load_or_create_statuses<W: Write>(
+fn run_suite_and_load_statuses<W: Write>(
     workspace_root: &Path,
     report: &Report,
+    boot_rom_dir: Option<&Path>,
     output: &mut W,
 ) -> Result<Vec<PersistedSuiteStatus>, String> {
-    let mut statuses = load_statuses(workspace_root, report)?;
-    if !statuses.is_empty() {
-        return Ok(statuses);
-    }
-
+    let suite_command = suite_command_display(report, boot_rom_dir);
     writeln_checked(
         output,
         &format!(
-            "rom-report: no status files found for {}; running cargo rom-suite {}",
-            report.id, report.id
+            "rom-report: running {suite_command}; rom-suite will clear selected single-machine status and artifacts after preflight",
         ),
     )?;
-    let suite_result = crate::suite::run_suite_command_with_workspace(
-        [report.id.as_str()],
+    let suite_arguments = suite_arguments(report, boot_rom_dir);
+    let mut suite_runtime_cleaned = false;
+    let suite_result = crate::suite::run_suite_command_with_workspace_tracking_cleanup(
+        suite_arguments.iter().map(String::as_str),
         workspace_root,
         output,
+        &mut suite_runtime_cleaned,
     );
     if let Err(error) = &suite_result {
+        if !suite_runtime_cleaned {
+            return Err(format!(
+                "failed to generate status for report {:?}; {suite_command} failed before runtime cleanup: {error}",
+                report.id
+            ));
+        }
         writeln_checked(
             output,
             &format!(
-                "rom-report: cargo rom-suite {} returned: {error}; rendering any written status",
-                report.id
+                "rom-report: {suite_command} returned after runtime cleanup: {error}; rendering written status",
             ),
         )?;
     }
 
-    statuses = load_statuses(workspace_root, report)?;
+    let statuses = load_statuses(workspace_root, report)?;
     if statuses.is_empty() {
         return match suite_result {
             Ok(()) => Err(format!(
@@ -138,12 +166,30 @@ fn load_or_create_statuses<W: Write>(
                 report.id
             )),
             Err(error) => Err(format!(
-                "failed to generate status for report {:?}; cargo rom-suite {} failed: {error}",
-                report.id, report.id
+                "failed to generate status for report {:?}; {suite_command} failed: {error}",
+                report.id
             )),
         };
     }
     Ok(statuses)
+}
+
+fn suite_arguments(report: &Report, boot_rom_dir: Option<&Path>) -> Vec<String> {
+    let mut arguments = vec![report.id.clone()];
+    if let Some(boot_rom_dir) = boot_rom_dir {
+        arguments.push("--boot-rom-dir".to_string());
+        arguments.push(boot_rom_dir.display().to_string());
+    }
+    arguments
+}
+
+fn suite_command_display(report: &Report, boot_rom_dir: Option<&Path>) -> String {
+    let mut command = format!("cargo rom-suite {}", report.id);
+    if let Some(boot_rom_dir) = boot_rom_dir {
+        command.push_str(" --boot-rom-dir ");
+        command.push_str(&boot_rom_dir.display().to_string());
+    }
+    command
 }
 
 fn write_report_files<W: Write>(
@@ -182,6 +228,53 @@ fn write_report_files<W: Write>(
     }
 
     Ok(())
+}
+
+fn ensure_single_machine_suite_manifests(
+    workspace_root: &Path,
+    report: &Report,
+) -> Result<(), String> {
+    let report_data_dir = report_data_dir(workspace_root, report);
+    let entries = fs::read_dir(&report_data_dir).map_err(|error| {
+        format!(
+            "failed to read suite manifest directory {}: {error}",
+            report_data_dir.display()
+        )
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to read suite manifest directory {}: {error}",
+                report_data_dir.display()
+            )
+        })?;
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|file_name| file_name.to_str()) else {
+            continue;
+        };
+        if is_single_machine_suite_manifest(file_name) {
+            return Ok(());
+        }
+    }
+    Err(format!(
+        "report {:?} does not contain single-machine suite manifests",
+        report.id
+    ))
+}
+
+fn report_data_dir(workspace_root: &Path, report: &Report) -> PathBuf {
+    let source_parent = report
+        .sources
+        .as_deref()
+        .and_then(Path::parent)
+        .unwrap_or(&report.store_dir);
+    workspace_root
+        .join(super::model::DATA_DIR)
+        .join(source_parent)
+}
+
+fn is_single_machine_suite_manifest(file_name: &str) -> bool {
+    file_name.ends_with(".suite.toml") && !file_name.ends_with(".link.suite.toml")
 }
 
 fn report_for_id<'a>(report_id: &str, reports: &'a [Report]) -> Result<&'a Report, String> {

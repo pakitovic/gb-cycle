@@ -4,6 +4,7 @@ const MAGIC_BREAKPOINT_OPCODE: u8 = 0x40;
 const LEGACY_MAGIC_BREAKPOINT_OPCODE: u8 = 0xED;
 const PASS_SIGNATURE: [u8; 6] = [3, 5, 8, 13, 21, 34];
 const FAIL_SIGNATURE: [u8; 6] = [0x42; 6];
+const BREAKPOINT_HALT_BYTES: [u8; 2] = [0x40, 0x76];
 const NOP_PADDED_TERMINAL_LOOP_BYTES: [u8; 4] = [0x40, 0x00, 0x18, 0xFD];
 const COMPACT_TERMINAL_LOOP_BYTES: [u8; 3] = [0x40, 0x18, 0xFE];
 
@@ -130,11 +131,18 @@ impl FibonacciFailure {
 fn terminal_signal_reached(cpu: CpuObservation, legacy: bool) -> bool {
     cpu.current_opcode == Some(MAGIC_BREAKPOINT_OPCODE)
         || legacy && legacy_terminal_signal_reached(cpu)
+        || breakpoint_halt_reached(cpu)
         || terminal_loop_reached(cpu)
 }
 
 fn legacy_terminal_signal_reached(cpu: CpuObservation) -> bool {
     cpu.current_opcode == Some(LEGACY_MAGIC_BREAKPOINT_OPCODE)
+}
+
+fn breakpoint_halt_reached(cpu: CpuObservation) -> bool {
+    cpu.pc_window
+        .windows(BREAKPOINT_HALT_BYTES.len())
+        .any(|window| window == BREAKPOINT_HALT_BYTES)
 }
 
 fn terminal_loop_reached(cpu: CpuObservation) -> bool {

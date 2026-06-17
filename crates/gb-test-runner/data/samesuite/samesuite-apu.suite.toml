@@ -1,0 +1,31 @@
+family = "samesuite"
+suite_name = "samesuite-apu"
+report = "samesuite"
+model = "cgb"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-apu-div-write-trigger-volume"
+rom = "apu/div_write_trigger_volume.gb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "samesuite-apu-div-write-trigger-10"
+rom = "apu/div_write_trigger_10.gb"
+model = "dmg"
+
+[[case]]
+id = "samesuite-apu-div-write-trigger"
+rom = "apu/div_write_trigger.gb"
+model = "dmg"
+
+[[case]]
+id = "samesuite-apu-div-write-trigger-volume-10"
+rom = "apu/div_write_trigger_volume_10.gb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "samesuite-apu-div-trigger-volume-10"
+rom = "apu/div_trigger_volume_10.gb"
+revision = "cpu-cgb-c"

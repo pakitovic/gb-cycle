@@ -9,6 +9,7 @@ fn help_mentions_reports_registry() {
     let help = fetch_help_text();
     assert!(help.contains("fetch"));
     assert!(help.contains("reports.toml"));
+    assert!(help.contains("--boot-rom <dir>"));
 }
 
 #[test]
@@ -55,6 +56,37 @@ fn parse_accepts_all_and_null_as_regular_family_names() {
             report_id: Some("sample-report".to_string()),
             requested_families: vec!["all".to_string(), "null".to_string()],
         })
+    );
+}
+
+#[test]
+fn parse_accepts_boot_rom_fetch_mode() {
+    let action = parse_fetch_arguments(["--boot-rom", "/tmp/bootroms"])
+        .expect("boot ROM fetch arguments should parse");
+    assert!(format!("{action:?}").contains("FetchBootRom"));
+    assert!(format!("{action:?}").contains("/tmp/bootroms"));
+}
+
+#[test]
+fn parse_rejects_boot_rom_without_value() {
+    assert!(
+        parse_fetch_arguments(["--boot-rom"])
+            .expect_err("missing boot ROM output dir should fail")
+            .contains("--boot-rom requires a value")
+    );
+}
+
+#[test]
+fn parse_rejects_boot_rom_with_report_arguments() {
+    assert!(
+        parse_fetch_arguments(["sample-report", "--boot-rom", "/tmp/bootroms"])
+            .expect_err("boot ROM fetch should not accept reports")
+            .contains("cannot be combined")
+    );
+    assert!(
+        parse_fetch_arguments(["--boot-rom", "/tmp/bootroms", "sample-report"])
+            .expect_err("boot ROM fetch should not accept trailing report")
+            .contains("cannot be combined")
     );
 }
 

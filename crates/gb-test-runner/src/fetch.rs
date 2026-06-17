@@ -1,3 +1,4 @@
+mod boot_rom;
 mod cli;
 mod ensure;
 mod git;

@@ -382,8 +382,12 @@ impl IoHramDomain {
                 }
             }
             IoRegisterKind::Hdma5 => {
-                if let Some(dma) = io.dma {
-                    dma.write_hdma5(value);
+                let BusIoWriteView { dma, speed, .. } = io;
+                let speed_mode = speed
+                    .as_deref()
+                    .map_or(CgbSpeedMode::Normal, SpeedController::current_speed);
+                if let Some(dma) = dma {
+                    dma.write_hdma5_for_speed(value, speed_mode);
                 }
             }
             IoRegisterKind::Rp => self.write_rp(value),

@@ -61,6 +61,12 @@ fn compact_terminal_loop_window() -> [u8; CPU_OBSERVATION_WINDOW_BYTES] {
     window
 }
 
+fn breakpoint_halt_window() -> [u8; CPU_OBSERVATION_WINDOW_BYTES] {
+    let mut window = [0xFF; CPU_OBSERVATION_WINDOW_BYTES];
+    window[2..4].copy_from_slice(&[0x40, 0x76]);
+    window
+}
+
 fn fibonacci_oracle() -> Oracle {
     Oracle::from_manifest(&parse_oracle_config(
         "oracle = { type = \"fibonacci-result\" }",
@@ -272,6 +278,23 @@ fn fibonacci_result_detects_compact_breakpoint_loop_near_pc() {
                 None,
                 compact_terminal_loop_window()
             ))
+            .expect("oracle should finish"),
+        OracleOutcome::Passed
+    );
+}
+
+#[test]
+fn fibonacci_result_detects_breakpoint_halt_near_pc() {
+    let mut oracle = fibonacci_oracle();
+    assert_eq!(
+        oracle
+            .observe(observations(PASS_SIGNATURE, None, breakpoint_halt_window()))
+            .expect("oracle should observe"),
+        OracleStep::Stop
+    );
+    assert_eq!(
+        oracle
+            .finish(observations(PASS_SIGNATURE, None, breakpoint_halt_window()))
             .expect("oracle should finish"),
         OracleOutcome::Passed
     );

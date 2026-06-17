@@ -1,6 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
 
+use gb_core::BootRomAssetKind;
+
+use super::super::boot_rom::{
+    load_boot_rom_source_manifest_for_test, supported_boot_rom_asset_filenames_for_test,
+};
 use super::super::manifest::{
     SourceManifestFile, load_report_manifest, load_source_manifest, report_families,
 };
@@ -26,6 +31,7 @@ fn built_in_reports_manifest_loads_all_reports() {
             "mooneye",
             "ax6",
             "little-things-gb",
+            "nitro2k01",
             "magen",
             "mealybug-tearoom-tests",
             "samesuite",
@@ -53,6 +59,53 @@ fn built_in_reports_manifest_loads_all_reports() {
     assert_eq!(linked.sources, None);
     assert_eq!(linked.status_dir, PathBuf::from(".status"));
     assert_eq!(linked.artifact_dir, PathBuf::from(".artifacts"));
+}
+
+#[test]
+fn built_in_boot_rom_source_manifest_matches_supported_assets() {
+    let workspace_root = crate::default_workspace_root();
+    let manifest = load_boot_rom_source_manifest_for_test(&workspace_root)
+        .expect("built-in boot ROM source manifest should load");
+    let source = manifest
+        .sources
+        .first()
+        .expect("boot ROM manifest should define a source");
+    assert_eq!(
+        source.file_base_url.as_deref(),
+        Some("https://gbdev.gg8.se/files/roms/bootroms/")
+    );
+    let expected = supported_boot_rom_asset_filenames_for_test();
+    let actual = source
+        .families
+        .iter()
+        .flat_map(|family| &family.files)
+        .map(|file| file.target.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(actual, expected);
+    for file in source.families.iter().flat_map(|family| &family.files) {
+        assert_eq!(file.path, file.target);
+        let asset = boot_rom_asset_for_filename(&file.target.to_string_lossy())
+            .expect("boot ROM target should map to an asset");
+        assert_eq!(file.size, Some(asset.expected_size() as u64));
+        assert_eq!(file.sha256, asset.expected_sha256());
+    }
+}
+
+fn boot_rom_asset_for_filename(filename: &str) -> Option<BootRomAssetKind> {
+    [
+        BootRomAssetKind::Dmg0,
+        BootRomAssetKind::Dmg,
+        BootRomAssetKind::Mgb,
+        BootRomAssetKind::Sgb,
+        BootRomAssetKind::Sgb2,
+        BootRomAssetKind::Cgb0,
+        BootRomAssetKind::Cgb,
+        BootRomAssetKind::CgbE,
+        BootRomAssetKind::CgbAgb0,
+        BootRomAssetKind::CgbAgb,
+    ]
+    .into_iter()
+    .find(|asset| asset.filename() == filename)
 }
 
 #[test]
@@ -304,6 +357,51 @@ fn source_manifest_accepts_zip_archive_without_sparse_paths() {
 }
 
 #[test]
+fn source_manifest_accepts_file_base_url_without_sparse_paths() {
+    let workspace_root = unique_temp_dir("file-base-source");
+    write_reports(
+        &workspace_root,
+        concat!(
+            "status_dir = \".status\"\n",
+            "artifact_dir = \".artifacts\"\n",
+            "report_file = \"test-report.md\"\n",
+            "\n",
+            "[[report]]\n",
+            "id = \"sample-report\"\n",
+            "store_dir = \"sample-report\"\n",
+            "sources = \"sources.report.toml\"\n",
+        ),
+    );
+    write_source_manifest(
+        &workspace_root,
+        "sources.report.toml",
+        concat!(
+            "[[source]]\n",
+            "id = \"file-base-source\"\n",
+            "file_base_url = \"https://example.invalid/test-roms\"\n",
+            "\n",
+            "[[source.family]]\n",
+            "id = \"family-a\"\n",
+            "target_root = \"family-a\"\n",
+            "\n",
+            "[[source.family.file]]\n",
+            "path = \"roms/family-a/test.gb\"\n",
+            "target = \"test.gb\"\n",
+            "sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+        ),
+    );
+    let reports = load_report_manifest(&workspace_root).expect("report should load");
+    let report = reports.reports.first().expect("report should exist");
+    let source_manifest =
+        load_source_manifest(&workspace_root, report).expect("file base source should load");
+    assert_eq!(
+        report_families(report, &source_manifest).expect("families should resolve"),
+        vec!["family-a"]
+    );
+    let _ = fs::remove_dir_all(workspace_root);
+}
+
+#[test]
 fn source_manifest_rejects_mixed_git_and_archive_location() {
     let workspace_root = unique_temp_dir("mixed-source");
     write_basic_reports(&workspace_root, "sources.report.toml");
@@ -323,6 +421,41 @@ fn source_manifest_rejects_mixed_git_and_archive_location() {
             "id = \"family-a\"\n",
             "target_root = \"family-a\"\n",
             "sparse_paths = [\"roms/family-a\"]\n",
+            "\n",
+            "[[source.family.file]]\n",
+            "path = \"roms/family-a/test.gb\"\n",
+            "target = \"test.gb\"\n",
+            "sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+        ),
+    );
+    let reports = load_report_manifest(&workspace_root).expect("report should load");
+    let report = reports.reports.first().expect("report should exist");
+    assert!(
+        load_source_manifest(&workspace_root, report)
+            .expect_err("mixed source location should fail")
+            .contains("must define exactly one fetch location")
+    );
+    let _ = fs::remove_dir_all(workspace_root);
+}
+
+#[test]
+fn source_manifest_rejects_mixed_file_base_and_archive_location() {
+    let workspace_root = unique_temp_dir("mixed-file-base-source");
+    write_basic_reports(&workspace_root, "sources.report.toml");
+    write_source_manifest(
+        &workspace_root,
+        "sources.report.toml",
+        concat!(
+            "[[source]]\n",
+            "id = \"source\"\n",
+            "file_base_url = \"https://example.invalid/test-roms\"\n",
+            "archive_url = \"https://example.invalid/test-roms.zip\"\n",
+            "archive_sha256 = \"1111111111111111111111111111111111111111111111111111111111111111\"\n",
+            "archive_format = \"zip\"\n",
+            "\n",
+            "[[source.family]]\n",
+            "id = \"family-a\"\n",
+            "target_root = \"family-a\"\n",
             "\n",
             "[[source.family.file]]\n",
             "path = \"roms/family-a/test.gb\"\n",

@@ -66,6 +66,16 @@ store_dir = "little-things-gb"
 sources = "little-things-gb/sources.report.toml"
 
 [[report]]
+id = "nitro2k01"
+store_dir = "nitro2k01"
+sources = "nitro2k01/sources.report.toml"
+family_order = [
+  "whichboot",
+  "windesync",
+  "double-halt-cancel",
+]
+
+[[report]]
 id = "magen"
 store_dir = "magen"
 sources = "magen/sources.report.toml"

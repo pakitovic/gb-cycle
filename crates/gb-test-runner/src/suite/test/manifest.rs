@@ -5,7 +5,9 @@ use serde::Deserialize;
 
 use crate::oracle::Oracle;
 
-use super::super::manifest::{load_reports, load_selected_suites, parse_suite_manifest_for_test};
+use super::super::manifest::{
+    load_reports, load_selected_suite_families, load_selected_suites, parse_suite_manifest_for_test,
+};
 use super::super::model::{ReportModel, SuiteStimulusTime};
 use super::common::{
     basic_manifest, unique_temp_dir, write_manifest, write_reports, write_source_manifest,
@@ -53,6 +55,82 @@ artifact_dir = ".custom-artifacts"
     );
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn reports_manifest_rejects_unsafe_runtime_paths() {
+    let cases = [
+        (
+            "suite-report-empty-default-status",
+            r#"
+status_dir = ""
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+"#,
+            "report default status_dir must not be empty",
+        ),
+        (
+            "suite-report-parent-store",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "../sample-report"
+sources = "sample-report/sources.report.toml"
+"#,
+            "report store_dir ../sample-report must not contain parent components",
+        ),
+        (
+            "suite-report-parent-artifacts",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+artifact_dir = "../artifacts"
+"#,
+            "report artifact_dir ../artifacts must not contain parent components",
+        ),
+        (
+            "suite-report-current-status",
+            r#"
+status_dir = ".status"
+artifact_dir = ".artifacts"
+
+[[report]]
+id = "sample-report"
+store_dir = "sample-report"
+sources = "sample-report/sources.report.toml"
+status_dir = "."
+"#,
+            "report status_dir . must not contain current-directory components",
+        ),
+    ];
+
+    for (workspace_name, reports_toml, expected_error) in cases {
+        let workspace = unique_temp_dir(workspace_name);
+        let reports_path = workspace.join(super::super::model::REPORTS_MANIFEST_PATH);
+        fs::create_dir_all(reports_path.parent().expect("reports should have parent"))
+            .expect("reports parent should be creatable");
+        fs::write(&reports_path, reports_toml).expect("reports should be writable");
+
+        assert!(
+            load_reports(&workspace)
+                .expect_err("unsafe runtime path should fail")
+                .contains(expected_error)
+        );
+
+        fs::remove_dir_all(workspace).expect("workspace should be removable");
+    }
 }
 
 #[test]
@@ -686,6 +764,10 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
         ReportModel::Dmg
     );
     assert!(report_suffix_manifest.cases[0].report_model_suffix);
+    assert_eq!(
+        report_suffix_manifest.cases[0].report_rom(),
+        "which.gb (DMG)"
+    );
 
     let inherited_report_suffix = basic_manifest(
         "gb-emulator-shootout",
@@ -706,6 +788,70 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
     .expect("header report model suffix should parse");
     assert!(inherited_report_suffix_manifest.cases[0].report_model_suffix);
 
+    let inherited_revision_suffix = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace(
+        "model = \"dmg\"",
+        "model = \"dmg\"\nreport_revision_suffix = true",
+    );
+    let inherited_revision_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &inherited_revision_suffix,
+    )
+    .expect("header report revision suffix should parse");
+    assert!(inherited_revision_suffix_manifest.cases[0].report_revision_suffix);
+    assert_eq!(
+        inherited_revision_suffix_manifest.cases[0].report_rom(),
+        "which.gb (DMG-CPU-C)"
+    );
+
+    let case_revision_suffix = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace(
+        "rom = \"which.gb\"",
+        "rom = \"which.gb\"\nreport_revision_suffix = true",
+    );
+    let case_revision_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &case_revision_suffix,
+    )
+    .expect("case-level report revision suffix should parse");
+    assert!(case_revision_suffix_manifest.cases[0].report_revision_suffix);
+
+    let model_and_revision_suffix = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-cgb-d",
+        "which.gb",
+    )
+    .replace(
+        "model = \"dmg\"",
+        "model = \"cgb\"\nrevision = \"cpu-cgb-d\"\nreport_model_suffix = true\nreport_revision_suffix = true",
+    );
+    let model_and_revision_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &model_and_revision_suffix,
+    )
+    .expect("combined report suffixes should parse");
+    assert_eq!(
+        model_and_revision_suffix_manifest.cases[0].report_rom(),
+        "which.gb (GBC) (CPU-CGB-D)"
+    );
+
     let overridden_report_suffix = inherited_report_suffix.replace(
         "rom = \"which.gb\"",
         "rom = \"which.gb\"\nreport_model_suffix = false",
@@ -717,6 +863,22 @@ fn parses_model_profiles_and_rejects_unsupported_model_and_oracle() {
     )
     .expect("case-level report model suffix override should parse");
     assert!(!overridden_report_suffix_manifest.cases[0].report_model_suffix);
+
+    let overridden_revision_suffix = inherited_revision_suffix.replace(
+        "rom = \"which.gb\"",
+        "rom = \"which.gb\"\nreport_revision_suffix = false",
+    );
+    let overridden_revision_suffix_manifest = parse_suite_manifest_for_test(
+        Path::new("acid.suite.toml"),
+        "gb-emulator-shootout",
+        &overridden_revision_suffix,
+    )
+    .expect("case-level report revision suffix override should parse");
+    assert!(!overridden_revision_suffix_manifest.cases[0].report_revision_suffix);
+    assert_eq!(
+        overridden_revision_suffix_manifest.cases[0].report_rom(),
+        "which.gb"
+    );
 
     let unsupported_alias = basic_manifest(
         "gb-emulator-shootout",
@@ -794,6 +956,27 @@ fn parser_rejects_unknown_manifest_keys() {
         )
         .expect_err("unknown header key should fail")
         .contains("uses unsupported key \"model_typo\"")
+    );
+
+    let unknown_revision_suffix_key = basic_manifest(
+        "gb-emulator-shootout",
+        "acid",
+        "acid",
+        "acid-which-dmg",
+        "which.gb",
+    )
+    .replace(
+        "model = \"dmg\"",
+        "model = \"dmg\"\nreport_revision_extra = true",
+    );
+    assert!(
+        parse_suite_manifest_for_test(
+            Path::new("acid.suite.toml"),
+            "gb-emulator-shootout",
+            &unknown_revision_suffix_key,
+        )
+        .expect_err("unknown report revision suffix key should fail")
+        .contains("uses unsupported key \"report_revision_extra\"")
     );
 
     let unknown_case_key = basic_manifest(
@@ -1553,31 +1736,59 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         (
             "mooneye",
             &[
-                ("mooneye-acceptance", 75, "mooneye"),
-                ("mooneye-emulator-only", 28, "mooneye"),
-                ("mooneye-madness", 0, "mooneye"),
-                ("mooneye-manual", 2, "mooneye"),
-                ("mooneye-misc", 8, "mooneye"),
+                ("mooneye-acceptance", 75, "mooneye", "mooneye"),
+                ("mooneye-emulator-only", 28, "mooneye", "mooneye"),
+                ("mooneye-madness", 0, "mooneye", "mooneye"),
+                ("mooneye-manual", 2, "mooneye", "mooneye"),
+                ("mooneye-misc", 8, "mooneye", "mooneye"),
             ][..],
         ),
-        ("ax6", &[("ax6-dmg", 3, "ax6")][..]),
+        ("ax6", &[("ax6-dmg", 3, "ax6", "ax6")][..]),
         (
             "little-things-gb",
-            &[
-                ("little-things-gb-dmg", 2, "little-things-gb"),
-                ("little-things-gb-cgb", 1, "little-things-gb"),
-            ][..],
+            &[(
+                "little-things-gb",
+                4,
+                "little-things-gb",
+                "little-things-gb",
+            )][..],
         ),
-        ("magen", &[("magen-cgb", 8, "magen")][..]),
+        ("magen", &[("magen", 8, "magen", "magen")][..]),
         (
             "mealybug-tearoom-tests",
-            &[("mealybug-tearoom-tests-cgb", 24, "mealybug-tearoom-tests")][..],
+            &[
+                (
+                    "mealybug-tearoom-tests-dma",
+                    2,
+                    "mealybug-tearoom-tests",
+                    "mealybug-tearoom-tests",
+                ),
+                (
+                    "mealybug-tearoom-tests-mbc",
+                    1,
+                    "mealybug-tearoom-tests",
+                    "mealybug-tearoom-tests",
+                ),
+                (
+                    "mealybug-tearoom-tests-ppu",
+                    76,
+                    "mealybug-tearoom-tests",
+                    "mealybug-tearoom-tests",
+                ),
+            ][..],
         ),
         (
             "samesuite",
             &[
-                ("samesuite-dmg", 3, "samesuite"),
-                ("samesuite-cgb", 9, "samesuite"),
+                ("samesuite-apu", 5, "samesuite", "samesuite"),
+                ("samesuite-apu-channel-1", 20, "samesuite", "samesuite"),
+                ("samesuite-apu-channel-2", 15, "samesuite", "samesuite"),
+                ("samesuite-apu-channel-3", 15, "samesuite", "samesuite"),
+                ("samesuite-apu-channel-4", 13, "samesuite", "samesuite"),
+                ("samesuite-dma", 4, "samesuite", "samesuite"),
+                ("samesuite-interrupt", 1, "samesuite", "samesuite"),
+                ("samesuite-ppu", 1, "samesuite", "samesuite"),
+                ("samesuite-sgb", 2, "samesuite", "samesuite"),
             ][..],
         ),
     ];
@@ -1591,7 +1802,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             &source_path,
             &read_report_source_manifest(report_id),
         );
-        for (suite_name, _, target_root) in suites {
+        for (suite_name, _, _, target_root) in suites {
             let text = read_report_suite_manifest(report_id, suite_name);
             write_manifest(
                 &workspace,
@@ -1606,7 +1817,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             .iter()
             .find(|report| report.id == report_id)
             .expect("report should exist");
-        for (suite_name, case_count, family) in suites {
+        for (suite_name, case_count, family, target_root) in suites {
             let loaded = load_selected_suites(&workspace, report, Some(suite_name), None)
                 .unwrap_or_else(|error| panic!("{report_id}/{suite_name} should load: {error}"));
             assert_eq!(loaded.len(), 1);
@@ -1614,43 +1825,162 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             assert_eq!(suite.suite_name, *suite_name);
             assert_eq!(suite.family, *family);
             assert_eq!(suite.cases.len(), *case_count);
+            assert!(
+                suite
+                    .cases
+                    .iter()
+                    .all(|case| case.target_root == Path::new(target_root)),
+                "{report_id}/{suite_name} should resolve cases below target root {target_root:?}"
+            );
         }
 
         if report_id == "samesuite" {
-            let suites = load_selected_suites(&workspace, report, Some("samesuite-cgb"), None)
-                .expect("samesuite CGB suite should load");
-            let cgb_d = suites[0]
-                .cases
-                .iter()
-                .find(|case| {
-                    case.id == "samesuite-cgb-apu-channel-1-channel-1-freq-change-timing-cgbde"
-                })
-                .expect("CGB-D row should exist");
-            assert_eq!(cgb_d.hardware_revision, gb_core::HardwareRevision::CpuCgbD);
+            let apu = load_selected_suites(&workspace, report, Some("samesuite-apu"), None)
+                .expect("samesuite APU suite should load");
             assert!(
-                suites[0]
+                apu[0]
                     .cases
                     .iter()
-                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgbE)
+                    .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
             );
-        }
-        if report_id == "little-things-gb" {
-            let suites =
-                load_selected_suites(&workspace, report, Some("little-things-gb-cgb"), None)
-                    .expect("little-things CGB suite should load");
+            assert!(
+                apu[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.console_model == gb_core::ConsoleModel::GameBoy)
+            );
+            assert!(
+                apu[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgbC)
+            );
+            let channel_1 =
+                load_selected_suites(&workspace, report, Some("samesuite-apu-channel-1"), None)
+                    .expect("samesuite APU CH1 suite should load");
+            assert!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .all(|case| matches!(&case.oracle, Oracle::FibonacciResult(_)))
+            );
+            assert!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgb0)
+            );
+            assert!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .any(|case| case.hardware_revision == gb_core::HardwareRevision::CpuCgbD)
+            );
             assert_eq!(
-                suites[0].cases[0].startup_mode,
-                gb_core::StartupMode::CustomBoot
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-1-channel-1-volume-div")
+                    .expect("CH1 volume DIV row should exist")
+                    .timeout_frames,
+                300
+            );
+            assert_eq!(
+                channel_1[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-1-channel-1-nrx2-speed-change")
+                    .expect("CH1 NRX2 speed row should exist")
+                    .timeout_frames,
+                420
+            );
+            let channel_2 =
+                load_selected_suites(&workspace, report, Some("samesuite-apu-channel-2"), None)
+                    .expect("samesuite APU CH2 suite should load");
+            assert_eq!(
+                channel_2[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-2-channel-2-nrx2-speed-change")
+                    .expect("CH2 NRX2 speed row should exist")
+                    .timeout_frames,
+                420
+            );
+            let channel_4 =
+                load_selected_suites(&workspace, report, Some("samesuite-apu-channel-4"), None)
+                    .expect("samesuite APU CH4 suite should load");
+            assert_eq!(
+                channel_4[0]
+                    .cases
+                    .iter()
+                    .find(|case| case.id == "samesuite-apu-channel-4-channel-4-volume-div")
+                    .expect("CH4 volume DIV row should exist")
+                    .timeout_frames,
+                300
             );
         }
         if report_id == "magen" {
-            let suites = load_selected_suites(&workspace, report, Some("magen-cgb"), None)
+            let suites = load_selected_suites(&workspace, report, Some("magen"), None)
                 .expect("magen suite should load");
             assert!(suites[0].cases.iter().all(|case| case.timeout_frames == 72));
         }
 
         fs::remove_dir_all(workspace).expect("workspace should be removable");
     }
+}
+
+#[test]
+fn real_little_things_report_selects_only_csp_family() {
+    let workspace = unique_temp_dir("little-things-family-selection");
+    let report_id = "little-things-gb";
+    let source_path = "little-things-gb/sources.report.toml";
+    write_reports(&workspace, report_id, source_path);
+    write_source_manifest(
+        &workspace,
+        source_path,
+        &read_report_source_manifest(report_id),
+    );
+
+    let text = read_report_suite_manifest(report_id, "little-things-gb");
+    write_manifest(
+        &workspace,
+        "little-things-gb/little-things-gb.suite.toml",
+        &text,
+    );
+    write_manifest_fixture_placeholders(&workspace, report_id, "little-things-gb", &text);
+
+    let reports = load_reports(&workspace).expect("reports should load");
+    let report = reports
+        .iter()
+        .find(|report| report.id == report_id)
+        .expect("report should exist");
+
+    assert_eq!(
+        load_selected_suite_families(&workspace, report, Some("little-things-gb"), None)
+            .expect("c-sp suite families should load"),
+        vec!["little-things-gb".to_string()]
+    );
+    assert_eq!(
+        load_selected_suite_families(
+            &workspace,
+            report,
+            Some("little-things-gb"),
+            Some("little-things-gb-dmg-firstwhite")
+        )
+        .expect("c-sp firstwhite case family should load"),
+        vec!["little-things-gb".to_string()]
+    );
+
+    let csp_suite = load_selected_suites(&workspace, report, Some("little-things-gb"), None)
+        .expect("c-sp suite should load");
+    assert!(
+        csp_suite[0]
+            .cases
+            .iter()
+            .all(|case| case.target_root == Path::new("little-things-gb"))
+    );
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
 
 #[test]
@@ -1718,7 +2048,7 @@ fn real_docboy_suite_manifests_load_memory_framebuffer_and_stimuli() {
     );
     let manifests = [
         ("docboy-dmg", "docboy-dmg", "dmg", 2326, 4),
-        ("docboy-cgb", "docboy-cgb", "cgb", 6172, 643),
+        ("docboy-cgb", "docboy-cgb", "cgb", 6172, 642),
         ("docboy-cgb-dmg", "docboy-cgb-dmg", "cgb-dmg", 467, 0),
         (
             "docboy-cgb-dmg-ext",

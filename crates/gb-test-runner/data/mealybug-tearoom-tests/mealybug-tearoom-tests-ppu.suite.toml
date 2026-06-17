@@ -1,0 +1,562 @@
+family = "mealybug-tearoom-tests"
+suite_name = "mealybug-tearoom-tests-ppu"
+report = "mealybug-tearoom-tests"
+timeout_frames = 30
+report_model_suffix = true
+report_revision_suffix = true
+
+[[case]]
+id = "mealybug-ppu-m2-win-en-toggle-dmg"
+rom = "ppu/m2_win_en_toggle.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m2_win_en_toggle_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m2-win-en-toggle-cgb-c"
+rom = "ppu/m2_win_en_toggle.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m2_win_en_toggle_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m2-win-en-toggle-cgb-d"
+rom = "ppu/m2_win_en_toggle.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m2_win_en_toggle_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-bgp-change-dmg"
+rom = "ppu/m3_bgp_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_bgp_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-bgp-change-cgb-c"
+rom = "ppu/m3_bgp_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_bgp_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-bgp-change-cgb-d"
+rom = "ppu/m3_bgp_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_bgp_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-bgp-change-sprites-dmg"
+rom = "ppu/m3_bgp_change_sprites.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_bgp_change_sprites_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-bgp-change-sprites-cgb-c"
+rom = "ppu/m3_bgp_change_sprites.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_bgp_change_sprites_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-bgp-change-sprites-cgb-d"
+rom = "ppu/m3_bgp_change_sprites.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_bgp_change_sprites_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-en-change-dmg"
+rom = "ppu/m3_lcdc_bg_en_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_bg_en_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-en-change-dmg-cpu-b"
+rom = "ppu/m3_lcdc_bg_en_change.gb"
+model = "dmg"
+revision = "dmg-cpu-b"
+disabled = true
+comment = "Disabled because this upstream fixture targets DMG-CPU-B, while gb-cycle currently exposes active Game Boy runner revisions for DMG-CPU-0 and DMG-CPU-C only. The fixture remains source-tracked for future revision support."
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_bg_en_change_dmg_b.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-en-change-cgb-c"
+rom = "ppu/m3_lcdc_bg_en_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_bg_en_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-en-change-cgb-d"
+rom = "ppu/m3_lcdc_bg_en_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_bg_en_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-en-change2-cgb-c"
+rom = "ppu/m3_lcdc_bg_en_change2.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_bg_en_change2_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-map-change-dmg"
+rom = "ppu/m3_lcdc_bg_map_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_bg_map_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-map-change-cgb-c"
+rom = "ppu/m3_lcdc_bg_map_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_bg_map_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-map-change-cgb-d"
+rom = "ppu/m3_lcdc_bg_map_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_bg_map_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-bg-map-change2-cgb-c"
+rom = "ppu/m3_lcdc_bg_map_change2.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_bg_map_change2_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-en-change-dmg"
+rom = "ppu/m3_lcdc_obj_en_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_obj_en_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-en-change-cgb-c"
+rom = "ppu/m3_lcdc_obj_en_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_obj_en_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-en-change-cgb-d"
+rom = "ppu/m3_lcdc_obj_en_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_obj_en_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-en-change-variant-dmg"
+rom = "ppu/m3_lcdc_obj_en_change_variant.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_obj_en_change_variant_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-en-change-variant-cgb-c"
+rom = "ppu/m3_lcdc_obj_en_change_variant.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_obj_en_change_variant_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-en-change-variant-cgb-d"
+rom = "ppu/m3_lcdc_obj_en_change_variant.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_obj_en_change_variant_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-size-change-dmg"
+rom = "ppu/m3_lcdc_obj_size_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_obj_size_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-size-change-cgb-c"
+rom = "ppu/m3_lcdc_obj_size_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_obj_size_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-size-change-cgb-d"
+rom = "ppu/m3_lcdc_obj_size_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_obj_size_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-size-change-scx-dmg"
+rom = "ppu/m3_lcdc_obj_size_change_scx.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_obj_size_change_scx_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-size-change-scx-cgb-c"
+rom = "ppu/m3_lcdc_obj_size_change_scx.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_obj_size_change_scx_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-obj-size-change-scx-cgb-d"
+rom = "ppu/m3_lcdc_obj_size_change_scx.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_obj_size_change_scx_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-tile-sel-change-dmg"
+rom = "ppu/m3_lcdc_tile_sel_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_tile_sel_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-tile-sel-change-cgb-c"
+rom = "ppu/m3_lcdc_tile_sel_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_tile_sel_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-tile-sel-change-cgb-d"
+rom = "ppu/m3_lcdc_tile_sel_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_tile_sel_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-tile-sel-change2-cgb-c"
+rom = "ppu/m3_lcdc_tile_sel_change2.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_tile_sel_change2_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-tile-sel-win-change-dmg"
+rom = "ppu/m3_lcdc_tile_sel_win_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_tile_sel_win_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-tile-sel-win-change-cgb-c"
+rom = "ppu/m3_lcdc_tile_sel_win_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_tile_sel_win_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-tile-sel-win-change-cgb-d"
+rom = "ppu/m3_lcdc_tile_sel_win_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_tile_sel_win_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-tile-sel-win-change2-cgb-c"
+rom = "ppu/m3_lcdc_tile_sel_win_change2.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_tile_sel_win_change2_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-dmg"
+rom = "ppu/m3_lcdc_win_en_change_multiple.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_win_en_change_multiple_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-cgb-c"
+rom = "ppu/m3_lcdc_win_en_change_multiple.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_en_change_multiple_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-cgb-d"
+rom = "ppu/m3_lcdc_win_en_change_multiple.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_en_change_multiple_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-wx-dmg"
+rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_win_en_change_multiple_wx_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-wx-cgb-c"
+rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_en_change_multiple_wx.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-wx-cgb-d"
+rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_en_change_multiple_wx.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-en-change-multiple-wx-dmg-cpu-b"
+rom = "ppu/m3_lcdc_win_en_change_multiple_wx.gb"
+model = "dmg"
+revision = "dmg-cpu-b"
+disabled = true
+comment = "Disabled because this upstream fixture targets DMG-CPU-B, while gb-cycle currently exposes active Game Boy runner revisions for DMG-CPU-0 and DMG-CPU-C only. The fixture remains source-tracked for future revision support."
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_win_en_change_multiple_wx_dmg_b.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-map-change-dmg"
+rom = "ppu/m3_lcdc_win_map_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_lcdc_win_map_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-map-change-cgb-c"
+rom = "ppu/m3_lcdc_win_map_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_map_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-map-change-cgb-d"
+rom = "ppu/m3_lcdc_win_map_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_map_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-lcdc-win-map-change2-cgb-c"
+rom = "ppu/m3_lcdc_win_map_change2.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_lcdc_win_map_change2_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-obp0-change-dmg"
+rom = "ppu/m3_obp0_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_obp0_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-obp0-change-cgb-c"
+rom = "ppu/m3_obp0_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_obp0_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-obp0-change-cgb-d"
+rom = "ppu/m3_obp0_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_obp0_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scx-high-5-bits-dmg"
+rom = "ppu/m3_scx_high_5_bits.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_scx_high_5_bits_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scx-high-5-bits-cgb-c"
+rom = "ppu/m3_scx_high_5_bits.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_scx_high_5_bits_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scx-high-5-bits-cgb-d"
+rom = "ppu/m3_scx_high_5_bits.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_scx_high_5_bits_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scx-high-5-bits-change2-cgb-c"
+rom = "ppu/m3_scx_high_5_bits_change2.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_scx_high_5_bits_change2_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scx-low-3-bits-dmg"
+rom = "ppu/m3_scx_low_3_bits.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_scx_low_3_bits_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scx-low-3-bits-cgb-c"
+rom = "ppu/m3_scx_low_3_bits.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_scx_low_3_bits_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scx-low-3-bits-cgb-d"
+rom = "ppu/m3_scx_low_3_bits.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_scx_low_3_bits_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scy-change-dmg"
+rom = "ppu/m3_scy_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_scy_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scy-change-cgb-c"
+rom = "ppu/m3_scy_change.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_scy_change_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scy-change-cgb-d"
+rom = "ppu/m3_scy_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_scy_change_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-scy-change2-cgb-c"
+rom = "ppu/m3_scy_change2.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_scy_change2_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-window-timing-dmg"
+rom = "ppu/m3_window_timing.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_window_timing_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-window-timing-cgb-c"
+rom = "ppu/m3_window_timing.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_window_timing_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-window-timing-cgb-d"
+rom = "ppu/m3_window_timing.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_window_timing_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-window-timing-wx-0-dmg"
+rom = "ppu/m3_window_timing_wx_0.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_window_timing_wx_0_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-window-timing-wx-0-cgb-c"
+rom = "ppu/m3_window_timing_wx_0.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_window_timing_wx_0_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-window-timing-wx-0-cgb-d"
+rom = "ppu/m3_window_timing_wx_0.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_window_timing_wx_0_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-4-change-dmg"
+rom = "ppu/m3_wx_4_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_wx_4_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-4-change-cgb-d"
+rom = "ppu/m3_wx_4_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_wx_4_change.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-4-change-sprites-dmg"
+rom = "ppu/m3_wx_4_change_sprites.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_wx_4_change_sprites_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-4-change-sprites-cgb-c"
+rom = "ppu/m3_wx_4_change_sprites.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_wx_4_change_sprites_cgb_c.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-4-change-sprites-cgb-d"
+rom = "ppu/m3_wx_4_change_sprites.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_wx_4_change_sprites_cgb_d.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-5-change-dmg"
+rom = "ppu/m3_wx_5_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_wx_5_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-5-change-cgb-d"
+rom = "ppu/m3_wx_5_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_wx_5_change.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-6-change-dmg"
+rom = "ppu/m3_wx_6_change.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { type = "framebuffer", fixture = "ppu/m3_wx_6_change_dmg_blob.png" }
+
+[[case]]
+id = "mealybug-ppu-m3-wx-6-change-cgb-d"
+rom = "ppu/m3_wx_6_change.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+oracle = { type = "framebuffer", source = "cgb", fixture = "ppu/m3_wx_6_change.png" }
+
+[[case]]
+id = "mealybug-ppu-win-without-bg"
+rom = "ppu/win_without_bg.gb"
+disabled = true
+comment = "Disabled because c-sp game-boy-test-roms v7.0 ships this PPU ROM without a framebuffer fixture for any gb-cycle active model/revision, so the current runner has no typed oracle for automated pass/fail."

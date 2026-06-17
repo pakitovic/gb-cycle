@@ -1,5 +1,55 @@
 use super::*;
 
+fn vram_dma_block_body_t_cycles(speed_mode: CgbSpeedMode) -> u16 {
+    vram_dma_body_t_cycles(VRAM_DMA_BLOCK_BYTES, speed_mode)
+}
+
+fn vram_dma_cpu_release_t_cycles() -> u16 {
+    VRAM_DMA_CPU_RELEASE_T_CYCLES as u16
+}
+
+fn vram_dma_publication_tail_t_cycles() -> u16 {
+    (VRAM_DMA_PUBLICATION_T_CYCLES - VRAM_DMA_CPU_RELEASE_T_CYCLES) as u16
+}
+
+fn tick_gdma_cpu_release(dma: &mut DmaController, context: &mut CycleContext) {
+    for _ in 0..vram_dma_cpu_release_t_cycles() {
+        assert_eq!(dma.tick_t_cycle(context), None);
+    }
+}
+
+fn tick_gdma_publication(dma: &mut DmaController, context: &mut CycleContext) {
+    for _ in 0..vram_dma_publication_tail_t_cycles() {
+        assert_eq!(dma.tick_t_cycle(context), None);
+    }
+}
+
+fn tick_hdma_cpu_release(
+    dma: &mut DmaController,
+    context: &mut CycleContext,
+    runtime: VramDmaRuntimeContext,
+) {
+    for _ in 0..vram_dma_cpu_release_t_cycles() {
+        assert_eq!(
+            dma.tick_t_cycle_with_vram_dma_context(context, runtime),
+            None
+        );
+    }
+}
+
+fn tick_hdma_publication(
+    dma: &mut DmaController,
+    context: &mut CycleContext,
+    runtime: VramDmaRuntimeContext,
+) {
+    for _ in 0..vram_dma_publication_tail_t_cycles() {
+        assert_eq!(
+            dma.tick_t_cycle_with_vram_dma_context(context, runtime),
+            None
+        );
+    }
+}
+
 #[test]
 fn oam_transfer_normalizes_the_source_range_destination_and_dmg_metadata() {
     let transfer = DmaTransfer::oam(0x12);
@@ -704,6 +754,59 @@ fn gdma_copies_all_blocks_updates_hdma_latches_and_returns_completed_readback() 
 }
 
 #[test]
+fn gdma_double_speed_keeps_the_vram_dma_body_in_the_lcd_time_domain() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_hdma1(0xC1);
+    dma.write_hdma2(0x20);
+    dma.write_hdma3(0x08);
+    dma.write_hdma4(0x00);
+    dma.write_hdma5_for_speed(0x00, CgbSpeedMode::Double);
+
+    let transfer = dma
+        .current_transfer()
+        .expect("GDMA should start immediately");
+    assert_eq!(transfer.oam_speed_mode(), CgbSpeedMode::Double);
+    assert_eq!(transfer.timing().first_byte_delay_t_cycles(), 4);
+    assert_eq!(transfer.timing().t_cycles_per_byte(), 4);
+    assert_eq!(
+        transfer.timing().total_t_cycles(),
+        vram_dma_block_body_t_cycles(CgbSpeedMode::Double) + vram_dma_cpu_release_t_cycles()
+    );
+
+    let mut copied = 0;
+    for _ in 0..vram_dma_block_body_t_cycles(CgbSpeedMode::Normal) {
+        copied += dma.tick_t_cycle(&mut context).is_some() as u16;
+    }
+
+    assert_eq!(
+        copied, 8,
+        "double-speed GDMA must not finish a 16-byte LCD-domain block after only 32 fast T-cycles"
+    );
+    assert!(dma.cpu_stall_active());
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    for _ in vram_dma_block_body_t_cycles(CgbSpeedMode::Normal)
+        ..vram_dma_block_body_t_cycles(CgbSpeedMode::Double)
+    {
+        copied += dma.tick_t_cycle(&mut context).is_some() as u16;
+    }
+
+    assert_eq!(copied, VRAM_DMA_BLOCK_BYTES);
+    assert!(dma.cpu_stall_active());
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_gdma_cpu_release(&mut dma, &mut context);
+    assert!(!dma.cpu_stall_active());
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_gdma_publication(&mut dma, &mut context);
+    assert_eq!(dma.read_hdma5(), 0xFF);
+    assert!(!dma.cpu_stall_active());
+}
+
+#[test]
 fn hdma_starts_one_block_immediately_for_each_visible_hblank_window() {
     let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
     let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
@@ -720,12 +823,18 @@ fn hdma_starts_one_block_immediately_for_each_visible_hblank_window() {
         VramDmaRuntimeContext::new(PpuBusState::lcd_enabled(PpuAccessMode::HBlank), 1, false);
 
     let mut first_block_work = 0;
-    for _ in 0..VRAM_DMA_BLOCK_BYTES * VRAM_DMA_T_CYCLES_PER_BYTE as u16 {
+    for _ in 0..vram_dma_block_body_t_cycles(CgbSpeedMode::Normal) {
         first_block_work += dma
             .tick_t_cycle_with_vram_dma_context(&mut context, hblank0)
             .is_some() as u16;
     }
     assert_eq!(first_block_work, VRAM_DMA_BLOCK_BYTES);
+    assert_eq!(dma.read_hdma5(), 0x01);
+
+    tick_hdma_cpu_release(&mut dma, &mut context, hblank0);
+    assert_eq!(dma.read_hdma5(), 0x01);
+
+    tick_hdma_publication(&mut dma, &mut context, hblank0);
     assert_eq!(dma.read_hdma5(), 0x00);
     assert_eq!(dma.vram_dma_registers().source_start(), 0xC130);
     assert_eq!(dma.vram_dma_registers().destination_start(), 0x8810);
@@ -739,12 +848,18 @@ fn hdma_starts_one_block_immediately_for_each_visible_hblank_window() {
     }
 
     let mut second_block_work = 0;
-    for _ in 0..VRAM_DMA_BLOCK_BYTES * VRAM_DMA_T_CYCLES_PER_BYTE as u16 {
+    for _ in 0..vram_dma_block_body_t_cycles(CgbSpeedMode::Normal) {
         second_block_work += dma
             .tick_t_cycle_with_vram_dma_context(&mut context, hblank1)
             .is_some() as u16;
     }
     assert_eq!(second_block_work, VRAM_DMA_BLOCK_BYTES);
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_hdma_cpu_release(&mut dma, &mut context, hblank1);
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_hdma_publication(&mut dma, &mut context, hblank1);
     assert_eq!(
         dma.vram_dma_state(),
         VramDmaState::Inactive {
@@ -752,6 +867,52 @@ fn hdma_starts_one_block_immediately_for_each_visible_hblank_window() {
         }
     );
     assert_eq!(dma.read_hdma5(), 0xFF);
+}
+
+#[test]
+fn hdma_waits_until_the_visible_hblank_start_seam_is_past() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_hdma1(0xC1);
+    dma.write_hdma2(0x20);
+    dma.write_hdma3(0x08);
+    dma.write_hdma4(0x00);
+    dma.write_hdma5(0x80);
+
+    let mode0_start_dot = 100;
+    let early_hblank = VramDmaRuntimeContext::new_for_speed_at_dot(
+        PpuBusState::lcd_enabled(PpuAccessMode::HBlank),
+        0,
+        mode0_start_dot + 2,
+        mode0_start_dot,
+        false,
+        CgbSpeedMode::Normal,
+    );
+    assert_eq!(
+        dma.tick_t_cycle_with_vram_dma_context(&mut context, early_hblank),
+        None
+    );
+    assert_eq!(dma.current_transfer(), None);
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    let eligible_hblank = VramDmaRuntimeContext::new_for_speed_at_dot(
+        PpuBusState::lcd_enabled(PpuAccessMode::HBlank),
+        0,
+        mode0_start_dot + 3,
+        mode0_start_dot,
+        false,
+        CgbSpeedMode::Normal,
+    );
+    assert_eq!(
+        dma.tick_t_cycle_with_vram_dma_context(&mut context, eligible_hblank),
+        None
+    );
+    assert_eq!(
+        dma.current_transfer().map(DmaTransfer::kind),
+        Some(DmaTransferKind::Hdma)
+    );
+    assert!(dma.cpu_stall_active());
 }
 
 #[test]
@@ -767,13 +928,18 @@ fn hdma_lcd_off_window_transfers_only_one_block_until_a_new_window_appears() {
 
     let lcd_disabled = VramDmaRuntimeContext::new(PpuBusState::lcd_disabled(), 0, false);
     let mut copied = 0;
-    for _ in 0..VRAM_DMA_BLOCK_BYTES * VRAM_DMA_T_CYCLES_PER_BYTE as u16 {
+    for _ in 0..vram_dma_block_body_t_cycles(CgbSpeedMode::Normal) {
         copied += dma
             .tick_t_cycle_with_vram_dma_context(&mut context, lcd_disabled)
             .is_some() as u16;
     }
 
     assert_eq!(copied, VRAM_DMA_BLOCK_BYTES);
+    assert_eq!(dma.read_hdma5(), 0x03);
+    tick_hdma_cpu_release(&mut dma, &mut context, lcd_disabled);
+    assert_eq!(dma.read_hdma5(), 0x03);
+
+    tick_hdma_publication(&mut dma, &mut context, lcd_disabled);
     assert_eq!(dma.read_hdma5(), 0x02);
     for _ in 0..64 {
         assert_eq!(
@@ -804,13 +970,18 @@ fn hdma_block_started_in_hblank_completes_across_the_exit_seam_without_rearming_
     copied += dma
         .tick_t_cycle_with_vram_dma_context(&mut context, hblank0)
         .is_some() as u16;
-    for _ in 1..VRAM_DMA_BLOCK_BYTES * VRAM_DMA_T_CYCLES_PER_BYTE as u16 {
+    for _ in 1..vram_dma_block_body_t_cycles(CgbSpeedMode::Normal) {
         copied += dma
             .tick_t_cycle_with_vram_dma_context(&mut context, drawing0)
             .is_some() as u16;
     }
 
     assert_eq!(copied, VRAM_DMA_BLOCK_BYTES);
+    assert_eq!(dma.read_hdma5(), 0x01);
+    tick_hdma_cpu_release(&mut dma, &mut context, drawing0);
+    assert_eq!(dma.read_hdma5(), 0x01);
+
+    tick_hdma_publication(&mut dma, &mut context, drawing0);
     assert_eq!(dma.read_hdma5(), 0x00);
     assert_eq!(dma.vram_dma_registers().source_start(), 0xC130);
     assert_eq!(dma.vram_dma_registers().destination_start(), 0x8810);
@@ -901,13 +1072,76 @@ fn hdma_block_publishes_cpu_stall_and_video_bus_occupation_until_complete() {
         DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Vram))
     );
 
-    for _ in 1..VRAM_DMA_BLOCK_BYTES * VRAM_DMA_T_CYCLES_PER_BYTE as u16 {
+    for _ in 1..vram_dma_block_body_t_cycles(CgbSpeedMode::Normal) {
         dma.tick_t_cycle_with_vram_dma_context(&mut context, runtime);
     }
 
+    assert!(dma.cpu_stall_active());
+    assert_eq!(
+        dma.bus_state(),
+        DmaBusState::video_bus_blocked(Some(DmaMemoryRegionImpact::Vram))
+    );
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_hdma_cpu_release(&mut dma, &mut context, runtime);
     assert!(!dma.cpu_stall_active());
     assert_eq!(dma.bus_state(), DmaBusState::unrestricted());
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_hdma_publication(&mut dma, &mut context, runtime);
     assert_eq!(dma.read_hdma5(), 0xFF);
+}
+
+#[test]
+fn hdma_double_speed_latches_the_speed_profile_at_block_start() {
+    let mut dma = DmaController::new(ConsoleModel::GameBoyColor);
+    let mut context = CycleContext::for_cycle(crate::scheduler::TCycle::ZERO);
+
+    dma.write_hdma1(0xC1);
+    dma.write_hdma2(0x20);
+    dma.write_hdma3(0x08);
+    dma.write_hdma4(0x00);
+    dma.write_hdma5(0x80);
+
+    let runtime = VramDmaRuntimeContext::new_for_speed(
+        PpuBusState::lcd_enabled(PpuAccessMode::HBlank),
+        0,
+        false,
+        CgbSpeedMode::Double,
+    );
+    let mut copied = 0;
+    for _ in 0..vram_dma_block_body_t_cycles(CgbSpeedMode::Normal) {
+        copied += dma
+            .tick_t_cycle_with_vram_dma_context(&mut context, runtime)
+            .is_some() as u16;
+    }
+
+    assert_eq!(
+        copied, 8,
+        "double-speed HDMA should keep the same LCD-domain body duration as normal-speed HDMA"
+    );
+    assert!(dma.cpu_stall_active());
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    for _ in vram_dma_block_body_t_cycles(CgbSpeedMode::Normal)
+        ..vram_dma_block_body_t_cycles(CgbSpeedMode::Double)
+    {
+        copied += dma
+            .tick_t_cycle_with_vram_dma_context(&mut context, runtime)
+            .is_some() as u16;
+    }
+
+    assert_eq!(copied, VRAM_DMA_BLOCK_BYTES);
+    assert!(dma.cpu_stall_active());
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_hdma_cpu_release(&mut dma, &mut context, runtime);
+    assert!(!dma.cpu_stall_active());
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_hdma_publication(&mut dma, &mut context, runtime);
+    assert_eq!(dma.read_hdma5(), 0xFF);
+    assert!(!dma.cpu_stall_active());
 }
 
 #[test]
@@ -934,12 +1168,18 @@ fn hdma_pauses_while_cpu_is_halted_and_resumes_after_halt_wake() {
     let running_hblank =
         VramDmaRuntimeContext::new(PpuBusState::lcd_enabled(PpuAccessMode::HBlank), 0, false);
     let mut copied = 0;
-    for _ in 0..VRAM_DMA_BLOCK_BYTES * VRAM_DMA_T_CYCLES_PER_BYTE as u16 {
+    for _ in 0..vram_dma_block_body_t_cycles(CgbSpeedMode::Normal) {
         copied += dma
             .tick_t_cycle_with_vram_dma_context(&mut context, running_hblank)
             .is_some() as u16;
     }
     assert_eq!(copied, VRAM_DMA_BLOCK_BYTES);
+    assert_eq!(dma.read_hdma5(), 0x00);
+    tick_hdma_cpu_release(&mut dma, &mut context, running_hblank);
+    assert!(!dma.cpu_stall_active());
+    assert_eq!(dma.read_hdma5(), 0x00);
+
+    tick_hdma_publication(&mut dma, &mut context, running_hblank);
     assert_eq!(dma.read_hdma5(), 0xFF);
 }
 

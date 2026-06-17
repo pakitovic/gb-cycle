@@ -1,0 +1,10 @@
+family = "samesuite"
+suite_name = "samesuite-ppu"
+report = "samesuite"
+model = "cgb"
+timeout_frames = 180
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "samesuite-ppu-blocking-bgpi-increase"
+rom = "ppu/blocking_bgpi_increase.gb"

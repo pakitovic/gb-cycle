@@ -41,6 +41,7 @@ fn derives_report_families_alphabetically_when_family_order_is_omitted() {
             id: "source".to_string(),
             git_url: Some("file:///unused".to_string()),
             git_rev: Some("rev".to_string()),
+            file_base_url: None,
             archive_url: None,
             archive_sha256: None,
             archive_format: None,
@@ -52,6 +53,7 @@ fn derives_report_families_alphabetically_when_family_order_is_omitted() {
                     files: vec![SourceFile {
                         path: PathBuf::from("roms/family-b/test.gb"),
                         target: PathBuf::from("test.gb"),
+                        size: None,
                         sha256: "0".repeat(64),
                     }],
                 },
@@ -62,6 +64,7 @@ fn derives_report_families_alphabetically_when_family_order_is_omitted() {
                     files: vec![SourceFile {
                         path: PathBuf::from("roms/family-a/test.gb"),
                         target: PathBuf::from("test.gb"),
+                        size: None,
                         sha256: "1".repeat(64),
                     }],
                 },
