@@ -2054,15 +2054,12 @@ fn real_gbmicrotest_suite_manifest_loads_memory_byte_oracles() {
             && matches!(&case.oracle, Oracle::MemoryByteEquals(_))
     }));
 
-    let custom_boot_case = suite
+    let real_boot_case = suite
         .cases
         .iter()
         .find(|case| case.id == "gbmicrotest-ppu-hblank-int-scx0-if-a")
-        .expect("custom boot case should exist");
-    assert_eq!(
-        custom_boot_case.startup_mode,
-        gb_core::StartupMode::CustomBoot
-    );
+        .expect("real boot case should exist");
+    assert_eq!(real_boot_case.startup_mode, gb_core::StartupMode::RealBoot);
 
     let long_timeout_case = suite
         .cases

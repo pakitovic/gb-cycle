@@ -20,11 +20,12 @@ pub(super) struct ReportOptions {
     report_id: Option<String>,
     html: bool,
     boot_rom_dir: Option<PathBuf>,
+    force_real_boot: bool,
 }
 
 pub fn report_help_text() -> &'static str {
     concat!(
-        "Usage: cargo run -p gb-test-runner --bin report -- <report-id> [--html] [--boot-rom-dir <dir>]\n",
+        "Usage: cargo run -p gb-test-runner --bin report -- <report-id> [--html] [--boot-rom-dir <dir>] [--force-real-boot]\n",
         "\n",
         "Validates that <report-id> has single-machine suites, runs cargo rom-suite <report-id>,\n",
         "and renders the fresh report-local status snapshot into test/<report>/test-report.md; rom-suite owns guarded runtime cleanup after preflight.\n",
@@ -64,6 +65,7 @@ where
     let mut report_id = None;
     let mut html = false;
     let mut boot_rom_dir = None;
+    let mut force_real_boot = false;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -75,6 +77,7 @@ where
                 };
                 boot_rom_dir = Some(PathBuf::from(value.as_ref()));
             }
+            "--force-real-boot" => force_real_boot = true,
             value if value.starts_with('-') => {
                 return Err(format!("unknown report option {value:?}; run with --help"));
             }
@@ -88,11 +91,15 @@ where
             }
         }
     }
+    if force_real_boot && boot_rom_dir.is_none() {
+        return Err("--force-real-boot requires --boot-rom-dir <dir>".to_string());
+    }
 
     Ok(ReportAction::Run(ReportOptions {
         report_id,
         html,
         boot_rom_dir,
+        force_real_boot,
     }))
 }
 
@@ -111,6 +118,7 @@ fn run_options<W: Write>(
         workspace_root,
         report,
         options.boot_rom_dir.as_deref(),
+        options.force_real_boot,
         output,
     )?;
     let document = build_report_document(
@@ -118,6 +126,7 @@ fn run_options<W: Write>(
         report,
         statuses,
         options.boot_rom_dir.as_deref(),
+        options.force_real_boot,
     )?;
     write_report_files(workspace_root, report, &document, options.html, output)
 }
@@ -126,16 +135,17 @@ fn run_suite_and_load_statuses<W: Write>(
     workspace_root: &Path,
     report: &Report,
     boot_rom_dir: Option<&Path>,
+    force_real_boot: bool,
     output: &mut W,
 ) -> Result<Vec<PersistedSuiteStatus>, String> {
-    let suite_command = suite_command_display(report, boot_rom_dir);
+    let suite_command = suite_command_display(report, boot_rom_dir, force_real_boot);
     writeln_checked(
         output,
         &format!(
             "rom-report: running {suite_command}; rom-suite will clear selected single-machine status and artifacts after preflight",
         ),
     )?;
-    let suite_arguments = suite_arguments(report, boot_rom_dir);
+    let suite_arguments = suite_arguments(report, boot_rom_dir, force_real_boot);
     let mut suite_runtime_cleaned = false;
     let suite_result = crate::suite::run_suite_command_with_workspace_tracking_cleanup(
         suite_arguments.iter().map(String::as_str),
@@ -174,20 +184,34 @@ fn run_suite_and_load_statuses<W: Write>(
     Ok(statuses)
 }
 
-fn suite_arguments(report: &Report, boot_rom_dir: Option<&Path>) -> Vec<String> {
+fn suite_arguments(
+    report: &Report,
+    boot_rom_dir: Option<&Path>,
+    force_real_boot: bool,
+) -> Vec<String> {
     let mut arguments = vec![report.id.clone()];
     if let Some(boot_rom_dir) = boot_rom_dir {
         arguments.push("--boot-rom-dir".to_string());
         arguments.push(boot_rom_dir.display().to_string());
     }
+    if force_real_boot {
+        arguments.push("--force-real-boot".to_string());
+    }
     arguments
 }
 
-fn suite_command_display(report: &Report, boot_rom_dir: Option<&Path>) -> String {
+fn suite_command_display(
+    report: &Report,
+    boot_rom_dir: Option<&Path>,
+    force_real_boot: bool,
+) -> String {
     let mut command = format!("cargo rom-suite {}", report.id);
     if let Some(boot_rom_dir) = boot_rom_dir {
         command.push_str(" --boot-rom-dir ");
         command.push_str(&boot_rom_dir.display().to_string());
+    }
+    if force_real_boot {
+        command.push_str(" --force-real-boot");
     }
     command
 }

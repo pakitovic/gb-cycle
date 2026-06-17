@@ -882,8 +882,113 @@ fn command_rejects_manifest_real_boot_without_boot_rom_dir() {
 }
 
 #[test]
-fn command_boot_rom_dir_forces_real_boot_asset_verification() {
-    let workspace = unique_temp_dir("boot-rom-dir-forces-real-boot");
+fn command_boot_rom_dir_without_manifest_real_boot_does_not_validate_assets() {
+    let workspace = unique_temp_dir("boot-rom-dir-without-real-boot");
+    let boot_rom_dir = workspace.join("missing-bootroms");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/skip-boot.suite.toml",
+        &basic_manifest(
+            "sample-report",
+            "skip-boot",
+            "blargg",
+            "skip-boot-case",
+            "case.gb",
+        ),
+    );
+    let rom_path = workspace.join("test/sample-report/blargg/case.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_serial_text_rom("Passed")).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
+
+    let mut output = Vec::new();
+    run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "skip-boot",
+            "--boot-rom-dir",
+            boot_rom_dir.to_str().expect("path should be utf-8"),
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect("plain boot ROM dir should not validate assets for skip-boot cases");
+
+    let output = String::from_utf8(output).expect("output should be utf-8");
+    assert!(output.contains("suite skip-boot: 1/1 passed"));
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_boot_rom_dir_validates_manifest_real_boot_assets() {
+    let workspace = unique_temp_dir("boot-rom-dir-manifest-real-boot");
+    let boot_rom_dir = workspace.join("bootroms");
+    fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
+    write_reports(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+    );
+    write_manifest(
+        &workspace,
+        "sample-report/real-boot.suite.toml",
+        &basic_manifest(
+            "sample-report",
+            "real-boot",
+            "blargg",
+            "real-boot-case",
+            "case.gb",
+        )
+        .replace(
+            "rom = \"case.gb\"",
+            "rom = \"case.gb\"\nstartup = \"real-boot\"",
+        ),
+    );
+    let rom_path = workspace.join("test/sample-report/blargg/case.gb");
+    fs::create_dir_all(rom_path.parent().expect("rom should have parent"))
+        .expect("rom parent should be creatable");
+    fs::write(&rom_path, build_infinite_loop_rom()).expect("rom should be writable");
+    write_materialized_source_manifest(
+        &workspace,
+        "sample-report",
+        "sample-report/sources.report.toml",
+        &[("blargg", "blargg")],
+    );
+
+    let mut output = Vec::new();
+    let error = run_suite_command_with_workspace_for_test(
+        [
+            "sample-report",
+            "--suite",
+            "real-boot",
+            "--boot-rom-dir",
+            boot_rom_dir.to_str().expect("path should be utf-8"),
+        ],
+        &workspace,
+        &mut output,
+    )
+    .expect_err("manifest real-boot should require verified assets");
+    assert!(error.contains("failed to load boot ROM assets"));
+    assert!(error.contains("dmg_boot.bin"));
+
+    fs::remove_dir_all(workspace).expect("workspace should be removable");
+}
+
+#[test]
+fn command_force_real_boot_requires_verified_assets() {
+    let workspace = unique_temp_dir("force-real-boot-requires-assets");
     let boot_rom_dir = workspace.join("bootroms");
     fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
     write_reports(
@@ -921,6 +1026,7 @@ fn command_boot_rom_dir_forces_real_boot_asset_verification() {
             "skip-boot",
             "--boot-rom-dir",
             boot_rom_dir.to_str().expect("path should be utf-8"),
+            "--force-real-boot",
         ],
         &workspace,
         &mut output,
@@ -933,7 +1039,7 @@ fn command_boot_rom_dir_forces_real_boot_asset_verification() {
 }
 
 #[test]
-fn command_boot_rom_dir_uses_case_hardware_revision_for_asset_selection() {
+fn command_force_real_boot_uses_case_hardware_revision_for_asset_selection() {
     let workspace = unique_temp_dir("boot-rom-dir-cgb-d-revision");
     let boot_rom_dir = workspace.join("bootroms");
     fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
@@ -976,6 +1082,7 @@ fn command_boot_rom_dir_uses_case_hardware_revision_for_asset_selection() {
             "cgb-d",
             "--boot-rom-dir",
             boot_rom_dir.to_str().expect("path should be utf-8"),
+            "--force-real-boot",
         ],
         &workspace,
         &mut output,
@@ -989,7 +1096,7 @@ fn command_boot_rom_dir_uses_case_hardware_revision_for_asset_selection() {
 }
 
 #[test]
-fn command_boot_rom_dir_uses_dmg0_asset_for_dmg0_revision() {
+fn command_force_real_boot_uses_dmg0_asset_for_dmg0_revision() {
     let workspace = unique_temp_dir("boot-rom-dir-dmg0-revision");
     let boot_rom_dir = workspace.join("bootroms");
     fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
@@ -1025,6 +1132,7 @@ fn command_boot_rom_dir_uses_dmg0_asset_for_dmg0_revision() {
             "dmg0",
             "--boot-rom-dir",
             boot_rom_dir.to_str().expect("path should be utf-8"),
+            "--force-real-boot",
         ],
         &workspace,
         &mut output,
@@ -1038,7 +1146,7 @@ fn command_boot_rom_dir_uses_dmg0_asset_for_dmg0_revision() {
 }
 
 #[test]
-fn command_boot_rom_dir_uses_cgb0_asset_for_cgb0_revision() {
+fn command_force_real_boot_uses_cgb0_asset_for_cgb0_revision() {
     let workspace = unique_temp_dir("boot-rom-dir-cgb0-revision");
     let boot_rom_dir = workspace.join("bootroms");
     fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
@@ -1081,6 +1189,7 @@ fn command_boot_rom_dir_uses_cgb0_asset_for_cgb0_revision() {
             "cgb0",
             "--boot-rom-dir",
             boot_rom_dir.to_str().expect("path should be utf-8"),
+            "--force-real-boot",
         ],
         &workspace,
         &mut output,
@@ -1095,7 +1204,7 @@ fn command_boot_rom_dir_uses_cgb0_asset_for_cgb0_revision() {
 }
 
 #[test]
-fn command_boot_rom_dir_uses_agb0_asset_for_agb0_revision() {
+fn command_force_real_boot_uses_agb0_asset_for_agb0_revision() {
     let workspace = unique_temp_dir("boot-rom-dir-agb0-revision");
     let boot_rom_dir = workspace.join("bootroms");
     fs::create_dir_all(&boot_rom_dir).expect("boot ROM dir should be creatable");
@@ -1138,6 +1247,7 @@ fn command_boot_rom_dir_uses_agb0_asset_for_agb0_revision() {
             "agb0",
             "--boot-rom-dir",
             boot_rom_dir.to_str().expect("path should be utf-8"),
+            "--force-real-boot",
         ],
         &workspace,
         &mut output,

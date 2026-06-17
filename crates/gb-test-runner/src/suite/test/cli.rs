@@ -8,6 +8,7 @@ fn help_mentions_suite_contract() {
     assert!(help.contains("--case <case-id>"));
     assert!(help.contains("--threads <n>"));
     assert!(help.contains("--boot-rom-dir <dir>"));
+    assert!(help.contains("--force-real-boot"));
 }
 
 #[test]
@@ -51,6 +52,20 @@ fn parse_accepts_boot_rom_dir() {
 }
 
 #[test]
+fn parse_accepts_force_real_boot_with_boot_rom_dir() {
+    let action = parse_suite_arguments_for_test([
+        "gbmicrotest",
+        "--suite",
+        "gbmicrotest",
+        "--boot-rom-dir",
+        "/tmp/bootroms",
+        "--force-real-boot",
+    ])
+    .expect("force real boot should parse with a boot ROM dir");
+    assert!(format!("{action:?}").contains("force_real_boot: true"));
+}
+
+#[test]
 fn parse_rejects_missing_and_invalid_threads_values() {
     assert!(
         parse_suite_arguments_for_test(["gb-emulator-shootout", "--threads"])
@@ -75,6 +90,15 @@ fn parse_rejects_missing_boot_rom_dir_value() {
         parse_suite_arguments_for_test(["gbmicrotest", "--boot-rom-dir"])
             .expect_err("missing boot ROM dir should fail")
             .contains("--boot-rom-dir requires a value")
+    );
+}
+
+#[test]
+fn parse_rejects_force_real_boot_without_boot_rom_dir() {
+    assert!(
+        parse_suite_arguments_for_test(["gbmicrotest", "--force-real-boot"])
+            .expect_err("force real boot without boot ROM dir should fail")
+            .contains("--force-real-boot requires --boot-rom-dir <dir>")
     );
 }
 

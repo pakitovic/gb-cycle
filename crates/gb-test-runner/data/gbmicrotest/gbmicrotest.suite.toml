@@ -48,17 +48,17 @@ rom = "ppu/hblank_int_scx0.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx0-if-a"
 rom = "ppu/hblank_int_scx0_if_a.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx0-if-b"
 rom = "ppu/hblank_int_scx0_if_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx0-if-c"
 rom = "ppu/hblank_int_scx0_if_c.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx0-if-d"
@@ -71,17 +71,17 @@ rom = "ppu/hblank_int_scx1.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx1-if-a"
 rom = "ppu/hblank_int_scx1_if_a.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx1-if-b"
 rom = "ppu/hblank_int_scx1_if_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx1-if-c"
 rom = "ppu/hblank_int_scx1_if_c.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx1-if-d"
@@ -94,7 +94,7 @@ rom = "ppu/hblank_int_scx1_nops_a.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx1-nops-b"
 rom = "ppu/hblank_int_scx1_nops_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx2"
@@ -103,17 +103,17 @@ rom = "ppu/hblank_int_scx2.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx2-if-a"
 rom = "ppu/hblank_int_scx2_if_a.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx2-if-b"
 rom = "ppu/hblank_int_scx2_if_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx2-if-c"
 rom = "ppu/hblank_int_scx2_if_c.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx2-if-d"
@@ -126,7 +126,7 @@ rom = "ppu/hblank_int_scx2_nops_a.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx2-nops-b"
 rom = "ppu/hblank_int_scx2_nops_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx3"
@@ -135,17 +135,17 @@ rom = "ppu/hblank_int_scx3.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx3-if-a"
 rom = "ppu/hblank_int_scx3_if_a.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx3-if-b"
 rom = "ppu/hblank_int_scx3_if_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx3-if-c"
 rom = "ppu/hblank_int_scx3_if_c.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx3-if-d"
@@ -158,7 +158,7 @@ rom = "ppu/hblank_int_scx3_nops_a.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx3-nops-b"
 rom = "ppu/hblank_int_scx3_nops_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx4"
@@ -167,17 +167,17 @@ rom = "ppu/hblank_int_scx4.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx4-if-a"
 rom = "ppu/hblank_int_scx4_if_a.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx4-if-b"
 rom = "ppu/hblank_int_scx4_if_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx4-if-c"
 rom = "ppu/hblank_int_scx4_if_c.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx4-if-d"
@@ -190,7 +190,7 @@ rom = "ppu/hblank_int_scx4_nops_a.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx4-nops-b"
 rom = "ppu/hblank_int_scx4_nops_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx5"
@@ -199,17 +199,17 @@ rom = "ppu/hblank_int_scx5.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx5-if-a"
 rom = "ppu/hblank_int_scx5_if_a.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx5-if-b"
 rom = "ppu/hblank_int_scx5_if_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx5-if-c"
 rom = "ppu/hblank_int_scx5_if_c.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx5-if-d"
@@ -222,7 +222,7 @@ rom = "ppu/hblank_int_scx5_nops_a.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx5-nops-b"
 rom = "ppu/hblank_int_scx5_nops_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx6"
@@ -231,17 +231,17 @@ rom = "ppu/hblank_int_scx6.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx6-if-a"
 rom = "ppu/hblank_int_scx6_if_a.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx6-if-b"
 rom = "ppu/hblank_int_scx6_if_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx6-if-c"
 rom = "ppu/hblank_int_scx6_if_c.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx6-if-d"
@@ -254,7 +254,7 @@ rom = "ppu/hblank_int_scx6_nops_a.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx6-nops-b"
 rom = "ppu/hblank_int_scx6_nops_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx7"
@@ -263,17 +263,17 @@ rom = "ppu/hblank_int_scx7.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx7-if-a"
 rom = "ppu/hblank_int_scx7_if_a.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx7-if-b"
 rom = "ppu/hblank_int_scx7_if_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx7-if-c"
 rom = "ppu/hblank_int_scx7_if_c.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx7-if-d"
@@ -286,7 +286,7 @@ rom = "ppu/hblank_int_scx7_nops_a.gb"
 [[case]]
 id = "gbmicrotest-ppu-hblank-int-scx7-nops-b"
 rom = "ppu/hblank_int_scx7_nops_b.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-hblank-scx2-if-a"
@@ -763,7 +763,7 @@ rom = "ppu/line_153_lyc_int_b.gb"
 [[case]]
 id = "gbmicrotest-ppu-line-65-ly"
 rom = "ppu/line_65_ly.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-ppu-lyc1-int-halt-a"
@@ -1244,312 +1244,312 @@ rom = "mbc/mbc1_ram_banks.gb"
 [[case]]
 id = "gbmicrotest-boot-poweron-bgp-000"
 rom = "boot/poweron_bgp_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-div-000"
 rom = "boot/poweron_div_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-div-004"
 rom = "boot/poweron_div_004.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-div-005"
 rom = "boot/poweron_div_005.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-dma-000"
 rom = "boot/poweron_dma_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-if-000"
 rom = "boot/poweron_if_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-joy-000"
 rom = "boot/poweron_joy_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-lcdc-000"
 rom = "boot/poweron_lcdc_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-ly-000"
 rom = "boot/poweron_ly_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-ly-119"
 rom = "boot/poweron_ly_119.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-ly-120"
 rom = "boot/poweron_ly_120.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-ly-233"
 rom = "boot/poweron_ly_233.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-ly-234"
 rom = "boot/poweron_ly_234.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-lyc-000"
 rom = "boot/poweron_lyc_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-000"
 rom = "boot/poweron_oam_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-005"
 rom = "boot/poweron_oam_005.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-006"
 rom = "boot/poweron_oam_006.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-069"
 rom = "boot/poweron_oam_069.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-070"
 rom = "boot/poweron_oam_070.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-119"
 rom = "boot/poweron_oam_119.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-120"
 rom = "boot/poweron_oam_120.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-121"
 rom = "boot/poweron_oam_121.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-183"
 rom = "boot/poweron_oam_183.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-184"
 rom = "boot/poweron_oam_184.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-233"
 rom = "boot/poweron_oam_233.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-234"
 rom = "boot/poweron_oam_234.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-oam-235"
 rom = "boot/poweron_oam_235.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-sb-000"
 rom = "boot/poweron_sb_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-sc-000"
 rom = "boot/poweron_sc_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-scx-000"
 rom = "boot/poweron_scx_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-scy-000"
 rom = "boot/poweron_scy_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-000"
 rom = "boot/poweron_stat_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-005"
 rom = "boot/poweron_stat_005.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-006"
 rom = "boot/poweron_stat_006.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-007"
 rom = "boot/poweron_stat_007.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-026"
 rom = "boot/poweron_stat_026.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-027"
 rom = "boot/poweron_stat_027.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-069"
 rom = "boot/poweron_stat_069.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-070"
 rom = "boot/poweron_stat_070.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-119"
 rom = "boot/poweron_stat_119.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-120"
 rom = "boot/poweron_stat_120.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-121"
 rom = "boot/poweron_stat_121.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-140"
 rom = "boot/poweron_stat_140.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-141"
 rom = "boot/poweron_stat_141.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-183"
 rom = "boot/poweron_stat_183.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-184"
 rom = "boot/poweron_stat_184.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-234"
 rom = "boot/poweron_stat_234.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-stat-235"
 rom = "boot/poweron_stat_235.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-tac-000"
 rom = "boot/poweron_tac_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-tima-000"
 rom = "boot/poweron_tima_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-tma-000"
 rom = "boot/poweron_tma_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-000"
 rom = "boot/poweron_vram_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-025"
 rom = "boot/poweron_vram_025.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-026"
 rom = "boot/poweron_vram_026.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-069"
 rom = "boot/poweron_vram_069.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-070"
 rom = "boot/poweron_vram_070.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-139"
 rom = "boot/poweron_vram_139.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-140"
 rom = "boot/poweron_vram_140.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-183"
 rom = "boot/poweron_vram_183.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-vram-184"
 rom = "boot/poweron_vram_184.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-wx-000"
 rom = "boot/poweron_wx_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-boot-poweron-wy-000"
 rom = "boot/poweron_wy_000.gb"
-startup = "custom-boot"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-dma-dma-0x1000"

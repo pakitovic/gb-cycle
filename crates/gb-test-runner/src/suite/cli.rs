@@ -24,11 +24,12 @@ pub(super) struct SuiteOptions {
     case_id: Option<String>,
     threads: Option<usize>,
     boot_rom_dir: Option<PathBuf>,
+    force_real_boot: bool,
 }
 
 pub fn suite_help_text() -> &'static str {
     concat!(
-        "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>] [--threads <n>] [--boot-rom-dir <dir>]\n",
+        "Usage: cargo run -p gb-test-runner --bin suite -- <report-id> [--suite <suite-name>] [--case <case-id>] [--threads <n>] [--boot-rom-dir <dir>] [--force-real-boot]\n",
         "\n",
         "Validates report/suite/case selection, clears selected suite status/artifacts under test/<report>/, then runs report-local *.suite.toml manifests through the new minimal suite runner.\n",
     )
@@ -90,6 +91,7 @@ where
     let mut case_id = None;
     let mut threads = None;
     let mut boot_rom_dir = None;
+    let mut force_real_boot = false;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         match argument.as_ref() {
@@ -124,6 +126,7 @@ where
                 };
                 boot_rom_dir = Some(PathBuf::from(value.as_ref()));
             }
+            "--force-real-boot" => force_real_boot = true,
             value if value.starts_with('-') => {
                 return Err(format!("unknown argument {value:?}; run with --help"));
             }
@@ -141,6 +144,9 @@ where
     if case_id.is_some() && suite_name.is_none() {
         return Err("--case requires --suite <suite-name>".to_string());
     }
+    if force_real_boot && boot_rom_dir.is_none() {
+        return Err("--force-real-boot requires --boot-rom-dir <dir>".to_string());
+    }
 
     Ok(SuiteAction::Run(SuiteOptions {
         report_id,
@@ -148,6 +154,7 @@ where
         case_id,
         threads,
         boot_rom_dir,
+        force_real_boot,
     }))
 }
 
@@ -188,19 +195,20 @@ fn run_options_after_cleanup<W: Write, F: FnMut()>(
             "report {report_id:?} does not contain suite manifests"
         ));
     }
-    let boot_rom_assets = match options.boot_rom_dir.as_deref() {
-        Some(root) => {
-            force_real_boot(&mut suites);
-            let profiles = boot_rom_profiles(&suites);
-            Some(
-                load_verified_boot_rom_assets(root, &profiles)
-                    .map_err(|error| format!("failed to load boot ROM assets: {error}"))?,
-            )
-        }
-        None => {
-            reject_manifest_real_boot_without_assets(&suites)?;
-            None
-        }
+    if options.force_real_boot {
+        force_real_boot(&mut suites);
+    }
+    let profiles = boot_rom_profiles(&suites);
+    let boot_rom_assets = if profiles.is_empty() {
+        None
+    } else {
+        let Some(root) = options.boot_rom_dir.as_deref() else {
+            return reject_manifest_real_boot_without_assets(&suites);
+        };
+        Some(
+            load_verified_boot_rom_assets(root, &profiles)
+                .map_err(|error| format!("failed to load boot ROM assets: {error}"))?,
+        )
     };
     let run_config = SuiteRunConfig { boot_rom_assets };
 
@@ -337,7 +345,11 @@ fn force_real_boot(suites: &mut [SuiteManifest]) {
 
 fn boot_rom_profiles(suites: &[SuiteManifest]) -> Vec<BootRomProfile> {
     let mut profiles = Vec::new();
-    for case in suites.iter().flat_map(|suite| suite.cases.iter()) {
+    for case in suites
+        .iter()
+        .flat_map(|suite| suite.cases.iter())
+        .filter(|case| case.startup_mode == StartupMode::RealBoot)
+    {
         let profile = BootRomProfile::new(
             case.console_model,
             case.hardware_revision,

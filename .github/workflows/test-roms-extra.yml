@@ -24,6 +24,7 @@ jobs:
           # Temporarily disabled while the c-sp v7 Mealybug inventory is validated manually.
           # - name: mealybug-tearoom-tests
           - name: gbmicrotest
+            boot_roms: true
           - name: mooneye
           - name: wilbertpol
           - name: blargg
@@ -38,5 +39,17 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Fetch ${{ matrix.name }} boot ROMs
+        if: ${{ matrix.boot_roms == true }}
+        run: |
+          BOOT_ROM_DIR="${RUNNER_TEMP}/boot-rom"
+          cargo rom-fetch --boot-rom "$BOOT_ROM_DIR"
+          echo "BOOT_ROM_DIR=$BOOT_ROM_DIR" >> "$GITHUB_ENV"
+
       - name: Run ${{ matrix.name }} ROM suite
-        run: cargo rom-suite ${{ matrix.name }}
+        run: |
+          if [[ "${{ matrix.boot_roms == true }}" == "true" ]]; then
+            cargo rom-suite "${{ matrix.name }}" --boot-rom-dir "$BOOT_ROM_DIR"
+          else
+            cargo rom-suite "${{ matrix.name }}"
+          fi
