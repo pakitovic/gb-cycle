@@ -379,6 +379,13 @@ fn trace_rom_tag(rom_relpath: &str) -> String {
 const LY143_ROM: &str = "test/wilbertpol/wilbertpol/acceptance/gpu/ly143_144_mode3_0.gb";
 const SPRITES_NOPS_ROM: &str =
     "test/wilbertpol/wilbertpol/acceptance/gpu/intr_2_mode0_timing_sprites_nops.gb";
+const LY00_ROM: &str = "test/wilbertpol/wilbertpol/acceptance/gpu/ly00_mode3_0.gb";
+
+#[test]
+#[ignore = "§24.25.5 Cut R0: ly00_mode3_0 (PASSES) DMG re-enable line_dot grounding; copy to main + diff"]
+fn irq_trace_ly00_mode3_0_dmg() {
+    irq_dispatch_trace(LY00_ROM, ConsoleModel::GameBoy, 1_500_000);
+}
 
 #[test]
 #[ignore = "§24.25.3 differential IRQ trace: ly143_144_mode3_0 DMG; copy to main + diff"]
@@ -395,7 +402,7 @@ fn irq_trace_ly143_144_mode3_0_cgb() {
 #[test]
 #[ignore = "§24.25.3 differential IRQ trace: intr_2_mode0_timing_sprites_nops DMG; copy to main + diff"]
 fn irq_trace_intr_2_sprites_nops_dmg() {
-    irq_dispatch_trace(SPRITES_NOPS_ROM, ConsoleModel::GameBoy, 1_500_000);
+    irq_dispatch_trace(SPRITES_NOPS_ROM, ConsoleModel::GameBoy, 2_200_000);
 }
 
 #[test]

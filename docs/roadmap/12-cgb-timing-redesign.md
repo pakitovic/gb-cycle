@@ -2421,3 +2421,106 @@ on DMG and with a clear target (+1 dot, post-step branch 253 vs main 252).
 Temp diagnostic probes in `ppu/tests/oracle.rs`: `irq_dispatch_trace` + `irq_trace_ly143_144_mode3_0_{dmg,cgb}` /
 `irq_trace_intr_2_sprites_nops_{dmg,cgb}` (`#[ignore]`, write `/tmp/irq_trace_*.txt`; copy the fn block into
 `../gb-cycle-main` to re-diff). Revert at close.
+
+**Workstream B first attempt — LCD-enable effect delay +1 — REFUTED (net −9; the LCD-restart phase is coupled and
+position-dependent, 2026-06-17).** Hypothesis: under the reorder the same-cycle PPU tick (phase 7, after the LCDC-enable
+write at phase 6) consumes one decrement of `CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES`, so the restart lands one dot early;
+the constant is identical to `main` (5) and the countdown logic byte-identical, so the +1 is purely the reorder
+compensation. Tried `enter_lcd_enable_pending_state(CPU_LCDC_ENABLE_EFFECT_DELAY_T_CYCLES + 1)` on the CPU-write path only.
+**Gate: 94 → 85/105.** It **FIXED 5** (`ly143_144_{145,152_153,mode0_1,mode3_0}` + `lcdon_mode_timing`) but **BROKE 14**
+(`ly00_{mode0_2,mode1_0,mode1_2,mode2_3,mode3_0}` + `ly_lyc{,_0,_0_write,_144,_153_write,_write}` GS/C) that PASS at +0.
+`hblank_ly_scx` + the 5 `intr_2_*_sprites` were unchanged (Class A). ⇒ **`ly143_144_*` want the post-enable timeline +1
+while `ly00_*`/`ly_lyc_*` want +0**, even though all do an LCD off→on with the same delay — so the enable delay is too
+GLOBAL a knob; the one-dot error is position-dependent (which raster dot the enable lands on relative to the 456-dot line),
+not a uniform enable-delay shift. This matches the documented LCD-restart refuted history (CGB §M3, 8 bounded experiments
+refuted). REVERTED. The mechanism remains: at the `ly143_144_mode3_0` divergent read both PPUs are at internal `line_dot`
+252 but the branch is one TICK ahead in absolute count (post-step 253 vs 252) from the re-enable, so A′ reads `access(252)`
+= HBlank where main reads `access(251)` = Drawing; the fix must make the branch restart NOT land one tick early WITHOUT
+shifting the enable-relative phase that `ly00_*`/`ly_lyc_*` depend on — i.e. align the restart's raster phase, not the
+scalar delay. Open: is this closable bounded, or is it the §24.18 full counter rephase? (Decision pending.)
+
+**Workstream A (Class A sprite variants) RE-DIAGNOSED — SAME root as Class B, NOT an IRQ issue (2026-06-17).** Differential
+trace of `intr_2_mode0_timing_sprites_nops` (DMG, branch vs main, FF41-poll-only diff): the FF41 read sequence is
+byte-identical for the first 122 reads, then the branch fails a testcase and jumps to the fibonacci terminal (123 FF41
+reads vs main's 480 over the same 2.2M-cycle window). At the failing testcase the @cycle-aligned reads still MATCH in value
+(both `0xA3`→`0xA0` across the Drawing→HBlank boundary at pc=0x0EAF, ly=68), but the **branch internal `line_dot` is +1**
+there (Drawing@261/HBlank@297 vs main 260/296) — the SAME +1-dot phase offset as Class B, again developing at a `ly=0`
+event mid-trace (@499527, pc=0x0E55, the per-testcase LCD/restart setup the wilbertpol gpu tests share). The
+Mode2-STAT-IRQ-wake origin is a red herring: the sprite count diverges because the §245-extended `mode0_start` poll lands
+the mode0 boundary one poll-iteration off under the +1 PPU phase. **Workstream A is the same reorder × restart PPU-phase
+coupling as Workstream B, not an IRQ-edge problem; "converge STAT-IRQ to main" does not address it.**
+
+**CONVERGENT CONCLUSION (both workstreams):** all 11 regressions reduce to the branch PPU developing a **+1 internal
+`line_dot` phase offset vs main at `ly=0` restart-like events under the reorder**, which A′'s uniform readback reference
+cannot compensate because the offset is **position-dependent** (present for `ly143_144_*`/sprite variants; absent or
+tolerated for `ly00_*`/`ly_lyc_*` which share the restart path — proven by the enable+1 experiment fixing the former and
+breaking the latter). Bounded patches (A′ readback reference, published_stat override, enable-delay) are each
+position-blind and therefore refuted, re-confirming §24.18 / §24.25.2: the landing path is the **full `self.ly`/`line_dot`
+counter rephase** so the PPU internal phase is uniformly main-equivalent and one readback model works everywhere. A′ at
+94/105 is net-WORSE than the pre-A′ self-consistent 102/105 (3 targets fail); documented fallback = revert-A′ + keep-Cut-A
+(clean 102/105 with the hide-family seam removed) until the §24.18 rephase lands. DECISION PENDING (user).
+
+#### 24.25.5 USER CHOSE §24.18 — refined plan: it is a COMPREHENSIVE atomic raster rephase, not the LY-lead cut alone; the bounded enable fix is refuted because it breaks the COMPENSATED balance (2026-06-17)
+
+User decision: do the §24.18 rephase now (keep A′ + Cut A). One more decisive refinement before the restructure:
+
+**Why no bounded LCD-restart fix exists (definitive).** The 11 regressions' root is the branch PPU landing **+1 internal
+`line_dot`** after an LCD re-enable under the reorder (the write-cycle's phase-7 PPU tick decrements
+`lcd_enable_pending_delay_tcycles` whereas `main`'s phase-4 tick precedes the write). Making the enable countdown
+reorder-invariant (skip the write-cycle decrement) is EXACTLY equivalent to the `+1` experiment (restart one cycle later =
+`main`'s wall-clock) — and that was REFUTED (94→85: fixes `ly143_144_*`+`lcdon`, breaks `ly00_*`+`ly_lyc_*`). The reason
+`ly00_*`/`ly_lyc_*` PASS today at the "buggy" +1 restart is that the branch carries OTHER reorder compensations (the
+LY-read lead, the line-153 / vblank-wrap seams, the `delay==2` LYC-on-enable refresh) that are balanced AGAINST the current
+enable timing. Touching the enable timing alone breaks that balance. ⇒ **the enable timing and the compensations must be
+re-grounded TOGETHER, atomically** — confirming §24.18's "multi-cut, regression surface across every timing ROM" and that
+A′ (one bounded knob) could never be sufficient.
+
+**Scope clarification: §24.18-as-written prioritizes the LY-lead/LYC-seam; the 11 regressions are the `line_dot`
+restart/readback phase.** Both are facets of the same disease (the reorder distorts the raster phase the CPU observes), so
+the COMPREHENSIVE rephase subsumes both, but the 11-regression close specifically needs the `line_dot`/restart phase
+re-grounded, not just LY-lead. The end-state target: the branch PPU's observable phase (LY + line_dot + mode + LYC + the
+restart seeding) is uniformly `main`-equivalent under the reorder, so the SINGLE A′ readback model (read at the post-tick
+reference) is correct everywhere and ALL the per-path compensations delete.
+
+**Cut plan (each cut oracle-gated on `cargo rom-suite wilbertpol --suite wilbertpol-acceptance`; accept unit-test red until
+Cut 5; the §245 `current_mode0_start_dot` stays frozen):**
+- **Cut R0 (grounding, safe, no core change):** per-cycle full-machine probe of the LCD re-enable on branch vs `main` for
+  one FAILING (`ly143_144_mode3_0`) and one PASSING (`ly00_mode3_0`, `ly_lyc-gs`) ROM — dump `line_dot` every cycle across
+  the off→on, pin the EXACT cycle the branch gains +1 and confirm whether the passing ROMs are +1-and-tolerant or +0. This
+  decides whether the restart re-ground is uniform (one mechanism) or genuinely sub-cycle-alignment dependent (needs the
+  full counter rephase). Do this FIRST — it sizes the rest.
+- **Cut 1 (self.ly mid-line increment + `next_ly` guard, §24.18 pt 1):** increment `self.ly` at the DocBoy dot (ground vs
+  oracle; ~453) with a guard so the end-of-line wrap does not double-increment; re-anchor the mode-derivation leaves
+  (`access_mode_from_raster` family, group 1) + VBlank-entry/mode2-vblank-entry edges (groups 2-3) to `line_dot` so the LY
+  lead never flips mode early.
+- **Cut 2 (restart/line_dot seeding, §24.18 pt-E):** re-ground `enter_lcd_enabled_restart_state` + the enable countdown so
+  the post-re-enable `line_dot` matches `main` under the reorder, REMOVING the compensations it was balanced against
+  (the +1 enable artifact) — done together with Cut 1 so the balance is preserved.
+- **Cut 3 (`last_ly`/`last_lyc` + `enable_lyc_eq_ly_irq`, §24.18 pt 4):** delete the LYC observation-tables seam +
+  `live_ly_for_lyc_compare` + the irq/readback split; resolve write-vs-tick (pt 5).
+- **Cut 4:** delete the now-subsumed interim seams (item-1/E1/batch-4; item-3 last, gated on the IF-read phase) + the
+  LY-read lead (group 5); verify net manual-seam count FALLS.
+- **Cut 5:** re-ground the ~9 mode_edges + stat/registers unit tests + regenerate the ~17 trace fixtures; full-suite gate.
+
+NEXT ACTION = Cut R0 (the per-cycle re-enable line_dot grounding), as it sizes Cut 1+2 and confirms the mechanism before
+the core restructure. This is its own scoped, multi-session, oracle-gated branch effort per §24.18's own guidance.
+
+**Cut R0 RESULT (DONE, 2026-06-17) — the +1 offset is UNIFORM, NOT position-dependent; this re-sizes the rephase.**
+Per-cycle full-machine trace of `ly00_mode3_0` (PASSES) vs `ly143_144_mode3_0` (FAILS), DMG, branch vs `../gb-cycle-main`:
+- BOTH ROMs: the branch PPU internal `line_dot` is **+1 ahead of main from the SAME cycle** (@65755, ly=0, right after the
+  shared LCD off→on), in 2386/2534 sampled lines. So the +1 restart offset is **uniform across siblings**, not
+  sub-cycle-alignment dependent.
+- `ly00_mode3_0`: CPU-observable `(ly, read, pc)` sequence is **byte-identical** branch↔main (0 diff lines) → PASSES. Its
+  reads never land on the dot where the +1 flips a published mode.
+- `ly143_144_mode3_0`: identical except **one** FF41 read (mode0 vs mode3 at the Drawing→HBlank boundary) → FAILS.
+⇒ **The +1 PPU-phase offset after re-enable is real and uniform; A′'s readback only EXPOSES it at boundary-hitting reads.**
+This means: (a) a uniform restart re-ground CAN remove it (it is one mechanism, not N position cases); (b) the enable+1
+experiment's `ly00_*`/`ly_lyc_*` regressions were a SECONDARY effect (candidate: the `delay==2` LYC-on-enable refresh shift,
+and/or A′'s `+1` reference double-counting once the offset is removed — `ly00_*` currently passes BECAUSE the +1 offset
+cancels A′'s `+1` for its tolerant reads), NOT irreducible position-dependence. The cleaner framing of the disease: the
+branch PPU phase vs main is **inconsistent** — ~0 in steady state (where A′'s `+1` readback reference compensates the
+CPU-pre-tick read) but **+1 after an LCD re-enable** (where A′'s `+1` then over-counts at boundary reads). The rephase must
+make the branch PPU phase vs main **consistent everywhere** (then ONE readback model — A′, or main's reverted — is correct
+and the per-path compensations delete). Cut 1+2 should therefore re-ground the re-enable restart to the SAME branch-vs-main
+phase as steady state, and re-test whether A′'s `+1` reference is still needed or also deletes. Probe:
+`irq_trace_ly00_mode3_0_dmg` in `oracle.rs` (`#[ignore]`).
