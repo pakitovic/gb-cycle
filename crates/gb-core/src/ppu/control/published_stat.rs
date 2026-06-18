@@ -25,6 +25,16 @@ impl Ppu {
                 .checked_sub(LINE0_VBLANK_WRAP_STAT_READBACK_DELAY_DOTS);
         }
 
+        // During the post-re-enable blank frame the internal raster is one dot early
+        // (the restart fires a cycle before `main`), which already cancels the reorder's
+        // pre-tick read — so A′'s `+1` reference over-shoots by one. Undo it (base
+        // `access(line_dot - 1)`, `main`'s un-shifted reference) for the blank frame only,
+        // leaving the steady-frame `+1` intact. (Interim readback fix; the clean end-state
+        // eliminates the offset at source via the §24.18 `self.ly` mid-line lead — §24.25.8-.10.)
+        if self.runtime.blank_frame_active {
+            return self.line_dot.checked_sub(1);
+        }
+
         // Canonical post-tick reference (`reference = line_dot + 1`): the published base
         // is `access(reference - 1) = access(line_dot)`, and the line-start fallback is
         // preserved at `line_dot == 0`. (Was `line_dot - 1`, one dot too far behind under

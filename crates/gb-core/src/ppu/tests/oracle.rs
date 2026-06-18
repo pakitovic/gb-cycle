@@ -300,8 +300,29 @@ fn irq_dispatch_trace(rom_relpath: &str, model: ConsoleModel, max_cycles: u64) {
     let mut prev_ff44 = 0xFFu16; // sentinel; dedups the busy-poll on FF44 (log only on change)
     let mut terminal = "(none)";
 
+    let raster_mode = std::env::var("GB_TRACE_RASTER").is_ok();
     for cycle in 0u64..max_cycles {
         machine.step_t_cycle();
+
+        // GB_TRACE_RASTER: per-cycle (cycle, ly, line_dot, blank) during the blank frame,
+        // to align branch-vs-main internal raster by @cycle and pin the restart-early offset.
+        if raster_mode {
+            let p = machine.ppu();
+            let s = p.snapshot();
+            if s.blank_frame_active {
+                out.push(format!(
+                    "R {tag} @{cycle} ly={:>3} dot={:>3}",
+                    s.ly, s.line_dot
+                ));
+            }
+            if matches!(
+                machine.cpu().snapshot().current_opcode,
+                Some(0x40) | Some(0xED)
+            ) {
+                break;
+            }
+            continue;
+        }
 
         // Snapshot every cycle: these readback ROMs disable interrupts and busy-poll FF44,
         // so the signal is the register READS (need last_bus_activity), not IRQ edges.
@@ -335,7 +356,7 @@ fn irq_dispatch_trace(rom_relpath: &str, model: ConsoleModel, max_cycles: u64) {
             let ld = p.line_dot();
             // Layer-(a) diagnostic: for FF41 reads near ly=0, reconstruct the published_stat
             // inputs (the CPU read pre-tick, so the relevant dots are ld-2..ld).
-            let extra = if raddr == 0xFF41 && p.ly() <= 2 {
+            let extra = if raddr == 0xFF41 {
                 let am = |d: u16| p.access_mode_for_line_dot(d);
                 format!(
                     " | m0s={} blank={} am[{},{},{}]={:?}/{:?}/{:?}",
@@ -351,10 +372,12 @@ fn irq_dispatch_trace(rom_relpath: &str, model: ConsoleModel, max_cycles: u64) {
             } else {
                 String::new()
             };
+            let r = &cpu.registers;
             out.push(format!(
-                "T {tag} ly={:>3} dot={ld:>3} mode={mode:?} IF={iff:#04X} | rd={raddr:#06X}:{rval:#04X} pc={:#06X} @{cycle}{extra}",
+                "T {tag} ly={:>3} dot={ld:>3} mode={mode:?} IF={iff:#04X} | rd={raddr:#06X}:{rval:#04X} pc={:#06X} BCDEHLA={:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X} sp={:#06X} @{cycle}{extra}",
                 p.ly(),
-                cpu.registers.pc,
+                r.pc,
+                r.b, r.c, r.d, r.e, r.h, r.l, r.a, r.sp,
             ));
         }
 
@@ -371,7 +394,7 @@ fn irq_dispatch_trace(rom_relpath: &str, model: ConsoleModel, max_cycles: u64) {
             terminal = "magic";
             break;
         }
-        if exec == crate::CpuExecutionState::Halted {
+        if exec == crate::CpuExecutionState::Halted && std::env::var("GB_TRACE_NOHALT").is_err() {
             out.push(format!("T {tag} HALTED @{cycle}"));
             terminal = "halt";
             break;
@@ -449,4 +472,23 @@ fn cut1_grounding_internal_ly_phase() {
         cut1_dump_phase(model, "line153(ly152,lyc153)", 152, 153);
         cut1_dump_phase(model, "line153(ly152,lyc0)", 152, 0);
     }
+}
+
+#[test]
+#[ignore = "param trace: GB_TRACE_ROM=<relpath> GB_TRACE_MODEL=cgb|dmg"]
+fn irq_trace_env() {
+    let rom = std::env::var("GB_TRACE_ROM").expect("GB_TRACE_ROM set");
+    let model = if std::env::var("GB_TRACE_MODEL")
+        .map(|m| m == "cgb")
+        .unwrap_or(false)
+    {
+        ConsoleModel::GameBoyColor
+    } else {
+        ConsoleModel::GameBoy
+    };
+    let cycles = std::env::var("GB_TRACE_CYCLES")
+        .ok()
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(1_500_000);
+    irq_dispatch_trace(&rom, model, cycles);
 }
