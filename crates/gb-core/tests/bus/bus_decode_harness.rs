@@ -88,10 +88,12 @@ fn explicit_cartridgeless_bus_harness_uses_placeholders_for_unowned_regions() {
 #[test]
 fn public_unusable_area_descriptor_keeps_cgb_readback_revision_dependent() {
     let dmg_bus = Bus::new(ConsoleModel::GameBoy);
-    let cgb_bus = Bus::new(ConsoleModel::GameBoyColor);
+    let cgb_default_bus = Bus::new(ConsoleModel::GameBoyColor);
+    let cgb_e_bus = Bus::new_with_revision(ConsoleModel::GameBoyColor, HardwareRevision::CpuCgbE);
 
     let dmg = dmg_bus.describe_unusable_area(0xFEA0).unwrap();
-    let cgb = cgb_bus.describe_unusable_area(0xFEA0).unwrap();
+    let cgb_default = cgb_default_bus.describe_unusable_area(0xFEA0).unwrap();
+    let cgb_e = cgb_e_bus.describe_unusable_area(0xFEA0).unwrap();
 
     assert_eq!(
         dmg.read_profile(),
@@ -101,13 +103,15 @@ fn public_unusable_area_descriptor_keeps_cgb_readback_revision_dependent() {
     assert_eq!(dmg.runtime_fallback_read_value(), 0x00);
     assert!(dmg.runtime_fallback_writes_ignored());
     assert_eq!(
-        cgb.read_profile(),
+        cgb_default.read_profile(),
         UnusableAreaReadProfile::CgbRevisionDependent
     );
     assert_eq!(
-        cgb.write_profile(),
+        cgb_default.write_profile(),
         UnusableAreaWriteProfile::CgbRevisionDependentRam
     );
-    assert_eq!(cgb.runtime_fallback_read_value(), 0xAA);
-    assert!(cgb.runtime_fallback_writes_ignored());
+    assert_eq!(cgb_default.runtime_fallback_read_value(), 0xFF);
+    assert!(cgb_default.runtime_fallback_writes_ignored());
+    assert_eq!(cgb_e.runtime_fallback_read_value(), 0xAA);
+    assert!(cgb_e.runtime_fallback_writes_ignored());
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::HardwareRevision;
 
 #[test]
 fn decode_address_covers_each_dmg_region_boundary() {
@@ -1064,11 +1065,13 @@ fn bus_address_and_io_metadata_accessors_keep_domain_information_explicit() {
 #[test]
 fn unusable_area_descriptor_is_model_aware() {
     let dmg_bus = Bus::new(ConsoleModel::GameBoy);
-    let cgb_bus = Bus::new(ConsoleModel::GameBoyColor);
+    let cgb_default_bus = Bus::new(ConsoleModel::GameBoyColor);
+    let cgb_e_bus = Bus::new_with_revision(ConsoleModel::GameBoyColor, HardwareRevision::CpuCgbE);
     let agb_bus = Bus::new(ConsoleModel::GameBoyAdvance);
 
     let dmg = dmg_bus.describe_unusable_area(0xFEA0).unwrap();
-    let cgb = cgb_bus.describe_unusable_area(0xFEA0).unwrap();
+    let cgb_default = cgb_default_bus.describe_unusable_area(0xFEA0).unwrap();
+    let cgb_e = cgb_e_bus.describe_unusable_area(0xFEA0).unwrap();
     let agb = agb_bus.describe_unusable_area(0xFEA0).unwrap();
 
     assert_eq!(dmg.address(), 0xFEA0);
@@ -1080,17 +1083,28 @@ fn unusable_area_descriptor_is_model_aware() {
     assert_eq!(dmg.runtime_fallback_read_value(), 0x00);
     assert!(dmg.runtime_fallback_writes_ignored());
 
-    assert_eq!(cgb.address(), 0xFEA0);
+    assert_eq!(cgb_default.address(), 0xFEA0);
     assert_eq!(
-        cgb.read_profile(),
+        cgb_default.read_profile(),
         UnusableAreaReadProfile::CgbRevisionDependent
     );
     assert_eq!(
-        cgb.write_profile(),
+        cgb_default.write_profile(),
         UnusableAreaWriteProfile::CgbRevisionDependentRam
     );
-    assert_eq!(cgb.runtime_fallback_read_value(), 0xAA);
-    assert!(cgb.runtime_fallback_writes_ignored());
+    assert_eq!(cgb_default.runtime_fallback_read_value(), 0xFF);
+    assert!(cgb_default.runtime_fallback_writes_ignored());
+    assert_eq!(cgb_e.address(), 0xFEA0);
+    assert_eq!(
+        cgb_e.read_profile(),
+        UnusableAreaReadProfile::CgbRevisionDependent
+    );
+    assert_eq!(
+        cgb_e.write_profile(),
+        UnusableAreaWriteProfile::CgbRevisionDependentRam
+    );
+    assert_eq!(cgb_e.runtime_fallback_read_value(), 0xAA);
+    assert!(cgb_e.runtime_fallback_writes_ignored());
 
     assert_eq!(agb.address(), 0xFEA0);
     assert_eq!(
@@ -1105,7 +1119,7 @@ fn unusable_area_descriptor_is_model_aware() {
     assert!(agb.runtime_fallback_writes_ignored());
 
     assert!(dmg_bus.describe_unusable_area(0xFE9F).is_none());
-    assert!(cgb_bus.describe_unusable_area(0xFF00).is_none());
+    assert!(cgb_default_bus.describe_unusable_area(0xFF00).is_none());
     assert!(agb_bus.describe_unusable_area(0xFF00).is_none());
 }
 
