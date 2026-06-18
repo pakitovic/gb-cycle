@@ -37,7 +37,7 @@ fn renderers_share_validated_counts_and_status_display() {
     };
 
     let markdown = render_markdown(&document);
-    let html = render_html(&document);
+    let html = render_html(&document).expect("HTML report should render");
 
     assert!(markdown.contains("# Test Report: sample-report (2/3)"));
     assert!(markdown.contains(REPORT_STATUS_PASS_EMOJI));

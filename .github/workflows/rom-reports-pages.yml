@@ -32,23 +32,27 @@ jobs:
         id: reports
         run: |
           set -euo pipefail
-          reports_json='["gb-emulator-shootout","rtc3test","gbmicrotest","little-things-gb","magen","mealybug-tearoom-tests","mooneye","samesuite"]'
+          reports_path="crates/gb-test-runner/data/rom-reports-pages.json"
+          jq -e 'type == "array" and all(.[]; (.name | type == "string") and ((has("boot_roms") | not) or (.boot_roms | type == "boolean")))' "${reports_path}" >/dev/null
+          reports_json="$(jq -c . "${reports_path}")"
           echo "reports_json=${reports_json}" >> "${GITHUB_OUTPUT}"
 
-      - name: Build ROM report runner
-        run: cargo build --release -p gb-test-runner --bin report
+      - name: Build ROM report runners
+        run: cargo build --release -p gb-test-runner --bin report --bin fetch
 
-      - name: Upload ROM report runner
+      - name: Upload ROM report runners
         uses: actions/upload-artifact@v7
         with:
-          name: rom-report-runner
-          path: target/release/report
+          name: rom-report-runners
+          path: |
+            target/release/report
+            target/release/fetch
           if-no-files-found: error
           retention-days: 1
 
   render-report:
     needs: build-runner
-    name: render ${{ matrix.report }}
+    name: render ${{ matrix.report.name }}
     runs-on: ubuntu-latest
 
     strategy:
@@ -60,13 +64,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Download ROM report runner
+      - name: Download ROM report runners
         uses: actions/download-artifact@v8
         with:
-          name: rom-report-runner
+          name: rom-report-runners
           path: .bin
 
-      - name: Generate ${{ matrix.report }} HTML report
+      - name: Generate ${{ matrix.report.name }} HTML report
         run: |
           set -euo pipefail
 
@@ -76,23 +80,44 @@ jobs:
             exit 1
           fi
           chmod +x "${report_runner}"
-          "${report_runner}" "${{ matrix.report }}" --html
+          report_args=("${{ matrix.report.name }}" "--html")
 
-          report_html="test/${{ matrix.report }}/test-report.html"
+          if [[ "${{ matrix.report.boot_roms == true }}" == "true" ]]; then
+            fetch_runner="$(find .bin -type f -name fetch -print -quit)"
+            if [[ -z "${fetch_runner}" ]]; then
+              echo "missing downloaded ROM fetch runner" >&2
+              exit 1
+            fi
+            chmod +x "${fetch_runner}"
+            BOOT_ROM_DIR="${RUNNER_TEMP}/boot-rom"
+            "${fetch_runner}" --boot-rom "${BOOT_ROM_DIR}"
+            report_args+=("--boot-rom-dir" "${BOOT_ROM_DIR}")
+          fi
+
+          "${report_runner}" "${report_args[@]}"
+
+          status_dir="test/${{ matrix.report.name }}/.status"
+          report_html="${status_dir}/index.html"
           if [[ ! -f "${report_html}" ]]; then
             echo "missing generated report HTML: ${report_html}" >&2
             exit 1
           fi
+          report_summary="${status_dir}/summary.json"
+          if [[ ! -f "${report_summary}" ]]; then
+            echo "missing generated report summary: ${report_summary}" >&2
+            exit 1
+          fi
 
-          report_site_dir="page/reports/${{ matrix.report }}"
-          mkdir -p "${report_site_dir}"
-          cp "${report_html}" "${report_site_dir}/index.html"
+          artifact_root="status-artifact/test/${{ matrix.report.name }}"
+          mkdir -p "${artifact_root}"
+          cp -a "${status_dir}" "${artifact_root}/.status"
 
-      - name: Upload ${{ matrix.report }} page
+      - name: Upload ${{ matrix.report.name }} status
         uses: actions/upload-artifact@v7
         with:
-          name: rom-report-page-${{ matrix.report }}
-          path: page
+          name: rom-report-status-${{ matrix.report.name }}
+          path: status-artifact
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
 
@@ -103,53 +128,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download report pages
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download report status
         uses: actions/download-artifact@v8
         with:
-          pattern: rom-report-page-*
-          path: _site
+          pattern: rom-report-status-*
+          path: .
           merge-multiple: true
 
       - name: Generate site index
-        env:
-          REPORTS_JSON: ${{ needs.build-runner.outputs.reports_json }}
         run: |
           set -euo pipefail
-
-          generated_at="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-          short_sha="${GITHUB_SHA::12}"
-
-          cat > _site/index.html <<HTML
-          <!doctype html>
-          <html lang="en">
-          <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>gb-cycle ROM reports</title>
-          <style>body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; } a { color: #0645ad; } .meta { color: #555; }</style>
-          </head>
-          <body>
-          <h1>gb-cycle ROM reports</h1>
-          <p class="meta">Generated at ${generated_at} from commit <code>${short_sha}</code>.</p>
-          <ul>
-          HTML
-
-          while IFS= read -r report; do
-            report_html="_site/reports/${report}/index.html"
-            if [[ ! -f "${report_html}" ]]; then
-              echo "missing downloaded report page: ${report_html}" >&2
-              exit 1
-            fi
-            cat >> _site/index.html <<HTML
-          <li><a href="reports/${report}/">${report}</a></li>
-          HTML
-          done < <(jq -r '.[]' <<<"${REPORTS_JSON}")
-
-          cat >> _site/index.html <<HTML
-          </ul>
-          </body>
-          </html>
-          HTML
+          cargo rom-report --index _site
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

@@ -68,7 +68,7 @@ pub(super) fn load_statuses(
         let text = fs::read_to_string(&path).map_err(|error| {
             format!("failed to read test ROM status {}: {error}", path.display())
         })?;
-        let status: PersistedSuiteStatus = toml::from_str(&text).map_err(|error| {
+        let status: PersistedSuiteStatus = serde_json::from_str(&text).map_err(|error| {
             format!(
                 "failed to parse test ROM status {}: {error}",
                 path.display()
@@ -177,7 +177,7 @@ fn single_machine_suite_status_files(
                 path.display()
             )
         })?;
-        file_names.insert(format!("{}.toml", header.suite_name));
+        file_names.insert(format!("{}.json", header.suite_name));
     }
     Ok(file_names)
 }
@@ -204,7 +204,7 @@ fn status_files(
             )
         })?;
         let path = entry.path();
-        if path.extension().and_then(|extension| extension.to_str()) != Some("toml") {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
             continue;
         }
         let Some(file_name) = path.file_name().and_then(|file_name| file_name.to_str()) else {

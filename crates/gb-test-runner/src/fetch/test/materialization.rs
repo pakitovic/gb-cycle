@@ -103,7 +103,7 @@ fn materializes_selected_family_from_local_git_source() {
     );
     let store_root = workspace_root.join("test/sample-report");
     fs::create_dir_all(store_root.join(".status")).expect("status dir should be creatable");
-    fs::write(store_root.join(".status/family-a.toml"), b"status")
+    fs::write(store_root.join(".status/family-a.json"), b"status")
         .expect("status should be writable");
     fs::create_dir_all(store_root.join("family-a")).expect("family root should be creatable");
     fs::write(store_root.join("family-a/stale.gb"), b"stale")
@@ -122,7 +122,7 @@ fn materializes_selected_family_from_local_git_source() {
         "selected family root should be replaced"
     );
     assert_eq!(
-        fs::read(store_root.join(".status/family-a.toml")).expect("status should be preserved"),
+        fs::read(store_root.join(".status/family-a.json")).expect("status should be preserved"),
         b"status"
     );
     let output = String::from_utf8(output).expect("output should be utf-8");

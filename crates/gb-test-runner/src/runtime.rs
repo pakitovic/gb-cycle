@@ -19,7 +19,7 @@ pub(crate) fn clean_suite_runtime_dirs<'a>(
     for suite_name in suite_names {
         validate_runtime_leaf(suite_name, "suite name")?;
         remove_runtime_file(
-            &status_root.join(format!("{suite_name}.toml")),
+            &status_root.join(format!("{suite_name}.json")),
             "test ROM suite status file",
         )?;
         remove_runtime_dir(

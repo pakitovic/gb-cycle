@@ -78,11 +78,11 @@ fn command_runs_serial_suite_and_writes_status() {
     assert!(output.contains("suite blargg-cpu-instrs: 1/1 passed"));
     assert!(output.contains("case blargg-cpu-instrs-01-special: PASS after"));
     let status =
-        fs::read_to_string(workspace.join("test/sample-report/.status/blargg-cpu-instrs.toml"))
+        fs::read_to_string(workspace.join("test/sample-report/.status/blargg-cpu-instrs.json"))
             .expect("status should be written");
-    assert!(status.contains("suite_name = \"blargg-cpu-instrs\""));
-    assert!(status.contains("rom = \"cpu_instrs/01-special.gb (DMG)\""));
-    assert!(status.contains("status = \"PASS\""));
+    assert!(status.contains("\"suite_name\": \"blargg-cpu-instrs\""));
+    assert!(status.contains("\"rom\": \"cpu_instrs/01-special.gb (DMG)\""));
+    assert!(status.contains("\"status\": \"PASS\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -121,17 +121,21 @@ fn command_clears_selected_suite_status_and_artifacts_before_running() {
         "sample-report/sources.report.toml",
         &[("blargg", "blargg")],
     );
-    let selected_status = workspace.join("test/sample-report/.status/blargg-cpu-instrs.toml");
+    let selected_status = workspace.join("test/sample-report/.status/blargg-cpu-instrs.json");
     fs::create_dir_all(selected_status.parent().expect("status should have parent"))
         .expect("stale status parent should be creatable");
     fs::write(
         &selected_status,
-        r#"suite_name = "blargg-cpu-instrs"
-family = "stale"
-
-[[cases]]
-rom = "stale.gb"
-status = "PASS"
+        r#"{
+  "suite_name": "blargg-cpu-instrs",
+  "family": "stale",
+  "cases": [
+    {
+      "rom": "stale.gb",
+      "status": "PASS"
+    }
+  ]
+}
 "#,
     )
     .expect("stale status should be writable");
@@ -144,15 +148,19 @@ status = "PASS"
     )
     .expect("stale artifact parent should be creatable");
     fs::write(&selected_artifact, "stale").expect("stale artifact should be writable");
-    let linked_status = workspace.join("test/sample-report/.status/docboy-dmg-link.toml");
+    let linked_status = workspace.join("test/sample-report/.status/docboy-dmg-link.json");
     fs::write(
         &linked_status,
-        r#"suite_name = "docboy-dmg-link"
-family = "docboy-dmg"
-
-[[cases]]
-id = "linked-case"
-status = "PASS"
+        r#"{
+  "suite_name": "docboy-dmg-link",
+  "family": "docboy-dmg",
+  "cases": [
+    {
+      "id": "linked-case",
+      "status": "PASS"
+    }
+  ]
+}
 "#,
     )
     .expect("linked status should be writable");
@@ -171,7 +179,7 @@ status = "PASS"
         .expect("suite should pass after clearing selected suite runtime dirs");
 
     let status = fs::read_to_string(&selected_status).expect("selected status should be rewritten");
-    assert!(status.contains("rom = \"cpu_instrs/01-special.gb\""));
+    assert!(status.contains("\"rom\": \"cpu_instrs/01-special.gb\""));
     assert!(!status.contains("stale.gb"));
     assert!(!selected_artifact.exists());
     assert!(linked_status.is_file());
@@ -201,17 +209,21 @@ fn command_preserves_report_status_and_artifacts_when_selection_is_invalid() {
             "cpu_instrs/01-special.gb",
         ),
     );
-    let stale_status = workspace.join("test/sample-report/.status/stale-suite.toml");
+    let stale_status = workspace.join("test/sample-report/.status/stale-suite.json");
     fs::create_dir_all(stale_status.parent().expect("status should have parent"))
         .expect("stale status parent should be creatable");
     fs::write(
         &stale_status,
-        r#"suite_name = "stale-suite"
-family = "stale"
-
-[[cases]]
-rom = "stale.gb"
-status = "PASS"
+        r#"{
+  "suite_name": "stale-suite",
+  "family": "stale",
+  "cases": [
+    {
+      "rom": "stale.gb",
+      "status": "PASS"
+    }
+  ]
+}
 "#,
     )
     .expect("stale status should be writable");
@@ -759,13 +771,13 @@ rom = "threaded/second.gb"
         assert!(output.contains("suite threaded: 2/2 passed"));
     }
 
-    let status = fs::read_to_string(workspace.join("test/sample-report/.status/threaded.toml"))
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/threaded.json"))
         .expect("status should be written");
     let first = status
-        .find("rom = \"threaded/first.gb\"")
+        .find("\"rom\": \"threaded/first.gb\"")
         .expect("first row should exist");
     let second = status
-        .find("rom = \"threaded/second.gb\"")
+        .find("\"rom\": \"threaded/second.gb\"")
         .expect("second row should exist");
     assert!(first < second);
 
@@ -813,9 +825,9 @@ fn command_reports_failed_cases_and_rejects_unknown_case() {
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("case blargg-cpu-instrs-01-special: FAIL"));
     let status =
-        fs::read_to_string(workspace.join("test/sample-report/.status/blargg-cpu-instrs.toml"))
+        fs::read_to_string(workspace.join("test/sample-report/.status/blargg-cpu-instrs.json"))
             .expect("status should be written");
-    assert!(status.contains("status = \"FAIL\""));
+    assert!(status.contains("\"status\": \"FAIL\""));
 
     let mut output = Vec::new();
     assert!(
@@ -1559,9 +1571,9 @@ fn command_treats_info_framebuffer_as_pass_for_ci() {
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("suite acid: 1/1 passed"));
     assert!(output.contains("case acid-which-dmg: Informational after"));
-    let status = fs::read_to_string(workspace.join("test/sample-report/.status/acid.toml"))
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/acid.json"))
         .expect("status should be written");
-    assert!(status.contains("status = \"INFO\""));
+    assert!(status.contains("\"status\": \"INFO\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -1618,9 +1630,9 @@ rom = "acceptance/pass.gb"
 
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("suite mooneye: 1/1 passed"));
-    let status = fs::read_to_string(workspace.join("test/sample-report/.status/mooneye.toml"))
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/mooneye.json"))
         .expect("status should be written");
-    assert!(status.contains("status = \"PASS\""));
+    assert!(status.contains("\"status\": \"PASS\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -1677,9 +1689,9 @@ rom = "sgb/smoke.gb"
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("suite samesuite: 1/1 passed"));
     assert!(output.contains("case samesuite-sgb-smoke: Informational after"));
-    let status = fs::read_to_string(workspace.join("test/sample-report/.status/samesuite.toml"))
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/samesuite.json"))
         .expect("status should be written");
-    assert!(status.contains("status = \"INFO\""));
+    assert!(status.contains("\"status\": \"INFO\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -1743,9 +1755,9 @@ rom = "memory/pass.gb"
 
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("suite gbmicrotest: 1/1 passed"));
-    let status = fs::read_to_string(workspace.join("test/gbmicrotest/.status/gbmicrotest.toml"))
+    let status = fs::read_to_string(workspace.join("test/gbmicrotest/.status/gbmicrotest.json"))
         .expect("status should be written");
-    assert!(status.contains("status = \"PASS\""));
+    assert!(status.contains("\"status\": \"PASS\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -1874,9 +1886,9 @@ rom = "memory/fail.gb"
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("case docboy-fail-value: FAIL"));
     assert!(output.contains("fail_value 0x02"));
-    let status = fs::read_to_string(workspace.join("test/sample-report/.status/docboy-dmg.toml"))
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/docboy-dmg.json"))
         .expect("status should be written");
-    assert!(status.contains("status = \"FAIL\""));
+    assert!(status.contains("\"status\": \"FAIL\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -1932,9 +1944,9 @@ rom = "memory/timeout.gb"
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("case docboy-timeout: FAIL"));
     assert!(output.contains("memory byte mismatch"));
-    let status = fs::read_to_string(workspace.join("test/sample-report/.status/docboy-dmg.toml"))
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/docboy-dmg.json"))
         .expect("status should be written");
-    assert!(status.contains("status = \"FAIL\""));
+    assert!(status.contains("\"status\": \"FAIL\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }
@@ -1991,9 +2003,9 @@ rom = "acceptance/fail.gb"
     let output = String::from_utf8(output).expect("output should be utf-8");
     assert!(output.contains("case mooneye-fail: FAIL"));
     assert!(output.contains("failure signature"));
-    let status = fs::read_to_string(workspace.join("test/sample-report/.status/mooneye.toml"))
+    let status = fs::read_to_string(workspace.join("test/sample-report/.status/mooneye.json"))
         .expect("status should be written");
-    assert!(status.contains("status = \"FAIL\""));
+    assert!(status.contains("\"status\": \"FAIL\""));
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

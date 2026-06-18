@@ -23,7 +23,7 @@ pub(super) fn write_suite_status(
             status_root.display()
         )
     })?;
-    let path = status_root.join(format!("{}.toml", suite_report.suite_name));
+    let path = status_root.join(format!("{}.json", suite_report.suite_name));
     let persisted = PersistedSuiteStatus {
         suite_name: suite_report.suite_name.clone(),
         family: suite_report.family.clone(),
@@ -37,12 +37,12 @@ pub(super) fn write_suite_status(
             })
             .collect(),
     };
-    let text = toml::to_string(&persisted).map_err(|error| {
+    let text = serde_json::to_string_pretty(&persisted).map_err(|error| {
         format!(
             "failed to serialize suite status for {}: {error}",
             suite_report.suite_name
         )
-    })?;
+    })? + "\n";
     fs::write(&path, text)
         .map_err(|error| format!("failed to write suite status {}: {error}", path.display()))?;
     Ok(path)

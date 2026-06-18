@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gb-cycle ROM report - {{ report_id }}</title>
+<style>
+body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ccc; padding: .5rem; text-align: left; }
+th { background: #f4f4f4; position: sticky; top: 0; }
+code { background: #f4f4f4; padding: .1rem .25rem; }
+.meta { color: #555; }
+.status-pass { color: #12622a; }
+.status-fail { color: #9f1d20; }
+.status-info { color: #555; }
+</style>
+</head>
+<body>
+<h1>gb-cycle ROM report: {{ report_id }}</h1>
+<p class="meta">Summary: <strong>{{ non_failing_cases }}/{{ total_cases }}</strong>. Command: <code>{{ command }}</code>.</p>
+<table>
+<thead>
+<tr><th>family</th><th>rom</th><th>status</th></tr>
+</thead>
+<tbody>
+{% if rows.is_empty() %}
+<tr><td colspan="3">No status rows found.</td></tr>
+{% else %}
+{% for row in rows %}
+<tr><td>{{ row.family }}</td><td>{{ row.rom }}</td><td class="{{ row.status_class }}">{{ row.status_display }}</td></tr>
+{% endfor %}
+{% endif %}
+</tbody>
+</table>
+</body>
+</html>
