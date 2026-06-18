@@ -101,6 +101,11 @@ family_order = [
 ]
 
 [[report]]
+id = "mbc3-tester"
+store_dir = "mbc3-tester"
+sources = "mbc3-tester/sources.report.toml"
+
+[[report]]
 id = "linked"
 local = true
 store_dir = "linked"

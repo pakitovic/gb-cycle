@@ -1841,6 +1841,10 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 ),
             ][..],
         ),
+        (
+            "mbc3-tester",
+            &[("mbc3-tester", 2, "mbc3-tester", "mbc3-tester")][..],
+        ),
     ];
 
     for (report_id, suites) in report_specs {
@@ -2009,6 +2013,28 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 .expect("CGB basic row should exist");
             assert_eq!(cgb.hardware_revision, gb_core::HardwareRevision::CpuCgbD);
             assert_eq!(cgb.report_rom(), "rtc3test.gb (GBC)");
+        }
+        if report_id == "mbc3-tester" {
+            let suites = load_selected_suites(&workspace, report, Some("mbc3-tester"), None)
+                .expect("mbc3-tester suite should load");
+            let suite = &suites[0];
+            assert!(suite.cases.iter().all(|case| case.report_model_suffix
+                && case.timeout_frames == 40
+                && matches!(&case.oracle, Oracle::Framebuffer(_))));
+            let dmg = suite
+                .cases
+                .iter()
+                .find(|case| case.id == "mbc3-tester-dmg")
+                .expect("DMG mbc3-tester row should exist");
+            assert_eq!(dmg.hardware_revision, gb_core::HardwareRevision::DmgCpuC);
+            assert_eq!(dmg.report_rom(), "mbc3-tester.gb (DMG)");
+            let cgb = suite
+                .cases
+                .iter()
+                .find(|case| case.id == "mbc3-tester-cgb")
+                .expect("CGB mbc3-tester row should exist");
+            assert_eq!(cgb.hardware_revision, gb_core::HardwareRevision::CpuCgbD);
+            assert_eq!(cgb.report_rom(), "mbc3-tester.gb (GBC)");
         }
 
         fs::remove_dir_all(workspace).expect("workspace should be removable");
