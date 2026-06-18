@@ -27,6 +27,7 @@ fn built_in_reports_manifest_loads_all_reports() {
             "gb-emulator-shootout",
             "docboy",
             "gbmicrotest",
+            "ashiepaws",
             "blargg",
             "mooneye",
             "little-things-gb",

@@ -1,0 +1,90 @@
+family = "scribbltests"
+suite_name = "ashiepaws-scribbltests"
+report = "ashiepaws"
+model = "dmg"
+timeout_frames = 180
+report_model_suffix = true
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "ashiepaws-scribbltests-lycscx-dmg"
+rom = "lycscx/lycscx.gb"
+oracle = { fixture = "lycscx/lycscx-cgb-dmg.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-lycscx-cgb"
+rom = "lycscx/lycscx.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+startup = "real-boot"
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "lycscx/lycscx-cgb-dmg.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-lycscy-dmg"
+rom = "lycscy/lycscy.gb"
+oracle = { fixture = "lycscy/lycscy-cgb-dmg.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-lycscy-cgb"
+rom = "lycscy/lycscy.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+startup = "real-boot"
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "lycscy/lycscy-cgb-dmg.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-palettely-dmg"
+rom = "palettely/palettely.gb"
+oracle = { fixture = "palettely/palettely-dmg.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-palettely-cgb"
+rom = "palettely/palettely.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+startup = "real-boot"
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "palettely/palettely-cgb.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-scxly-dmg"
+rom = "scxly/scxly.gb"
+oracle = { fixture = "scxly/scxly-dmg.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-scxly-cgb"
+rom = "scxly/scxly.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+startup = "real-boot"
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "scxly/scxly-cgb.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-statcount-auto-dmg"
+rom = "statcount/statcount-auto.gb"
+oracle = { fixture = "statcount/statcount_auto-cgb-dmg.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-statcount-auto-cgb"
+rom = "statcount/statcount-auto.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+startup = "real-boot"
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "statcount/statcount_auto-cgb-dmg.png" }
+
+[[case]]
+id = "ashiepaws-scribbltests-fairylake"
+rom = "fairylake/fairylake.gb"
+disabled = true
+comment = "Disabled because c-sp v7.0 does not ship a single-frame PNG fixture for this WIP demo-style ROM."
+
+[[case]]
+id = "ashiepaws-scribbltests-statcount"
+rom = "statcount/statcount.gb"
+disabled = true
+comment = "Disabled because this interactive ROM has no direct PNG pass fixture in the c-sp v7.0 archive; statcount-auto provides the automated oracle."
+
+[[case]]
+id = "ashiepaws-scribbltests-winpos"
+rom = "winpos/winpos.gb"
+disabled = true
+comment = "Disabled because this interactive window-position tool has no direct PNG fixture in the c-sp v7.0 archive."

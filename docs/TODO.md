@@ -54,6 +54,7 @@ PPU hardening toward a hardware-true engine (post PR #245): the sprite Mode 3 pe
 ## Phase 9 — Final DMG hardening, differential validation, and closure
 
 - [TESTING][LINKED-SESSION-MARKDOWN-REPORT] `docboy-dmg-link` now runs through the `docboy` report with `cargo rom-suite-link`; if linked aggregate Markdown persistence is needed, design participant-aware report rows instead of flattening linked sessions into single-machine ROM rows.
+- [TESTING][ASHIEPAWS-V7-BASELINE] The standalone c-sp v7 `ashiepaws` report is Pages-only and currently red at 6/14 non-failing rows: CGB `bully`, CGB `strikethrough`, DMG/CGB `lycscx`, DMG/CGB `scxly`, and DMG/CGB `statcount-auto` mismatch upstream fixtures, while the older promoted GB Emulator Shootout Ashiepaws suite remains green because it uses different ROM assets. Evidence: `cargo rom-report ashiepaws --html --boot-rom-dir <dir>` writes the red report after suite cleanup. Highest-value next step: compare the failing c-sp v7 cases against hardware-facing captures or trusted emulator traces before changing startup policy, fixtures, or runner timing.
 
 ## Phase 10 — CGB implementation roadmap
 
