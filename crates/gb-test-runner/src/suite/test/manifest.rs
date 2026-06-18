@@ -1777,6 +1777,19 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 "little-things-gb",
             )][..],
         ),
+        (
+            "ashiepaws",
+            &[
+                ("ashiepaws-bully", 2, "bully", "bully"),
+                (
+                    "ashiepaws-strikethrough",
+                    2,
+                    "strikethrough",
+                    "strikethrough",
+                ),
+                ("ashiepaws-scribbltests", 10, "scribbltests", "scribbltests"),
+            ][..],
+        ),
         ("magen", &[("magen", 8, "magen", "magen")][..]),
         (
             "nitro2k01",
@@ -1977,6 +1990,39 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             let suites = load_selected_suites(&workspace, report, Some("magen"), None)
                 .expect("magen suite should load");
             assert!(suites[0].cases.iter().all(|case| case.timeout_frames == 72));
+        }
+        if report_id == "ashiepaws" {
+            let scribbltests = read_report_suite_manifest(report_id, "ashiepaws-scribbltests");
+            assert_eq!(
+                disabled_case_count(&scribbltests),
+                3,
+                "fixtureless c-sp v7 scribbltests rows should stay documented as disabled"
+            );
+
+            for suite_name in [
+                "ashiepaws-bully",
+                "ashiepaws-strikethrough",
+                "ashiepaws-scribbltests",
+            ] {
+                let suites = load_selected_suites(&workspace, report, Some(suite_name), None)
+                    .unwrap_or_else(|error| panic!("{suite_name} should load: {error}"));
+                let cgb_cases = suites[0]
+                    .cases
+                    .iter()
+                    .filter(|case| case.console_model == gb_core::ConsoleModel::GameBoyColor)
+                    .collect::<Vec<_>>();
+                assert!(
+                    !cgb_cases.is_empty(),
+                    "{suite_name} should include active CGB rows"
+                );
+                assert!(
+                    cgb_cases.iter().all(|case| {
+                        case.hardware_revision == gb_core::HardwareRevision::CpuCgbD
+                            && case.startup_mode == gb_core::StartupMode::RealBoot
+                    }),
+                    "{suite_name} CGB rows should run CPU-CGB-D through RealBoot"
+                );
+            }
         }
         if report_id == "nitro2k01" {
             let suites =

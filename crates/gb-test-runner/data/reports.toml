@@ -35,6 +35,16 @@ store_dir = "gbmicrotest"
 sources = "gbmicrotest/sources.report.toml"
 
 [[report]]
+id = "ashiepaws"
+store_dir = "ashiepaws"
+sources = "ashiepaws/sources.report.toml"
+family_order = [
+  "bully",
+  "strikethrough",
+  "scribbltests",
+]
+
+[[report]]
 id = "blargg"
 store_dir = "blargg"
 sources = "blargg/sources.report.toml"

@@ -1,0 +1,20 @@
+family = "strikethrough"
+suite_name = "ashiepaws-strikethrough"
+report = "ashiepaws"
+timeout_frames = 30
+report_model_suffix = true
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "ashiepaws-strikethrough-dmg"
+rom = "strikethrough.gb"
+model = "dmg"
+oracle = { fixture = "strikethrough-dmg.png" }
+
+[[case]]
+id = "ashiepaws-strikethrough-cgb"
+rom = "strikethrough.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+startup = "real-boot"
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "strikethrough-cgb.png" }

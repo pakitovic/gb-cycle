@@ -1,0 +1,20 @@
+family = "bully"
+suite_name = "ashiepaws-bully"
+report = "ashiepaws"
+timeout_frames = 30
+report_model_suffix = true
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "ashiepaws-bully-dmg"
+rom = "bully.gb"
+model = "dmg"
+oracle = { fixture = "bully.png" }
+
+[[case]]
+id = "ashiepaws-bully-cgb"
+rom = "bully.gb"
+model = "cgb"
+revision = "cpu-cgb-d"
+startup = "real-boot"
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb", fixture = "bully.png" }

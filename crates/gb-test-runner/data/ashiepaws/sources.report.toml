@@ -1,0 +1,117 @@
+[[source]]
+id = "game-boy-test-roms"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
+
+[[source.family]]
+id = "bully"
+target_root = "bully"
+
+[[source.family.file]]
+path = "bully/bully.gb"
+target = "bully.gb"
+sha256 = "315c8f52ff77fd400e9d21d5b95827398033d054f0deb46a8614dde5a6594eb3"
+
+[[source.family.file]]
+path = "bully/bully.png"
+target = "bully.png"
+sha256 = "704a14f707189f13a7fa134757007ffbaeb044871b640d646072f9ffb51df7b1"
+
+[[source.family]]
+id = "strikethrough"
+target_root = "strikethrough"
+
+[[source.family.file]]
+path = "strikethrough/strikethrough.gb"
+target = "strikethrough.gb"
+sha256 = "353d50d745e2539d93f0baf7d670ec93b520f97e41443cb39ba6f32be1f5fa31"
+
+[[source.family.file]]
+path = "strikethrough/strikethrough-dmg.png"
+target = "strikethrough-dmg.png"
+sha256 = "dc1d00201e326fae95a43d0bda09d69fc73edb03eea10fe50680eb504bcdb759"
+
+[[source.family.file]]
+path = "strikethrough/strikethrough-cgb.png"
+target = "strikethrough-cgb.png"
+sha256 = "e9f700c6366ee5ada4cd2b97133f8e5826cd01715af3ad0406a879096968956d"
+
+[[source.family]]
+id = "scribbltests"
+target_root = "scribbltests"
+
+[[source.family.file]]
+path = "scribbltests/fairylake/fairylake.gb"
+target = "fairylake/fairylake.gb"
+sha256 = "fa8306d4550732ec99b0a6335e053a9c0927a013cbd2cdf92c316c8a5beb3d01"
+
+[[source.family.file]]
+path = "scribbltests/lycscx/lycscx.gb"
+target = "lycscx/lycscx.gb"
+sha256 = "95589e9d4b7a3b3c67e6c09df06ea0978a9f57ea65d9917e807021b152c34e25"
+
+[[source.family.file]]
+path = "scribbltests/lycscx/lycscx-cgb-dmg.png"
+target = "lycscx/lycscx-cgb-dmg.png"
+sha256 = "b7a54787fc2a72d52cea8ac3647487f76e12b54bc8f9b439c6a295fa89c0fb8d"
+
+[[source.family.file]]
+path = "scribbltests/lycscy/lycscy.gb"
+target = "lycscy/lycscy.gb"
+sha256 = "d803924443c24cae8f7892c8ce4e82c0a4fb367021e96362dc41f3dda7c0032a"
+
+[[source.family.file]]
+path = "scribbltests/lycscy/lycscy-cgb-dmg.png"
+target = "lycscy/lycscy-cgb-dmg.png"
+sha256 = "52ea65082769669f401cbc1de5ddcb16f564a3dbcc3dc9d34df4ca615da3af3e"
+
+[[source.family.file]]
+path = "scribbltests/palettely/palettely.gb"
+target = "palettely/palettely.gb"
+sha256 = "630fa057b1d549fbc9a1450a7bc54c23fd8201b7048834c3b3fc11196dd3a4a4"
+
+[[source.family.file]]
+path = "scribbltests/palettely/palettely-dmg.png"
+target = "palettely/palettely-dmg.png"
+sha256 = "e5d52f8a525b3139600f64682554e0e29bbe2ba5246609c071c96e0f58abdd65"
+
+[[source.family.file]]
+path = "scribbltests/palettely/palettely-cgb.png"
+target = "palettely/palettely-cgb.png"
+sha256 = "79eac45c8121f2b4d825bf49c68ea3b11863abf73945555876710c22670d2900"
+
+[[source.family.file]]
+path = "scribbltests/scxly/scxly.gb"
+target = "scxly/scxly.gb"
+sha256 = "6cc9e00d93ed2de9e81f8e6c7652badd725841e0b2a60be8a433ba2ce278b687"
+
+[[source.family.file]]
+path = "scribbltests/scxly/scxly-dmg.png"
+target = "scxly/scxly-dmg.png"
+sha256 = "90e3671f48bedd6a472e652f25935f4972f2cb08f57955baddcd97a51075943b"
+
+[[source.family.file]]
+path = "scribbltests/scxly/scxly-cgb.png"
+target = "scxly/scxly-cgb.png"
+sha256 = "6f4c4a8d7fe7a7b989aaee3486a26963685d7c24453fdd6cbdd3309fdfe623b1"
+
+[[source.family.file]]
+path = "scribbltests/statcount/statcount-auto.gb"
+target = "statcount/statcount-auto.gb"
+sha256 = "38559b203e499481a6ae10d1da9625249a68f4c4df45da275eb3d567c3c559a9"
+
+[[source.family.file]]
+path = "scribbltests/statcount/statcount.gb"
+target = "statcount/statcount.gb"
+sha256 = "0b1b2882b8bb7c3bd1d22a9ecf3a6526c71b3d2564481af3347c550b830bf704"
+
+[[source.family.file]]
+path = "scribbltests/statcount/statcount_auto-cgb-dmg.png"
+target = "statcount/statcount_auto-cgb-dmg.png"
+sha256 = "b0c4cd864f59796221a253d93899c220c236065bbd5392ddb03ec868ad4ecd3a"
+
+[[source.family.file]]
+path = "scribbltests/winpos/winpos.gb"
+target = "winpos/winpos.gb"
+sha256 = "0bc1bad9c2086e123a78af9308c19e7d1a644f01d156d076fb6afa7066a72d8b"
