@@ -1731,6 +1731,31 @@ fn real_remaining_gb_emulator_shootout_suite_manifests_load_framebuffer_oracles(
 }
 
 #[test]
+fn real_rom_reports_pages_marks_real_boot_reports_with_boot_roms() {
+    let workspace = crate::default_workspace_root();
+    let pages = read_rom_reports_pages_for_test(&workspace);
+    let reports = load_reports(&workspace).expect("reports should load");
+    let mut missing_boot_roms = Vec::new();
+
+    for page in pages {
+        let report = reports
+            .iter()
+            .find(|report| report.id == page.name)
+            .unwrap_or_else(|| panic!("report {:?} should exist", page.name));
+        let real_boot_suites = real_boot_suite_names_for_report(report);
+        if !real_boot_suites.is_empty() && !page.boot_roms {
+            missing_boot_roms.push(format!("{} ({})", page.name, real_boot_suites.join(", ")));
+        }
+    }
+
+    assert!(
+        missing_boot_roms.is_empty(),
+        "rom-reports-pages.json entries with RealBoot suite manifests must set boot_roms = true: {}",
+        missing_boot_roms.join("; ")
+    );
+}
+
+#[test]
 fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
     let report_specs = [
         (
@@ -2300,6 +2325,77 @@ fn read_gbemu_suite_manifest(suite_name: &str) -> String {
             .join(format!("{suite_name}.suite.toml")),
     )
     .expect("suite manifest should be readable")
+}
+
+const ROM_REPORTS_PAGES_PATH_FOR_TEST: &str = "crates/gb-test-runner/data/rom-reports-pages.json";
+
+#[derive(Debug, Deserialize)]
+struct RomReportsPageEntryForTest {
+    name: String,
+    #[serde(default)]
+    boot_roms: bool,
+}
+
+fn read_rom_reports_pages_for_test(workspace_root: &Path) -> Vec<RomReportsPageEntryForTest> {
+    let path = workspace_root.join(ROM_REPORTS_PAGES_PATH_FOR_TEST);
+    let text = fs::read_to_string(&path).expect("ROM reports Pages metadata should be readable");
+    serde_json::from_str(&text).expect("ROM reports Pages metadata should parse")
+}
+
+fn real_boot_suite_names_for_report(report: &super::super::model::Report) -> Vec<String> {
+    let report_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("data")
+        .join(&report.store_dir);
+    let mut suite_names = Vec::new();
+    for entry in fs::read_dir(&report_root).unwrap_or_else(|error| {
+        panic!(
+            "report manifest directory {} should be readable: {error}",
+            report_root.display()
+        )
+    }) {
+        let path = entry
+            .expect("suite manifest entry should be readable")
+            .path();
+        let Some(file_name) = path.file_name().and_then(|file_name| file_name.to_str()) else {
+            continue;
+        };
+        if !file_name.ends_with(".suite.toml") || file_name.ends_with(".link.suite.toml") {
+            continue;
+        }
+        if suite_manifest_declares_real_boot(&path) {
+            suite_names.push(
+                file_name
+                    .strip_suffix(".suite.toml")
+                    .expect("suite manifest suffix should be present")
+                    .to_string(),
+            );
+        }
+    }
+    suite_names.sort();
+    suite_names
+}
+
+fn suite_manifest_declares_real_boot(path: &Path) -> bool {
+    let text = fs::read_to_string(path).unwrap_or_else(|error| {
+        panic!(
+            "suite manifest {} should be readable: {error}",
+            path.display()
+        )
+    });
+    let manifest: toml::Value = toml::from_str(&text)
+        .unwrap_or_else(|error| panic!("suite manifest {} should parse: {error}", path.display()));
+    let top_level_real_boot =
+        manifest.get("startup").and_then(toml::Value::as_str) == Some("real-boot");
+    let case_real_boot = manifest
+        .get("case")
+        .and_then(toml::Value::as_array)
+        .map(|cases| {
+            cases
+                .iter()
+                .any(|case| case.get("startup").and_then(toml::Value::as_str) == Some("real-boot"))
+        })
+        .unwrap_or(false);
+    top_level_real_boot || case_real_boot
 }
 
 fn read_docboy_suite_manifest(suite_name: &str) -> String {
