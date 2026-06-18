@@ -2,1852 +2,2215 @@ family = "gbmicrotest"
 suite_name = "gbmicrotest"
 report = "gbmicrotest"
 model = "dmg"
-timeout_frames = 15
-oracle = { type = "memory-byte-equals", address = 65410, value = 1 }
+revision = "dmg-cpu-c"
+timeout_frames = 2
+oracle = { type = "memory-byte-equals", address = 65410, value = 1, fail_value = 255 }
 
 [[case]]
-id = "gbmicrotest-halt-halt-bug"
-rom = "halt/halt_bug.gb"
+id = "gbmicrotest-000-oam-lock"
+rom = "000-oam_lock.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
 
 [[case]]
-id = "gbmicrotest-halt-halt-op-dupe"
-rom = "halt/halt_op_dupe.gb"
+id = "gbmicrotest-000-write-to-x8000"
+rom = "000-write_to_x8000.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-di-timing-a"
-rom = "ppu/hblank_int_di_timing_a.gb"
+id = "gbmicrotest-001-vram-unlocked"
+rom = "001-vram_unlocked.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-di-timing-b"
-rom = "ppu/hblank_int_di_timing_b.gb"
+id = "gbmicrotest-002-vram-locked"
+rom = "002-vram_locked.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-if-a"
-rom = "ppu/hblank_int_if_a.gb"
+id = "gbmicrotest-004-tima-boot-phase"
+rom = "004-tima_boot_phase.gb"
+disabled = true
+comment = "Disabled because this ROM displays a measured value in VRAM and needs a future non-perturbing vram-byte-equals-style oracle instead of the CPU-visible memory-byte oracle."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-if-b"
-rom = "ppu/hblank_int_if_b.gb"
+id = "gbmicrotest-004-tima-cycle-timer"
+rom = "004-tima_cycle_timer.gb"
+disabled = true
+comment = "Disabled because this ROM displays a measured value in VRAM and needs a future non-perturbing vram-byte-equals-style oracle instead of the CPU-visible memory-byte oracle."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-l0"
-rom = "ppu/hblank_int_l0.gb"
+id = "gbmicrotest-007-lcd-on-stat"
+rom = "007-lcd_on_stat.gb"
+disabled = true
+comment = "Disabled because this ROM displays a measured value in VRAM and needs a future non-perturbing vram-byte-equals-style oracle instead of the CPU-visible memory-byte oracle."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-l1"
-rom = "ppu/hblank_int_l1.gb"
+id = "gbmicrotest-400-dma"
+rom = "400-dma.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-l2"
-rom = "ppu/hblank_int_l2.gb"
+id = "gbmicrotest-500-scx-timing"
+rom = "500-scx-timing.gb"
+disabled = true
+comment = "Disabled because this ROM displays a measured value in VRAM and needs a future non-perturbing vram-byte-equals-style oracle instead of the CPU-visible memory-byte oracle."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-scx0"
-rom = "ppu/hblank_int_scx0.gb"
+id = "gbmicrotest-800-ppu-latch-scx"
+rom = "800-ppu-latch-scx.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
 
 [[case]]
-id = "gbmicrotest-ppu-hblank-int-scx0-if-a"
-rom = "ppu/hblank_int_scx0_if_a.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx0-if-b"
-rom = "ppu/hblank_int_scx0_if_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx0-if-c"
-rom = "ppu/hblank_int_scx0_if_c.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx0-if-d"
-rom = "ppu/hblank_int_scx0_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx1"
-rom = "ppu/hblank_int_scx1.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx1-if-a"
-rom = "ppu/hblank_int_scx1_if_a.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx1-if-b"
-rom = "ppu/hblank_int_scx1_if_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx1-if-c"
-rom = "ppu/hblank_int_scx1_if_c.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx1-if-d"
-rom = "ppu/hblank_int_scx1_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx1-nops-a"
-rom = "ppu/hblank_int_scx1_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx1-nops-b"
-rom = "ppu/hblank_int_scx1_nops_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx2"
-rom = "ppu/hblank_int_scx2.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx2-if-a"
-rom = "ppu/hblank_int_scx2_if_a.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx2-if-b"
-rom = "ppu/hblank_int_scx2_if_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx2-if-c"
-rom = "ppu/hblank_int_scx2_if_c.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx2-if-d"
-rom = "ppu/hblank_int_scx2_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx2-nops-a"
-rom = "ppu/hblank_int_scx2_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx2-nops-b"
-rom = "ppu/hblank_int_scx2_nops_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx3"
-rom = "ppu/hblank_int_scx3.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx3-if-a"
-rom = "ppu/hblank_int_scx3_if_a.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx3-if-b"
-rom = "ppu/hblank_int_scx3_if_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx3-if-c"
-rom = "ppu/hblank_int_scx3_if_c.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx3-if-d"
-rom = "ppu/hblank_int_scx3_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx3-nops-a"
-rom = "ppu/hblank_int_scx3_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx3-nops-b"
-rom = "ppu/hblank_int_scx3_nops_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx4"
-rom = "ppu/hblank_int_scx4.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx4-if-a"
-rom = "ppu/hblank_int_scx4_if_a.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx4-if-b"
-rom = "ppu/hblank_int_scx4_if_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx4-if-c"
-rom = "ppu/hblank_int_scx4_if_c.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx4-if-d"
-rom = "ppu/hblank_int_scx4_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx4-nops-a"
-rom = "ppu/hblank_int_scx4_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx4-nops-b"
-rom = "ppu/hblank_int_scx4_nops_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx5"
-rom = "ppu/hblank_int_scx5.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx5-if-a"
-rom = "ppu/hblank_int_scx5_if_a.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx5-if-b"
-rom = "ppu/hblank_int_scx5_if_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx5-if-c"
-rom = "ppu/hblank_int_scx5_if_c.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx5-if-d"
-rom = "ppu/hblank_int_scx5_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx5-nops-a"
-rom = "ppu/hblank_int_scx5_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx5-nops-b"
-rom = "ppu/hblank_int_scx5_nops_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx6"
-rom = "ppu/hblank_int_scx6.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx6-if-a"
-rom = "ppu/hblank_int_scx6_if_a.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx6-if-b"
-rom = "ppu/hblank_int_scx6_if_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx6-if-c"
-rom = "ppu/hblank_int_scx6_if_c.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx6-if-d"
-rom = "ppu/hblank_int_scx6_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx6-nops-a"
-rom = "ppu/hblank_int_scx6_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx6-nops-b"
-rom = "ppu/hblank_int_scx6_nops_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx7"
-rom = "ppu/hblank_int_scx7.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx7-if-a"
-rom = "ppu/hblank_int_scx7_if_a.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx7-if-b"
-rom = "ppu/hblank_int_scx7_if_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx7-if-c"
-rom = "ppu/hblank_int_scx7_if_c.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx7-if-d"
-rom = "ppu/hblank_int_scx7_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx7-nops-a"
-rom = "ppu/hblank_int_scx7_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-int-scx7-nops-b"
-rom = "ppu/hblank_int_scx7_nops_b.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-scx2-if-a"
-rom = "ppu/hblank_scx2_if_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-scx3-if-a"
-rom = "ppu/hblank_scx3_if_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-scx3-if-b"
-rom = "ppu/hblank_scx3_if_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-scx3-if-c"
-rom = "ppu/hblank_scx3_if_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-scx3-if-d"
-rom = "ppu/hblank_scx3_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-scx3-int-a"
-rom = "ppu/hblank_scx3_int_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-hblank-scx3-int-b"
-rom = "ppu/hblank_scx3_int_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-bug-a"
-rom = "ppu/int_hblank_halt_bug_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-bug-b"
-rom = "ppu/int_hblank_halt_bug_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-scx0"
-rom = "ppu/int_hblank_halt_scx0.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-scx1"
-rom = "ppu/int_hblank_halt_scx1.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-scx2"
-rom = "ppu/int_hblank_halt_scx2.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-scx3"
-rom = "ppu/int_hblank_halt_scx3.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-scx4"
-rom = "ppu/int_hblank_halt_scx4.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-scx5"
-rom = "ppu/int_hblank_halt_scx5.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-scx6"
-rom = "ppu/int_hblank_halt_scx6.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-halt-scx7"
-rom = "ppu/int_hblank_halt_scx7.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-incs-scx0"
-rom = "ppu/int_hblank_incs_scx0.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-incs-scx1"
-rom = "ppu/int_hblank_incs_scx1.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-incs-scx2"
-rom = "ppu/int_hblank_incs_scx2.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-incs-scx3"
-rom = "ppu/int_hblank_incs_scx3.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-incs-scx4"
-rom = "ppu/int_hblank_incs_scx4.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-incs-scx5"
-rom = "ppu/int_hblank_incs_scx5.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-incs-scx6"
-rom = "ppu/int_hblank_incs_scx6.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-incs-scx7"
-rom = "ppu/int_hblank_incs_scx7.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-nops-scx0"
-rom = "ppu/int_hblank_nops_scx0.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-nops-scx1"
-rom = "ppu/int_hblank_nops_scx1.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-nops-scx2"
-rom = "ppu/int_hblank_nops_scx2.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-nops-scx3"
-rom = "ppu/int_hblank_nops_scx3.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-nops-scx4"
-rom = "ppu/int_hblank_nops_scx4.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-nops-scx5"
-rom = "ppu/int_hblank_nops_scx5.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-nops-scx6"
-rom = "ppu/int_hblank_nops_scx6.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-hblank-nops-scx7"
-rom = "ppu/int_hblank_nops_scx7.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-lyc-halt"
-rom = "ppu/int_lyc_halt.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-lyc-incs"
-rom = "ppu/int_lyc_incs.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-lyc-nops"
-rom = "ppu/int_lyc_nops.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-oam-halt"
-rom = "ppu/int_oam_halt.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-oam-incs"
-rom = "ppu/int_oam_incs.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-oam-nops"
-rom = "ppu/int_oam_nops.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-timer-halt"
-rom = "ppu/int_timer_halt.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-vblank1-halt"
-rom = "ppu/int_vblank1_halt.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-vblank1-incs"
-rom = "ppu/int_vblank1_incs.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-vblank1-nops"
-rom = "ppu/int_vblank1_nops.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-vblank2-halt"
-rom = "ppu/int_vblank2_halt.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-vblank2-incs"
-rom = "ppu/int_vblank2_incs.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-int-vblank2-nops"
-rom = "ppu/int_vblank2_nops.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-halt-to-vblank-int-a"
-rom = "ppu/lcdon_halt_to_vblank_int_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-halt-to-vblank-int-b"
-rom = "ppu/lcdon_halt_to_vblank_int_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-nops-to-vblank-int-a"
-rom = "ppu/lcdon_nops_to_vblank_int_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-nops-to-vblank-int-b"
-rom = "ppu/lcdon_nops_to_vblank_int_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-if-oam-a"
-rom = "ppu/lcdon_to_if_oam_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-if-oam-b"
-rom = "ppu/lcdon_to_if_oam_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-ly1-a"
-rom = "ppu/lcdon_to_ly1_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-ly1-b"
-rom = "ppu/lcdon_to_ly1_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-ly2-a"
-rom = "ppu/lcdon_to_ly2_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-ly2-b"
-rom = "ppu/lcdon_to_ly2_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-ly3-a"
-rom = "ppu/lcdon_to_ly3_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-ly3-b"
-rom = "ppu/lcdon_to_ly3_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-lyc1-int"
-rom = "ppu/lcdon_to_lyc1_int.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-lyc2-int"
-rom = "ppu/lcdon_to_lyc2_int.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-lyc3-int"
-rom = "ppu/lcdon_to_lyc3_int.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-oam-int-l0"
-rom = "ppu/lcdon_to_oam_int_l0.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-oam-int-l1"
-rom = "ppu/lcdon_to_oam_int_l1.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-oam-int-l2"
-rom = "ppu/lcdon_to_oam_int_l2.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-oam-unlock-a"
-rom = "ppu/lcdon_to_oam_unlock_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-oam-unlock-b"
-rom = "ppu/lcdon_to_oam_unlock_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-oam-unlock-c"
-rom = "ppu/lcdon_to_oam_unlock_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-oam-unlock-d"
-rom = "ppu/lcdon_to_oam_unlock_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat0-a"
-rom = "ppu/lcdon_to_stat0_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat0-b"
-rom = "ppu/lcdon_to_stat0_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat0-c"
-rom = "ppu/lcdon_to_stat0_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat0-d"
-rom = "ppu/lcdon_to_stat0_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat1-a"
-rom = "ppu/lcdon_to_stat1_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat1-b"
-rom = "ppu/lcdon_to_stat1_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat1-c"
-rom = "ppu/lcdon_to_stat1_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat1-d"
-rom = "ppu/lcdon_to_stat1_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat1-e"
-rom = "ppu/lcdon_to_stat1_e.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat2-a"
-rom = "ppu/lcdon_to_stat2_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat2-b"
-rom = "ppu/lcdon_to_stat2_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat2-c"
-rom = "ppu/lcdon_to_stat2_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat2-d"
-rom = "ppu/lcdon_to_stat2_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat3-a"
-rom = "ppu/lcdon_to_stat3_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat3-b"
-rom = "ppu/lcdon_to_stat3_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat3-c"
-rom = "ppu/lcdon_to_stat3_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lcdon-to-stat3-d"
-rom = "ppu/lcdon_to_stat3_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-144-oam-int-a"
-rom = "ppu/line_144_oam_int_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-144-oam-int-b"
-rom = "ppu/line_144_oam_int_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-144-oam-int-c"
-rom = "ppu/line_144_oam_int_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-144-oam-int-d"
-rom = "ppu/line_144_oam_int_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-ly-a"
-rom = "ppu/line_153_ly_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-ly-b"
-rom = "ppu/line_153_ly_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-ly-c"
-rom = "ppu/line_153_ly_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-ly-d"
-rom = "ppu/line_153_ly_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-ly-e"
-rom = "ppu/line_153_ly_e.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-ly-f"
-rom = "ppu/line_153_ly_f.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-int-inc-sled"
-rom = "ppu/line_153_lyc0_int_inc_sled.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-a"
-rom = "ppu/line_153_lyc0_stat_timing_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-b"
-rom = "ppu/line_153_lyc0_stat_timing_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-c"
-rom = "ppu/line_153_lyc0_stat_timing_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-d"
-rom = "ppu/line_153_lyc0_stat_timing_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-e"
-rom = "ppu/line_153_lyc0_stat_timing_e.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-f"
-rom = "ppu/line_153_lyc0_stat_timing_f.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-g"
-rom = "ppu/line_153_lyc0_stat_timing_g.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-h"
-rom = "ppu/line_153_lyc0_stat_timing_h.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-i"
-rom = "ppu/line_153_lyc0_stat_timing_i.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-j"
-rom = "ppu/line_153_lyc0_stat_timing_j.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-k"
-rom = "ppu/line_153_lyc0_stat_timing_k.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-l"
-rom = "ppu/line_153_lyc0_stat_timing_l.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-m"
-rom = "ppu/line_153_lyc0_stat_timing_m.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc0-stat-timing-n"
-rom = "ppu/line_153_lyc0_stat_timing_n.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc153-stat-timing-a"
-rom = "ppu/line_153_lyc153_stat_timing_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc153-stat-timing-b"
-rom = "ppu/line_153_lyc153_stat_timing_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc153-stat-timing-c"
-rom = "ppu/line_153_lyc153_stat_timing_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc153-stat-timing-d"
-rom = "ppu/line_153_lyc153_stat_timing_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc153-stat-timing-e"
-rom = "ppu/line_153_lyc153_stat_timing_e.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc153-stat-timing-f"
-rom = "ppu/line_153_lyc153_stat_timing_f.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc-int-a"
-rom = "ppu/line_153_lyc_int_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-153-lyc-int-b"
-rom = "ppu/line_153_lyc_int_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-line-65-ly"
-rom = "ppu/line_65_ly.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-int-halt-a"
-rom = "ppu/lyc1_int_halt_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-int-halt-b"
-rom = "ppu/lyc1_int_halt_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-int-if-edge-a"
-rom = "ppu/lyc1_int_if_edge_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-int-if-edge-b"
-rom = "ppu/lyc1_int_if_edge_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-int-if-edge-c"
-rom = "ppu/lyc1_int_if_edge_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-int-if-edge-d"
-rom = "ppu/lyc1_int_if_edge_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-int-nops-a"
-rom = "ppu/lyc1_int_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-int-nops-b"
-rom = "ppu/lyc1_int_nops_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-write-timing-a"
-rom = "ppu/lyc1_write_timing_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-write-timing-b"
-rom = "ppu/lyc1_write_timing_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-write-timing-c"
-rom = "ppu/lyc1_write_timing_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-lyc1-write-timing-d"
-rom = "ppu/lyc1_write_timing_d.gb"
+id = "gbmicrotest-801-ppu-latch-scy"
+rom = "801-ppu-latch-scy.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
 
 [[case]]
-id = "gbmicrotest-ppu-lyc2-int-halt-a"
-rom = "ppu/lyc2_int_halt_a.gb"
+id = "gbmicrotest-802-ppu-latch-tileselect"
+rom = "802-ppu-latch-tileselect.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
 
 [[case]]
-id = "gbmicrotest-ppu-lyc2-int-halt-b"
-rom = "ppu/lyc2_int_halt_b.gb"
+id = "gbmicrotest-803-ppu-latch-bgdisplay"
+rom = "803-ppu-latch-bgdisplay.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
 
 [[case]]
-id = "gbmicrotest-ppu-lyc-int-halt-a"
-rom = "ppu/lyc_int_halt_a.gb"
+id = "gbmicrotest-audio-testbench"
+rom = "audio_testbench.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
 
 [[case]]
-id = "gbmicrotest-ppu-lyc-int-halt-b"
-rom = "ppu/lyc_int_halt_b.gb"
+id = "gbmicrotest-cpu-bus-1"
+rom = "cpu_bus_1.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-halt-a"
-rom = "ppu/oam_int_halt_a.gb"
+id = "gbmicrotest-div-inc-timing-a"
+rom = "div_inc_timing_a.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-halt-b"
-rom = "ppu/oam_int_halt_b.gb"
+id = "gbmicrotest-div-inc-timing-b"
+rom = "div_inc_timing_b.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-if-edge-a"
-rom = "ppu/oam_int_if_edge_a.gb"
+id = "gbmicrotest-dma-0x1000"
+rom = "dma_0x1000.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-if-edge-b"
-rom = "ppu/oam_int_if_edge_b.gb"
+id = "gbmicrotest-dma-0x9000"
+rom = "dma_0x9000.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-if-edge-c"
-rom = "ppu/oam_int_if_edge_c.gb"
+id = "gbmicrotest-dma-0xa000"
+rom = "dma_0xA000.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-if-edge-d"
-rom = "ppu/oam_int_if_edge_d.gb"
+id = "gbmicrotest-dma-0xc000"
+rom = "dma_0xC000.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-if-level-c"
-rom = "ppu/oam_int_if_level_c.gb"
+id = "gbmicrotest-dma-0xe000"
+rom = "dma_0xE000.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-if-level-d"
-rom = "ppu/oam_int_if_level_d.gb"
+id = "gbmicrotest-dma-basic"
+rom = "dma_basic.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-inc-sled"
-rom = "ppu/oam_int_inc_sled.gb"
+id = "gbmicrotest-dma-timing-a"
+rom = "dma_timing_a.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-nops-a"
-rom = "ppu/oam_int_nops_a.gb"
+id = "gbmicrotest-flood-vram"
+rom = "flood_vram.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
 
 [[case]]
-id = "gbmicrotest-ppu-oam-int-nops-b"
-rom = "ppu/oam_int_nops_b.gb"
+id = "gbmicrotest-halt-bug"
+rom = "halt_bug.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l0-a"
-rom = "ppu/oam_read_l0_a.gb"
+id = "gbmicrotest-halt-op-dupe"
+rom = "halt_op_dupe.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l0-b"
-rom = "ppu/oam_read_l0_b.gb"
+id = "gbmicrotest-halt-op-dupe-delay"
+rom = "halt_op_dupe_delay.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l0-c"
-rom = "ppu/oam_read_l0_c.gb"
+id = "gbmicrotest-hblank-int-di-timing-a"
+rom = "hblank_int_di_timing_a.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l0-d"
-rom = "ppu/oam_read_l0_d.gb"
+id = "gbmicrotest-hblank-int-di-timing-b"
+rom = "hblank_int_di_timing_b.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l1-a"
-rom = "ppu/oam_read_l1_a.gb"
+id = "gbmicrotest-hblank-int-if-a"
+rom = "hblank_int_if_a.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l1-b"
-rom = "ppu/oam_read_l1_b.gb"
+id = "gbmicrotest-hblank-int-if-b"
+rom = "hblank_int_if_b.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l1-c"
-rom = "ppu/oam_read_l1_c.gb"
+id = "gbmicrotest-hblank-int-l0"
+rom = "hblank_int_l0.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l1-d"
-rom = "ppu/oam_read_l1_d.gb"
+id = "gbmicrotest-hblank-int-l1"
+rom = "hblank_int_l1.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l1-e"
-rom = "ppu/oam_read_l1_e.gb"
+id = "gbmicrotest-hblank-int-l2"
+rom = "hblank_int_l2.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-read-l1-f"
-rom = "ppu/oam_read_l1_f.gb"
+id = "gbmicrotest-hblank-int-scx0"
+rom = "hblank_int_scx0.gb"
 
 [[case]]
-id = "gbmicrotest-ppu-oam-write-l0-a"
-rom = "ppu/oam_write_l0_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l0-b"
-rom = "ppu/oam_write_l0_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l0-c"
-rom = "ppu/oam_write_l0_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l0-d"
-rom = "ppu/oam_write_l0_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l0-e"
-rom = "ppu/oam_write_l0_e.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l1-a"
-rom = "ppu/oam_write_l1_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l1-b"
-rom = "ppu/oam_write_l1_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l1-c"
-rom = "ppu/oam_write_l1_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l1-d"
-rom = "ppu/oam_write_l1_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l1-e"
-rom = "ppu/oam_write_l1_e.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-oam-write-l1-f"
-rom = "ppu/oam_write_l1_f.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-halt-a"
-rom = "ppu/vblank2_int_halt_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-halt-b"
-rom = "ppu/vblank2_int_halt_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-if-a"
-rom = "ppu/vblank2_int_if_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-if-b"
-rom = "ppu/vblank2_int_if_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-if-c"
-rom = "ppu/vblank2_int_if_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-if-d"
-rom = "ppu/vblank2_int_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-inc-sled"
-rom = "ppu/vblank2_int_inc_sled.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-nops-a"
-rom = "ppu/vblank2_int_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank2-int-nops-b"
-rom = "ppu/vblank2_int_nops_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-halt-a"
-rom = "ppu/vblank_int_halt_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-halt-b"
-rom = "ppu/vblank_int_halt_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-if-a"
-rom = "ppu/vblank_int_if_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-if-b"
-rom = "ppu/vblank_int_if_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-if-c"
-rom = "ppu/vblank_int_if_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-if-d"
-rom = "ppu/vblank_int_if_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-inc-sled"
-rom = "ppu/vblank_int_inc_sled.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-nops-a"
-rom = "ppu/vblank_int_nops_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vblank-int-nops-b"
-rom = "ppu/vblank_int_nops_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-read-l0-a"
-rom = "ppu/vram_read_l0_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-read-l0-b"
-rom = "ppu/vram_read_l0_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-read-l0-c"
-rom = "ppu/vram_read_l0_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-read-l0-d"
-rom = "ppu/vram_read_l0_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-read-l1-a"
-rom = "ppu/vram_read_l1_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-read-l1-b"
-rom = "ppu/vram_read_l1_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-read-l1-c"
-rom = "ppu/vram_read_l1_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-read-l1-d"
-rom = "ppu/vram_read_l1_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-write-l0-a"
-rom = "ppu/vram_write_l0_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-write-l0-b"
-rom = "ppu/vram_write_l0_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-write-l0-c"
-rom = "ppu/vram_write_l0_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-write-l0-d"
-rom = "ppu/vram_write_l0_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-write-l1-a"
-rom = "ppu/vram_write_l1_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-write-l1-b"
-rom = "ppu/vram_write_l1_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-write-l1-c"
-rom = "ppu/vram_write_l1_c.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-vram-write-l1-d"
-rom = "ppu/vram_write_l1_d.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win0-a"
-rom = "ppu/win0_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win0-b"
-rom = "ppu/win0_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win0-scx3-a"
-rom = "ppu/win0_scx3_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win0-scx3-b"
-rom = "ppu/win0_scx3_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win10-a"
-rom = "ppu/win10_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win10-b"
-rom = "ppu/win10_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win10-scx3-a"
-rom = "ppu/win10_scx3_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win10-scx3-b"
-rom = "ppu/win10_scx3_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win11-a"
-rom = "ppu/win11_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win11-b"
-rom = "ppu/win11_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win12-a"
-rom = "ppu/win12_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win12-b"
-rom = "ppu/win12_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win13-a"
-rom = "ppu/win13_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win13-b"
-rom = "ppu/win13_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win14-a"
-rom = "ppu/win14_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win14-b"
-rom = "ppu/win14_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win15-a"
-rom = "ppu/win15_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win15-b"
-rom = "ppu/win15_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win1-a"
-rom = "ppu/win1_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win1-b"
-rom = "ppu/win1_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win2-a"
-rom = "ppu/win2_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win2-b"
-rom = "ppu/win2_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win3-a"
-rom = "ppu/win3_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win3-b"
-rom = "ppu/win3_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win4-a"
-rom = "ppu/win4_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win4-b"
-rom = "ppu/win4_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win5-a"
-rom = "ppu/win5_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win5-b"
-rom = "ppu/win5_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win6-a"
-rom = "ppu/win6_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win6-b"
-rom = "ppu/win6_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win7-a"
-rom = "ppu/win7_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win7-b"
-rom = "ppu/win7_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win8-a"
-rom = "ppu/win8_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win8-b"
-rom = "ppu/win8_b.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win9-a"
-rom = "ppu/win9_a.gb"
-
-[[case]]
-id = "gbmicrotest-ppu-win9-b"
-rom = "ppu/win9_b.gb"
-
-[[case]]
-id = "gbmicrotest-mbc-mbc1-ram-banks"
-rom = "mbc/mbc1_ram_banks.gb"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-bgp-000"
-rom = "boot/poweron_bgp_000.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-div-000"
-rom = "boot/poweron_div_000.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-div-004"
-rom = "boot/poweron_div_004.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-div-005"
-rom = "boot/poweron_div_005.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-dma-000"
-rom = "boot/poweron_dma_000.gb"
+id = "gbmicrotest-hblank-int-scx0-if-a"
+rom = "hblank_int_scx0_if_a.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-if-000"
-rom = "boot/poweron_if_000.gb"
+id = "gbmicrotest-hblank-int-scx0-if-b"
+rom = "hblank_int_scx0_if_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-joy-000"
-rom = "boot/poweron_joy_000.gb"
+id = "gbmicrotest-hblank-int-scx0-if-c"
+rom = "hblank_int_scx0_if_c.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-lcdc-000"
-rom = "boot/poweron_lcdc_000.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-ly-000"
-rom = "boot/poweron_ly_000.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-ly-119"
-rom = "boot/poweron_ly_119.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-ly-120"
-rom = "boot/poweron_ly_120.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-ly-233"
-rom = "boot/poweron_ly_233.gb"
-startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-boot-poweron-ly-234"
-rom = "boot/poweron_ly_234.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx0-if-d"
+rom = "hblank_int_scx0_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-lyc-000"
-rom = "boot/poweron_lyc_000.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx1"
+rom = "hblank_int_scx1.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-000"
-rom = "boot/poweron_oam_000.gb"
+id = "gbmicrotest-hblank-int-scx1-if-a"
+rom = "hblank_int_scx1_if_a.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-005"
-rom = "boot/poweron_oam_005.gb"
+id = "gbmicrotest-hblank-int-scx1-if-b"
+rom = "hblank_int_scx1_if_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-006"
-rom = "boot/poweron_oam_006.gb"
+id = "gbmicrotest-hblank-int-scx1-if-c"
+rom = "hblank_int_scx1_if_c.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-069"
-rom = "boot/poweron_oam_069.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx1-if-d"
+rom = "hblank_int_scx1_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-070"
-rom = "boot/poweron_oam_070.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx1-nops-a"
+rom = "hblank_int_scx1_nops_a.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-119"
-rom = "boot/poweron_oam_119.gb"
+id = "gbmicrotest-hblank-int-scx1-nops-b"
+rom = "hblank_int_scx1_nops_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-120"
-rom = "boot/poweron_oam_120.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx2"
+rom = "hblank_int_scx2.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-121"
-rom = "boot/poweron_oam_121.gb"
+id = "gbmicrotest-hblank-int-scx2-if-a"
+rom = "hblank_int_scx2_if_a.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-183"
-rom = "boot/poweron_oam_183.gb"
+id = "gbmicrotest-hblank-int-scx2-if-b"
+rom = "hblank_int_scx2_if_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-184"
-rom = "boot/poweron_oam_184.gb"
+id = "gbmicrotest-hblank-int-scx2-if-c"
+rom = "hblank_int_scx2_if_c.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-233"
-rom = "boot/poweron_oam_233.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx2-if-d"
+rom = "hblank_int_scx2_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-234"
-rom = "boot/poweron_oam_234.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx2-nops-a"
+rom = "hblank_int_scx2_nops_a.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-oam-235"
-rom = "boot/poweron_oam_235.gb"
+id = "gbmicrotest-hblank-int-scx2-nops-b"
+rom = "hblank_int_scx2_nops_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-sb-000"
-rom = "boot/poweron_sb_000.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx3"
+rom = "hblank_int_scx3.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-sc-000"
-rom = "boot/poweron_sc_000.gb"
+id = "gbmicrotest-hblank-int-scx3-if-a"
+rom = "hblank_int_scx3_if_a.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-scx-000"
-rom = "boot/poweron_scx_000.gb"
+id = "gbmicrotest-hblank-int-scx3-if-b"
+rom = "hblank_int_scx3_if_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-scy-000"
-rom = "boot/poweron_scy_000.gb"
+id = "gbmicrotest-hblank-int-scx3-if-c"
+rom = "hblank_int_scx3_if_c.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-000"
-rom = "boot/poweron_stat_000.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx3-if-d"
+rom = "hblank_int_scx3_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-005"
-rom = "boot/poweron_stat_005.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx3-nops-a"
+rom = "hblank_int_scx3_nops_a.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-006"
-rom = "boot/poweron_stat_006.gb"
+id = "gbmicrotest-hblank-int-scx3-nops-b"
+rom = "hblank_int_scx3_nops_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-007"
-rom = "boot/poweron_stat_007.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx4"
+rom = "hblank_int_scx4.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-026"
-rom = "boot/poweron_stat_026.gb"
+id = "gbmicrotest-hblank-int-scx4-if-a"
+rom = "hblank_int_scx4_if_a.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-027"
-rom = "boot/poweron_stat_027.gb"
+id = "gbmicrotest-hblank-int-scx4-if-b"
+rom = "hblank_int_scx4_if_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-069"
-rom = "boot/poweron_stat_069.gb"
+id = "gbmicrotest-hblank-int-scx4-if-c"
+rom = "hblank_int_scx4_if_c.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-070"
-rom = "boot/poweron_stat_070.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx4-if-d"
+rom = "hblank_int_scx4_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-119"
-rom = "boot/poweron_stat_119.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx4-nops-a"
+rom = "hblank_int_scx4_nops_a.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-120"
-rom = "boot/poweron_stat_120.gb"
+id = "gbmicrotest-hblank-int-scx4-nops-b"
+rom = "hblank_int_scx4_nops_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-121"
-rom = "boot/poweron_stat_121.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx5"
+rom = "hblank_int_scx5.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-140"
-rom = "boot/poweron_stat_140.gb"
+id = "gbmicrotest-hblank-int-scx5-if-a"
+rom = "hblank_int_scx5_if_a.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-141"
-rom = "boot/poweron_stat_141.gb"
+id = "gbmicrotest-hblank-int-scx5-if-b"
+rom = "hblank_int_scx5_if_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-183"
-rom = "boot/poweron_stat_183.gb"
+id = "gbmicrotest-hblank-int-scx5-if-c"
+rom = "hblank_int_scx5_if_c.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-184"
-rom = "boot/poweron_stat_184.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx5-if-d"
+rom = "hblank_int_scx5_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-234"
-rom = "boot/poweron_stat_234.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx5-nops-a"
+rom = "hblank_int_scx5_nops_a.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-stat-235"
-rom = "boot/poweron_stat_235.gb"
+id = "gbmicrotest-hblank-int-scx5-nops-b"
+rom = "hblank_int_scx5_nops_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-tac-000"
-rom = "boot/poweron_tac_000.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx6"
+rom = "hblank_int_scx6.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-tima-000"
-rom = "boot/poweron_tima_000.gb"
+id = "gbmicrotest-hblank-int-scx6-if-a"
+rom = "hblank_int_scx6_if_a.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-tma-000"
-rom = "boot/poweron_tma_000.gb"
+id = "gbmicrotest-hblank-int-scx6-if-b"
+rom = "hblank_int_scx6_if_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-000"
-rom = "boot/poweron_vram_000.gb"
+id = "gbmicrotest-hblank-int-scx6-if-c"
+rom = "hblank_int_scx6_if_c.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-025"
-rom = "boot/poweron_vram_025.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx6-if-d"
+rom = "hblank_int_scx6_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-026"
-rom = "boot/poweron_vram_026.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx6-nops-a"
+rom = "hblank_int_scx6_nops_a.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-069"
-rom = "boot/poweron_vram_069.gb"
+id = "gbmicrotest-hblank-int-scx6-nops-b"
+rom = "hblank_int_scx6_nops_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-070"
-rom = "boot/poweron_vram_070.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx7"
+rom = "hblank_int_scx7.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-139"
-rom = "boot/poweron_vram_139.gb"
+id = "gbmicrotest-hblank-int-scx7-if-a"
+rom = "hblank_int_scx7_if_a.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-140"
-rom = "boot/poweron_vram_140.gb"
+id = "gbmicrotest-hblank-int-scx7-if-b"
+rom = "hblank_int_scx7_if_b.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-183"
-rom = "boot/poweron_vram_183.gb"
+id = "gbmicrotest-hblank-int-scx7-if-c"
+rom = "hblank_int_scx7_if_c.gb"
 startup = "real-boot"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-vram-184"
-rom = "boot/poweron_vram_184.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx7-if-d"
+rom = "hblank_int_scx7_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-wx-000"
-rom = "boot/poweron_wx_000.gb"
-startup = "real-boot"
+id = "gbmicrotest-hblank-int-scx7-nops-a"
+rom = "hblank_int_scx7_nops_a.gb"
 
 [[case]]
-id = "gbmicrotest-boot-poweron-wy-000"
-rom = "boot/poweron_wy_000.gb"
+id = "gbmicrotest-hblank-int-scx7-nops-b"
+rom = "hblank_int_scx7_nops_b.gb"
 startup = "real-boot"
-
-[[case]]
-id = "gbmicrotest-dma-dma-0x1000"
-rom = "dma/dma_0x1000.gb"
-
-[[case]]
-id = "gbmicrotest-dma-dma-0x9000"
-rom = "dma/dma_0x9000.gb"
-
-[[case]]
-id = "gbmicrotest-dma-dma-0xa000"
-rom = "dma/dma_0xA000.gb"
-
-[[case]]
-id = "gbmicrotest-dma-dma-0xc000"
-rom = "dma/dma_0xC000.gb"
-
-[[case]]
-id = "gbmicrotest-dma-dma-0xe000"
-rom = "dma/dma_0xE000.gb"
-
-[[case]]
-id = "gbmicrotest-dma-dma-timing-a"
-rom = "dma/dma_timing_a.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l0-a"
-rom = "stat_write_bug/stat_write_glitch_l0_a.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l0-b"
-rom = "stat_write_bug/stat_write_glitch_l0_b.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l0-c"
-rom = "stat_write_bug/stat_write_glitch_l0_c.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l143-a"
-rom = "stat_write_bug/stat_write_glitch_l143_a.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l143-b"
-rom = "stat_write_bug/stat_write_glitch_l143_b.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l143-c"
-rom = "stat_write_bug/stat_write_glitch_l143_c.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l143-d"
-rom = "stat_write_bug/stat_write_glitch_l143_d.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l154-a"
-rom = "stat_write_bug/stat_write_glitch_l154_a.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l154-b"
-rom = "stat_write_bug/stat_write_glitch_l154_b.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l154-c"
-rom = "stat_write_bug/stat_write_glitch_l154_c.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l1-a"
-rom = "stat_write_bug/stat_write_glitch_l1_a.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l1-b"
-rom = "stat_write_bug/stat_write_glitch_l1_b.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l1-c"
-rom = "stat_write_bug/stat_write_glitch_l1_c.gb"
-
-[[case]]
-id = "gbmicrotest-stat-write-bug-stat-write-glitch-l1-d"
-rom = "stat_write_bug/stat_write_glitch_l1_d.gb"
-
-[[case]]
-id = "gbmicrotest-timers-div-inc-timing-a"
-rom = "timers/div_inc_timing_a.gb"
-
-[[case]]
-id = "gbmicrotest-timers-div-inc-timing-b"
-rom = "timers/div_inc_timing_b.gb"
 
 [[case]]
-id = "gbmicrotest-timers-int-timer-halt-div-a"
-rom = "timers/int_timer_halt_div_a.gb"
+id = "gbmicrotest-hblank-scx2-if-a"
+rom = "hblank_scx2_if_a.gb"
 
 [[case]]
-id = "gbmicrotest-timers-int-timer-halt-div-b"
-rom = "timers/int_timer_halt_div_b.gb"
+id = "gbmicrotest-hblank-scx3-if-a"
+rom = "hblank_scx3_if_a.gb"
 
 [[case]]
-id = "gbmicrotest-timers-int-timer-incs"
-rom = "timers/int_timer_incs.gb"
+id = "gbmicrotest-hblank-scx3-if-b"
+rom = "hblank_scx3_if_b.gb"
 
 [[case]]
-id = "gbmicrotest-timers-int-timer-nops"
-rom = "timers/int_timer_nops.gb"
+id = "gbmicrotest-hblank-scx3-if-c"
+rom = "hblank_scx3_if_c.gb"
 
 [[case]]
-id = "gbmicrotest-timers-int-timer-nops-div-a"
-rom = "timers/int_timer_nops_div_a.gb"
+id = "gbmicrotest-hblank-scx3-if-d"
+rom = "hblank_scx3_if_d.gb"
 
 [[case]]
-id = "gbmicrotest-timers-int-timer-nops-div-b"
-rom = "timers/int_timer_nops_div_b.gb"
+id = "gbmicrotest-hblank-scx3-int-a"
+rom = "hblank_scx3_int_a.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-div-phase-c"
-rom = "timers/timer_div_phase_c.gb"
+id = "gbmicrotest-hblank-scx3-int-b"
+rom = "hblank_scx3_int_b.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-div-phase-d"
-rom = "timers/timer_div_phase_d.gb"
+id = "gbmicrotest-int-hblank-halt-bug-a"
+rom = "int_hblank_halt_bug_a.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-a"
-rom = "timers/timer_tima_inc_256k_a.gb"
+id = "gbmicrotest-int-hblank-halt-bug-b"
+rom = "int_hblank_halt_bug_b.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-b"
-rom = "timers/timer_tima_inc_256k_b.gb"
+id = "gbmicrotest-int-hblank-halt-scx0"
+rom = "int_hblank_halt_scx0.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-c"
-rom = "timers/timer_tima_inc_256k_c.gb"
+id = "gbmicrotest-int-hblank-halt-scx1"
+rom = "int_hblank_halt_scx1.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-d"
-rom = "timers/timer_tima_inc_256k_d.gb"
+id = "gbmicrotest-int-hblank-halt-scx2"
+rom = "int_hblank_halt_scx2.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-e"
-rom = "timers/timer_tima_inc_256k_e.gb"
+id = "gbmicrotest-int-hblank-halt-scx3"
+rom = "int_hblank_halt_scx3.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-f"
-rom = "timers/timer_tima_inc_256k_f.gb"
+id = "gbmicrotest-int-hblank-halt-scx4"
+rom = "int_hblank_halt_scx4.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-g"
-rom = "timers/timer_tima_inc_256k_g.gb"
+id = "gbmicrotest-int-hblank-halt-scx5"
+rom = "int_hblank_halt_scx5.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-h"
-rom = "timers/timer_tima_inc_256k_h.gb"
+id = "gbmicrotest-int-hblank-halt-scx6"
+rom = "int_hblank_halt_scx6.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-i"
-rom = "timers/timer_tima_inc_256k_i.gb"
+id = "gbmicrotest-int-hblank-halt-scx7"
+rom = "int_hblank_halt_scx7.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-j"
-rom = "timers/timer_tima_inc_256k_j.gb"
+id = "gbmicrotest-int-hblank-incs-scx0"
+rom = "int_hblank_incs_scx0.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-256k-k"
-rom = "timers/timer_tima_inc_256k_k.gb"
+id = "gbmicrotest-int-hblank-incs-scx1"
+rom = "int_hblank_incs_scx1.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-64k-a"
-rom = "timers/timer_tima_inc_64k_a.gb"
+id = "gbmicrotest-int-hblank-incs-scx2"
+rom = "int_hblank_incs_scx2.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-64k-b"
-rom = "timers/timer_tima_inc_64k_b.gb"
+id = "gbmicrotest-int-hblank-incs-scx3"
+rom = "int_hblank_incs_scx3.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-64k-c"
-rom = "timers/timer_tima_inc_64k_c.gb"
+id = "gbmicrotest-int-hblank-incs-scx4"
+rom = "int_hblank_incs_scx4.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-inc-64k-d"
-rom = "timers/timer_tima_inc_64k_d.gb"
+id = "gbmicrotest-int-hblank-incs-scx5"
+rom = "int_hblank_incs_scx5.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-a"
-rom = "timers/timer_tima_phase_a.gb"
+id = "gbmicrotest-int-hblank-incs-scx6"
+rom = "int_hblank_incs_scx6.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-b"
-rom = "timers/timer_tima_phase_b.gb"
+id = "gbmicrotest-int-hblank-incs-scx7"
+rom = "int_hblank_incs_scx7.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-c"
-rom = "timers/timer_tima_phase_c.gb"
+id = "gbmicrotest-int-hblank-nops-scx0"
+rom = "int_hblank_nops_scx0.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-d"
-rom = "timers/timer_tima_phase_d.gb"
+id = "gbmicrotest-int-hblank-nops-scx1"
+rom = "int_hblank_nops_scx1.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-e"
-rom = "timers/timer_tima_phase_e.gb"
+id = "gbmicrotest-int-hblank-nops-scx2"
+rom = "int_hblank_nops_scx2.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-f"
-rom = "timers/timer_tima_phase_f.gb"
+id = "gbmicrotest-int-hblank-nops-scx3"
+rom = "int_hblank_nops_scx3.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-g"
-rom = "timers/timer_tima_phase_g.gb"
+id = "gbmicrotest-int-hblank-nops-scx4"
+rom = "int_hblank_nops_scx4.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-h"
-rom = "timers/timer_tima_phase_h.gb"
+id = "gbmicrotest-int-hblank-nops-scx5"
+rom = "int_hblank_nops_scx5.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-i"
-rom = "timers/timer_tima_phase_i.gb"
+id = "gbmicrotest-int-hblank-nops-scx6"
+rom = "int_hblank_nops_scx6.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-phase-j"
-rom = "timers/timer_tima_phase_j.gb"
+id = "gbmicrotest-int-hblank-nops-scx7"
+rom = "int_hblank_nops_scx7.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-a"
-rom = "timers/timer_tima_reload_256k_a.gb"
+id = "gbmicrotest-int-lyc-halt"
+rom = "int_lyc_halt.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-b"
-rom = "timers/timer_tima_reload_256k_b.gb"
+id = "gbmicrotest-int-lyc-incs"
+rom = "int_lyc_incs.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-c"
-rom = "timers/timer_tima_reload_256k_c.gb"
+id = "gbmicrotest-int-lyc-nops"
+rom = "int_lyc_nops.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-d"
-rom = "timers/timer_tima_reload_256k_d.gb"
+id = "gbmicrotest-int-oam-halt"
+rom = "int_oam_halt.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-e"
-rom = "timers/timer_tima_reload_256k_e.gb"
+id = "gbmicrotest-int-oam-incs"
+rom = "int_oam_incs.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-f"
-rom = "timers/timer_tima_reload_256k_f.gb"
+id = "gbmicrotest-int-oam-nops"
+rom = "int_oam_nops.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-g"
-rom = "timers/timer_tima_reload_256k_g.gb"
+id = "gbmicrotest-int-timer-halt"
+rom = "int_timer_halt.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-h"
-rom = "timers/timer_tima_reload_256k_h.gb"
+id = "gbmicrotest-int-timer-halt-div-a"
+rom = "int_timer_halt_div_a.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-i"
-rom = "timers/timer_tima_reload_256k_i.gb"
+id = "gbmicrotest-int-timer-halt-div-b"
+rom = "int_timer_halt_div_b.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-j"
-rom = "timers/timer_tima_reload_256k_j.gb"
+id = "gbmicrotest-int-timer-incs"
+rom = "int_timer_incs.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-reload-256k-k"
-rom = "timers/timer_tima_reload_256k_k.gb"
+id = "gbmicrotest-int-timer-nops"
+rom = "int_timer_nops.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-write-a"
-rom = "timers/timer_tima_write_a.gb"
+id = "gbmicrotest-int-timer-nops-div-a"
+rom = "int_timer_nops_div_a.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-write-b"
-rom = "timers/timer_tima_write_b.gb"
+id = "gbmicrotest-int-timer-nops-div-b"
+rom = "int_timer_nops_div_b.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-write-c"
-rom = "timers/timer_tima_write_c.gb"
+id = "gbmicrotest-int-vblank1-halt"
+rom = "int_vblank1_halt.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-write-d"
-rom = "timers/timer_tima_write_d.gb"
+id = "gbmicrotest-int-vblank1-incs"
+rom = "int_vblank1_incs.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-write-e"
-rom = "timers/timer_tima_write_e.gb"
+id = "gbmicrotest-int-vblank1-nops"
+rom = "int_vblank1_nops.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tima-write-f"
-rom = "timers/timer_tima_write_f.gb"
+id = "gbmicrotest-int-vblank2-halt"
+rom = "int_vblank2_halt.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tma-write-a"
-rom = "timers/timer_tma_write_a.gb"
+id = "gbmicrotest-int-vblank2-incs"
+rom = "int_vblank2_incs.gb"
 
 [[case]]
-id = "gbmicrotest-timers-timer-tma-write-b"
-rom = "timers/timer_tma_write_b.gb"
+id = "gbmicrotest-int-vblank2-nops"
+rom = "int_vblank2_nops.gb"
 
 [[case]]
-id = "gbmicrotest-interrupts-is-if-set-during-ime0"
-rom = "interrupts/is_if_set_during_ime0.gb"
+id = "gbmicrotest-is-if-set-during-ime0"
+rom = "is_if_set_during_ime0.gb"
 timeout_frames = 30
+
+[[case]]
+id = "gbmicrotest-lcdon-halt-to-vblank-int-a"
+rom = "lcdon_halt_to_vblank_int_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-halt-to-vblank-int-b"
+rom = "lcdon_halt_to_vblank_int_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-nops-to-vblank-int-a"
+rom = "lcdon_nops_to_vblank_int_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-nops-to-vblank-int-b"
+rom = "lcdon_nops_to_vblank_int_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-if-oam-a"
+rom = "lcdon_to_if_oam_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-if-oam-b"
+rom = "lcdon_to_if_oam_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-ly1-a"
+rom = "lcdon_to_ly1_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-ly1-b"
+rom = "lcdon_to_ly1_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-ly2-a"
+rom = "lcdon_to_ly2_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-ly2-b"
+rom = "lcdon_to_ly2_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-ly3-a"
+rom = "lcdon_to_ly3_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-ly3-b"
+rom = "lcdon_to_ly3_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-lyc1-int"
+rom = "lcdon_to_lyc1_int.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-lyc2-int"
+rom = "lcdon_to_lyc2_int.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-lyc3-int"
+rom = "lcdon_to_lyc3_int.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-oam-int-l0"
+rom = "lcdon_to_oam_int_l0.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-oam-int-l1"
+rom = "lcdon_to_oam_int_l1.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-oam-int-l2"
+rom = "lcdon_to_oam_int_l2.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-oam-unlock-a"
+rom = "lcdon_to_oam_unlock_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-oam-unlock-b"
+rom = "lcdon_to_oam_unlock_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-oam-unlock-c"
+rom = "lcdon_to_oam_unlock_c.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-oam-unlock-d"
+rom = "lcdon_to_oam_unlock_d.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat0-a"
+rom = "lcdon_to_stat0_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat0-b"
+rom = "lcdon_to_stat0_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat0-c"
+rom = "lcdon_to_stat0_c.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat0-d"
+rom = "lcdon_to_stat0_d.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat1-a"
+rom = "lcdon_to_stat1_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat1-b"
+rom = "lcdon_to_stat1_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat1-c"
+rom = "lcdon_to_stat1_c.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat1-d"
+rom = "lcdon_to_stat1_d.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat1-e"
+rom = "lcdon_to_stat1_e.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat2-a"
+rom = "lcdon_to_stat2_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat2-b"
+rom = "lcdon_to_stat2_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat2-c"
+rom = "lcdon_to_stat2_c.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat2-d"
+rom = "lcdon_to_stat2_d.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat3-a"
+rom = "lcdon_to_stat3_a.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat3-b"
+rom = "lcdon_to_stat3_b.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat3-c"
+rom = "lcdon_to_stat3_c.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-to-stat3-d"
+rom = "lcdon_to_stat3_d.gb"
+
+[[case]]
+id = "gbmicrotest-lcdon-write-timing"
+rom = "lcdon_write_timing.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
+
+[[case]]
+id = "gbmicrotest-line-144-oam-int-a"
+rom = "line_144_oam_int_a.gb"
+
+[[case]]
+id = "gbmicrotest-line-144-oam-int-b"
+rom = "line_144_oam_int_b.gb"
+
+[[case]]
+id = "gbmicrotest-line-144-oam-int-c"
+rom = "line_144_oam_int_c.gb"
+
+[[case]]
+id = "gbmicrotest-line-144-oam-int-d"
+rom = "line_144_oam_int_d.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-ly-a"
+rom = "line_153_ly_a.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-ly-b"
+rom = "line_153_ly_b.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-ly-c"
+rom = "line_153_ly_c.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-ly-d"
+rom = "line_153_ly_d.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-ly-e"
+rom = "line_153_ly_e.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-ly-f"
+rom = "line_153_ly_f.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-int-inc-sled"
+rom = "line_153_lyc0_int_inc_sled.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-a"
+rom = "line_153_lyc0_stat_timing_a.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-b"
+rom = "line_153_lyc0_stat_timing_b.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-c"
+rom = "line_153_lyc0_stat_timing_c.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-d"
+rom = "line_153_lyc0_stat_timing_d.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-e"
+rom = "line_153_lyc0_stat_timing_e.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-f"
+rom = "line_153_lyc0_stat_timing_f.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-g"
+rom = "line_153_lyc0_stat_timing_g.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-h"
+rom = "line_153_lyc0_stat_timing_h.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-i"
+rom = "line_153_lyc0_stat_timing_i.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-j"
+rom = "line_153_lyc0_stat_timing_j.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-k"
+rom = "line_153_lyc0_stat_timing_k.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-l"
+rom = "line_153_lyc0_stat_timing_l.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-m"
+rom = "line_153_lyc0_stat_timing_m.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc0-stat-timing-n"
+rom = "line_153_lyc0_stat_timing_n.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc153-stat-timing-a"
+rom = "line_153_lyc153_stat_timing_a.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc153-stat-timing-b"
+rom = "line_153_lyc153_stat_timing_b.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc153-stat-timing-c"
+rom = "line_153_lyc153_stat_timing_c.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc153-stat-timing-d"
+rom = "line_153_lyc153_stat_timing_d.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc153-stat-timing-e"
+rom = "line_153_lyc153_stat_timing_e.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc153-stat-timing-f"
+rom = "line_153_lyc153_stat_timing_f.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc-a"
+rom = "line_153_lyc_a.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc-b"
+rom = "line_153_lyc_b.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc-c"
+rom = "line_153_lyc_c.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc-int-a"
+rom = "line_153_lyc_int_a.gb"
+
+[[case]]
+id = "gbmicrotest-line-153-lyc-int-b"
+rom = "line_153_lyc_int_b.gb"
+
+[[case]]
+id = "gbmicrotest-line-65-ly"
+rom = "line_65_ly.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-ly-while-lcd-off"
+rom = "ly_while_lcd_off.gb"
+disabled = true
+comment = "Disabled because this ROM displays a measured value in VRAM and needs a future non-perturbing vram-byte-equals-style oracle instead of the CPU-visible memory-byte oracle."
+
+[[case]]
+id = "gbmicrotest-lyc1-int-halt-a"
+rom = "lyc1_int_halt_a.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-int-halt-b"
+rom = "lyc1_int_halt_b.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-int-if-edge-a"
+rom = "lyc1_int_if_edge_a.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-int-if-edge-b"
+rom = "lyc1_int_if_edge_b.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-int-if-edge-c"
+rom = "lyc1_int_if_edge_c.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-int-if-edge-d"
+rom = "lyc1_int_if_edge_d.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-int-nops-a"
+rom = "lyc1_int_nops_a.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-int-nops-b"
+rom = "lyc1_int_nops_b.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-write-timing-a"
+rom = "lyc1_write_timing_a.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-write-timing-b"
+rom = "lyc1_write_timing_b.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-write-timing-c"
+rom = "lyc1_write_timing_c.gb"
+
+[[case]]
+id = "gbmicrotest-lyc1-write-timing-d"
+rom = "lyc1_write_timing_d.gb"
+
+[[case]]
+id = "gbmicrotest-lyc2-int-halt-a"
+rom = "lyc2_int_halt_a.gb"
+
+[[case]]
+id = "gbmicrotest-lyc2-int-halt-b"
+rom = "lyc2_int_halt_b.gb"
+
+[[case]]
+id = "gbmicrotest-lyc-int-halt-a"
+rom = "lyc_int_halt_a.gb"
+
+[[case]]
+id = "gbmicrotest-lyc-int-halt-b"
+rom = "lyc_int_halt_b.gb"
+
+[[case]]
+id = "gbmicrotest-mbc1-ram-banks"
+rom = "mbc1_ram_banks.gb"
+
+[[case]]
+id = "gbmicrotest-mbc1-rom-banks"
+rom = "mbc1_rom_banks.gb"
+
+[[case]]
+id = "gbmicrotest-minimal"
+rom = "minimal.gb"
+disabled = true
+comment = "Disabled because this ROM displays a measured value in VRAM and needs a future non-perturbing vram-byte-equals-style oracle instead of the CPU-visible memory-byte oracle."
+
+[[case]]
+id = "gbmicrotest-mode2-stat-int-to-oam-unlock"
+rom = "mode2_stat_int_to_oam_unlock.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
+
+[[case]]
+id = "gbmicrotest-oam-int-halt-a"
+rom = "oam_int_halt_a.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-halt-b"
+rom = "oam_int_halt_b.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-if-edge-a"
+rom = "oam_int_if_edge_a.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-if-edge-b"
+rom = "oam_int_if_edge_b.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-if-edge-c"
+rom = "oam_int_if_edge_c.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-if-edge-d"
+rom = "oam_int_if_edge_d.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-if-level-c"
+rom = "oam_int_if_level_c.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-if-level-d"
+rom = "oam_int_if_level_d.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-inc-sled"
+rom = "oam_int_inc_sled.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-nops-a"
+rom = "oam_int_nops_a.gb"
+
+[[case]]
+id = "gbmicrotest-oam-int-nops-b"
+rom = "oam_int_nops_b.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l0-a"
+rom = "oam_read_l0_a.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l0-b"
+rom = "oam_read_l0_b.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l0-c"
+rom = "oam_read_l0_c.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l0-d"
+rom = "oam_read_l0_d.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l1-a"
+rom = "oam_read_l1_a.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l1-b"
+rom = "oam_read_l1_b.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l1-c"
+rom = "oam_read_l1_c.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l1-d"
+rom = "oam_read_l1_d.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l1-e"
+rom = "oam_read_l1_e.gb"
+
+[[case]]
+id = "gbmicrotest-oam-read-l1-f"
+rom = "oam_read_l1_f.gb"
+
+[[case]]
+id = "gbmicrotest-oam-sprite-trashing"
+rom = "oam_sprite_trashing.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
+
+[[case]]
+id = "gbmicrotest-oam-write-l0-a"
+rom = "oam_write_l0_a.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l0-b"
+rom = "oam_write_l0_b.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l0-c"
+rom = "oam_write_l0_c.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l0-d"
+rom = "oam_write_l0_d.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l0-e"
+rom = "oam_write_l0_e.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l1-a"
+rom = "oam_write_l1_a.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l1-b"
+rom = "oam_write_l1_b.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l1-c"
+rom = "oam_write_l1_c.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l1-d"
+rom = "oam_write_l1_d.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l1-e"
+rom = "oam_write_l1_e.gb"
+
+[[case]]
+id = "gbmicrotest-oam-write-l1-f"
+rom = "oam_write_l1_f.gb"
+
+[[case]]
+id = "gbmicrotest-poweron"
+rom = "poweron.gb"
+disabled = true
+comment = "Disabled because this ROM displays a measured value in VRAM and needs a future non-perturbing vram-byte-equals-style oracle instead of the CPU-visible memory-byte oracle."
+
+[[case]]
+id = "gbmicrotest-poweron-bgp-000"
+rom = "poweron_bgp_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-div-000"
+rom = "poweron_div_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-div-004"
+rom = "poweron_div_004.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-div-005"
+rom = "poweron_div_005.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-dma-000"
+rom = "poweron_dma_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-if-000"
+rom = "poweron_if_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-joy-000"
+rom = "poweron_joy_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-lcdc-000"
+rom = "poweron_lcdc_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-ly-000"
+rom = "poweron_ly_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-ly-119"
+rom = "poweron_ly_119.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-ly-120"
+rom = "poweron_ly_120.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-ly-233"
+rom = "poweron_ly_233.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-ly-234"
+rom = "poweron_ly_234.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-lyc-000"
+rom = "poweron_lyc_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-000"
+rom = "poweron_oam_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-005"
+rom = "poweron_oam_005.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-006"
+rom = "poweron_oam_006.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-069"
+rom = "poweron_oam_069.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-070"
+rom = "poweron_oam_070.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-119"
+rom = "poweron_oam_119.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-120"
+rom = "poweron_oam_120.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-121"
+rom = "poweron_oam_121.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-183"
+rom = "poweron_oam_183.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-184"
+rom = "poweron_oam_184.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-233"
+rom = "poweron_oam_233.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-234"
+rom = "poweron_oam_234.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-oam-235"
+rom = "poweron_oam_235.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-obp0-000"
+rom = "poweron_obp0_000.gb"
+
+[[case]]
+id = "gbmicrotest-poweron-obp1-000"
+rom = "poweron_obp1_000.gb"
+
+[[case]]
+id = "gbmicrotest-poweron-sb-000"
+rom = "poweron_sb_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-sc-000"
+rom = "poweron_sc_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-scx-000"
+rom = "poweron_scx_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-scy-000"
+rom = "poweron_scy_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-000"
+rom = "poweron_stat_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-005"
+rom = "poweron_stat_005.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-006"
+rom = "poweron_stat_006.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-007"
+rom = "poweron_stat_007.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-026"
+rom = "poweron_stat_026.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-027"
+rom = "poweron_stat_027.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-069"
+rom = "poweron_stat_069.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-070"
+rom = "poweron_stat_070.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-119"
+rom = "poweron_stat_119.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-120"
+rom = "poweron_stat_120.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-121"
+rom = "poweron_stat_121.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-140"
+rom = "poweron_stat_140.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-141"
+rom = "poweron_stat_141.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-183"
+rom = "poweron_stat_183.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-184"
+rom = "poweron_stat_184.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-234"
+rom = "poweron_stat_234.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-stat-235"
+rom = "poweron_stat_235.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-tac-000"
+rom = "poweron_tac_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-tima-000"
+rom = "poweron_tima_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-tma-000"
+rom = "poweron_tma_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-000"
+rom = "poweron_vram_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-025"
+rom = "poweron_vram_025.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-026"
+rom = "poweron_vram_026.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-069"
+rom = "poweron_vram_069.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-070"
+rom = "poweron_vram_070.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-139"
+rom = "poweron_vram_139.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-140"
+rom = "poweron_vram_140.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-183"
+rom = "poweron_vram_183.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-vram-184"
+rom = "poweron_vram_184.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-wx-000"
+rom = "poweron_wx_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-poweron-wy-000"
+rom = "poweron_wy_000.gb"
+startup = "real-boot"
+
+[[case]]
+id = "gbmicrotest-ppu-scx-vs-bgp"
+rom = "ppu_scx_vs_bgp.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx0-a"
+rom = "ppu_sprite0_scx0_a.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx0-b"
+rom = "ppu_sprite0_scx0_b.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx1-a"
+rom = "ppu_sprite0_scx1_a.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx1-b"
+rom = "ppu_sprite0_scx1_b.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx2-a"
+rom = "ppu_sprite0_scx2_a.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx2-b"
+rom = "ppu_sprite0_scx2_b.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx3-a"
+rom = "ppu_sprite0_scx3_a.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx3-b"
+rom = "ppu_sprite0_scx3_b.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx4-a"
+rom = "ppu_sprite0_scx4_a.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx4-b"
+rom = "ppu_sprite0_scx4_b.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx5-a"
+rom = "ppu_sprite0_scx5_a.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx5-b"
+rom = "ppu_sprite0_scx5_b.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx6-a"
+rom = "ppu_sprite0_scx6_a.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx6-b"
+rom = "ppu_sprite0_scx6_b.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx7-a"
+rom = "ppu_sprite0_scx7_a.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite0-scx7-b"
+rom = "ppu_sprite0_scx7_b.gb"
+
+[[case]]
+id = "gbmicrotest-ppu-sprite-testbench"
+rom = "ppu_sprite_testbench.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
+
+[[case]]
+id = "gbmicrotest-ppu-spritex-vs-scx"
+rom = "ppu_spritex_vs_scx.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
+
+[[case]]
+id = "gbmicrotest-ppu-win-vs-wx"
+rom = "ppu_win_vs_wx.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
+
+[[case]]
+id = "gbmicrotest-ppu-wx-early"
+rom = "ppu_wx_early.gb"
+disabled = true
+comment = "Disabled because this ROM has a visual expected result and needs a framebuffer fixture backed by hardware or trusted oracle evidence before it can become an automated pass/fail row."
+
+[[case]]
+id = "gbmicrotest-sprite4-0-a"
+rom = "sprite4_0_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-0-b"
+rom = "sprite4_0_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-1-a"
+rom = "sprite4_1_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-1-b"
+rom = "sprite4_1_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-2-a"
+rom = "sprite4_2_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-2-b"
+rom = "sprite4_2_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-3-a"
+rom = "sprite4_3_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-3-b"
+rom = "sprite4_3_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-4-a"
+rom = "sprite4_4_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-4-b"
+rom = "sprite4_4_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-5-a"
+rom = "sprite4_5_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-5-b"
+rom = "sprite4_5_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-6-a"
+rom = "sprite4_6_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-6-b"
+rom = "sprite4_6_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-7-a"
+rom = "sprite4_7_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite4-7-b"
+rom = "sprite4_7_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite-0-a"
+rom = "sprite_0_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite-0-b"
+rom = "sprite_0_b.gb"
+
+[[case]]
+id = "gbmicrotest-sprite-1-a"
+rom = "sprite_1_a.gb"
+
+[[case]]
+id = "gbmicrotest-sprite-1-b"
+rom = "sprite_1_b.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l0-a"
+rom = "stat_write_glitch_l0_a.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l0-b"
+rom = "stat_write_glitch_l0_b.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l0-c"
+rom = "stat_write_glitch_l0_c.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l143-a"
+rom = "stat_write_glitch_l143_a.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l143-b"
+rom = "stat_write_glitch_l143_b.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l143-c"
+rom = "stat_write_glitch_l143_c.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l143-d"
+rom = "stat_write_glitch_l143_d.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l154-a"
+rom = "stat_write_glitch_l154_a.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l154-b"
+rom = "stat_write_glitch_l154_b.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l154-c"
+rom = "stat_write_glitch_l154_c.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l154-d"
+rom = "stat_write_glitch_l154_d.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l1-a"
+rom = "stat_write_glitch_l1_a.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l1-b"
+rom = "stat_write_glitch_l1_b.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l1-c"
+rom = "stat_write_glitch_l1_c.gb"
+
+[[case]]
+id = "gbmicrotest-stat-write-glitch-l1-d"
+rom = "stat_write_glitch_l1_d.gb"
+
+[[case]]
+id = "gbmicrotest-temp"
+rom = "temp.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
+
+[[case]]
+id = "gbmicrotest-timer-div-phase-c"
+rom = "timer_div_phase_c.gb"
+
+[[case]]
+id = "gbmicrotest-timer-div-phase-d"
+rom = "timer_div_phase_d.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-a"
+rom = "timer_tima_inc_256k_a.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-b"
+rom = "timer_tima_inc_256k_b.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-c"
+rom = "timer_tima_inc_256k_c.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-d"
+rom = "timer_tima_inc_256k_d.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-e"
+rom = "timer_tima_inc_256k_e.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-f"
+rom = "timer_tima_inc_256k_f.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-g"
+rom = "timer_tima_inc_256k_g.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-h"
+rom = "timer_tima_inc_256k_h.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-i"
+rom = "timer_tima_inc_256k_i.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-j"
+rom = "timer_tima_inc_256k_j.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-256k-k"
+rom = "timer_tima_inc_256k_k.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-64k-a"
+rom = "timer_tima_inc_64k_a.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-64k-b"
+rom = "timer_tima_inc_64k_b.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-64k-c"
+rom = "timer_tima_inc_64k_c.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-inc-64k-d"
+rom = "timer_tima_inc_64k_d.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-a"
+rom = "timer_tima_phase_a.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-b"
+rom = "timer_tima_phase_b.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-c"
+rom = "timer_tima_phase_c.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-d"
+rom = "timer_tima_phase_d.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-e"
+rom = "timer_tima_phase_e.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-f"
+rom = "timer_tima_phase_f.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-g"
+rom = "timer_tima_phase_g.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-h"
+rom = "timer_tima_phase_h.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-i"
+rom = "timer_tima_phase_i.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-phase-j"
+rom = "timer_tima_phase_j.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-a"
+rom = "timer_tima_reload_256k_a.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-b"
+rom = "timer_tima_reload_256k_b.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-c"
+rom = "timer_tima_reload_256k_c.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-d"
+rom = "timer_tima_reload_256k_d.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-e"
+rom = "timer_tima_reload_256k_e.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-f"
+rom = "timer_tima_reload_256k_f.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-g"
+rom = "timer_tima_reload_256k_g.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-h"
+rom = "timer_tima_reload_256k_h.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-i"
+rom = "timer_tima_reload_256k_i.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-j"
+rom = "timer_tima_reload_256k_j.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-reload-256k-k"
+rom = "timer_tima_reload_256k_k.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-write-a"
+rom = "timer_tima_write_a.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-write-b"
+rom = "timer_tima_write_b.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-write-c"
+rom = "timer_tima_write_c.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-write-d"
+rom = "timer_tima_write_d.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-write-e"
+rom = "timer_tima_write_e.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tima-write-f"
+rom = "timer_tima_write_f.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tma-write-a"
+rom = "timer_tma_write_a.gb"
+
+[[case]]
+id = "gbmicrotest-timer-tma-write-b"
+rom = "timer_tma_write_b.gb"
+
+[[case]]
+id = "gbmicrotest-toggle-lcdc"
+rom = "toggle_lcdc.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
+
+[[case]]
+id = "gbmicrotest-vblank2-int-halt-a"
+rom = "vblank2_int_halt_a.gb"
+
+[[case]]
+id = "gbmicrotest-vblank2-int-halt-b"
+rom = "vblank2_int_halt_b.gb"
+
+[[case]]
+id = "gbmicrotest-vblank2-int-if-a"
+rom = "vblank2_int_if_a.gb"
+
+[[case]]
+id = "gbmicrotest-vblank2-int-if-b"
+rom = "vblank2_int_if_b.gb"
+
+[[case]]
+id = "gbmicrotest-vblank2-int-if-c"
+rom = "vblank2_int_if_c.gb"
+
+[[case]]
+id = "gbmicrotest-vblank2-int-if-d"
+rom = "vblank2_int_if_d.gb"
+
+[[case]]
+id = "gbmicrotest-vblank2-int-inc-sled"
+rom = "vblank2_int_inc_sled.gb"
+
+[[case]]
+id = "gbmicrotest-vblank2-int-nops-a"
+rom = "vblank2_int_nops_a.gb"
+
+[[case]]
+id = "gbmicrotest-vblank2-int-nops-b"
+rom = "vblank2_int_nops_b.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-halt-a"
+rom = "vblank_int_halt_a.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-halt-b"
+rom = "vblank_int_halt_b.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-if-a"
+rom = "vblank_int_if_a.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-if-b"
+rom = "vblank_int_if_b.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-if-c"
+rom = "vblank_int_if_c.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-if-d"
+rom = "vblank_int_if_d.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-inc-sled"
+rom = "vblank_int_inc_sled.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-nops-a"
+rom = "vblank_int_nops_a.gb"
+
+[[case]]
+id = "gbmicrotest-vblank-int-nops-b"
+rom = "vblank_int_nops_b.gb"
+
+[[case]]
+id = "gbmicrotest-vram-read-l0-a"
+rom = "vram_read_l0_a.gb"
+
+[[case]]
+id = "gbmicrotest-vram-read-l0-b"
+rom = "vram_read_l0_b.gb"
+
+[[case]]
+id = "gbmicrotest-vram-read-l0-c"
+rom = "vram_read_l0_c.gb"
+
+[[case]]
+id = "gbmicrotest-vram-read-l0-d"
+rom = "vram_read_l0_d.gb"
+
+[[case]]
+id = "gbmicrotest-vram-read-l1-a"
+rom = "vram_read_l1_a.gb"
+
+[[case]]
+id = "gbmicrotest-vram-read-l1-b"
+rom = "vram_read_l1_b.gb"
+
+[[case]]
+id = "gbmicrotest-vram-read-l1-c"
+rom = "vram_read_l1_c.gb"
+
+[[case]]
+id = "gbmicrotest-vram-read-l1-d"
+rom = "vram_read_l1_d.gb"
+
+[[case]]
+id = "gbmicrotest-vram-write-l0-a"
+rom = "vram_write_l0_a.gb"
+
+[[case]]
+id = "gbmicrotest-vram-write-l0-b"
+rom = "vram_write_l0_b.gb"
+
+[[case]]
+id = "gbmicrotest-vram-write-l0-c"
+rom = "vram_write_l0_c.gb"
+
+[[case]]
+id = "gbmicrotest-vram-write-l0-d"
+rom = "vram_write_l0_d.gb"
+
+[[case]]
+id = "gbmicrotest-vram-write-l1-a"
+rom = "vram_write_l1_a.gb"
+
+[[case]]
+id = "gbmicrotest-vram-write-l1-b"
+rom = "vram_write_l1_b.gb"
+
+[[case]]
+id = "gbmicrotest-vram-write-l1-c"
+rom = "vram_write_l1_c.gb"
+
+[[case]]
+id = "gbmicrotest-vram-write-l1-d"
+rom = "vram_write_l1_d.gb"
+
+[[case]]
+id = "gbmicrotest-wave-write-to-0xc003"
+rom = "wave_write_to_0xC003.gb"
+disabled = true
+comment = "Disabled because this ROM is a debug/probe loop without a clear pass/fail signal for the current runner."
+
+[[case]]
+id = "gbmicrotest-win0-a"
+rom = "win0_a.gb"
+
+[[case]]
+id = "gbmicrotest-win0-b"
+rom = "win0_b.gb"
+
+[[case]]
+id = "gbmicrotest-win0-scx3-a"
+rom = "win0_scx3_a.gb"
+
+[[case]]
+id = "gbmicrotest-win0-scx3-b"
+rom = "win0_scx3_b.gb"
+
+[[case]]
+id = "gbmicrotest-win10-a"
+rom = "win10_a.gb"
+
+[[case]]
+id = "gbmicrotest-win10-b"
+rom = "win10_b.gb"
+
+[[case]]
+id = "gbmicrotest-win10-scx3-a"
+rom = "win10_scx3_a.gb"
+
+[[case]]
+id = "gbmicrotest-win10-scx3-b"
+rom = "win10_scx3_b.gb"
+
+[[case]]
+id = "gbmicrotest-win11-a"
+rom = "win11_a.gb"
+
+[[case]]
+id = "gbmicrotest-win11-b"
+rom = "win11_b.gb"
+
+[[case]]
+id = "gbmicrotest-win12-a"
+rom = "win12_a.gb"
+
+[[case]]
+id = "gbmicrotest-win12-b"
+rom = "win12_b.gb"
+
+[[case]]
+id = "gbmicrotest-win13-a"
+rom = "win13_a.gb"
+
+[[case]]
+id = "gbmicrotest-win13-b"
+rom = "win13_b.gb"
+
+[[case]]
+id = "gbmicrotest-win14-a"
+rom = "win14_a.gb"
+
+[[case]]
+id = "gbmicrotest-win14-b"
+rom = "win14_b.gb"
+
+[[case]]
+id = "gbmicrotest-win15-a"
+rom = "win15_a.gb"
+
+[[case]]
+id = "gbmicrotest-win15-b"
+rom = "win15_b.gb"
+
+[[case]]
+id = "gbmicrotest-win1-a"
+rom = "win1_a.gb"
+
+[[case]]
+id = "gbmicrotest-win1-b"
+rom = "win1_b.gb"
+
+[[case]]
+id = "gbmicrotest-win2-a"
+rom = "win2_a.gb"
+
+[[case]]
+id = "gbmicrotest-win2-b"
+rom = "win2_b.gb"
+
+[[case]]
+id = "gbmicrotest-win3-a"
+rom = "win3_a.gb"
+
+[[case]]
+id = "gbmicrotest-win3-b"
+rom = "win3_b.gb"
+
+[[case]]
+id = "gbmicrotest-win4-a"
+rom = "win4_a.gb"
+
+[[case]]
+id = "gbmicrotest-win4-b"
+rom = "win4_b.gb"
+
+[[case]]
+id = "gbmicrotest-win5-a"
+rom = "win5_a.gb"
+
+[[case]]
+id = "gbmicrotest-win5-b"
+rom = "win5_b.gb"
+
+[[case]]
+id = "gbmicrotest-win6-a"
+rom = "win6_a.gb"
+
+[[case]]
+id = "gbmicrotest-win6-b"
+rom = "win6_b.gb"
+
+[[case]]
+id = "gbmicrotest-win7-a"
+rom = "win7_a.gb"
+
+[[case]]
+id = "gbmicrotest-win7-b"
+rom = "win7_b.gb"
+
+[[case]]
+id = "gbmicrotest-win8-a"
+rom = "win8_a.gb"
+
+[[case]]
+id = "gbmicrotest-win8-b"
+rom = "win8_b.gb"
+
+[[case]]
+id = "gbmicrotest-win9-a"
+rom = "win9_a.gb"
+
+[[case]]
+id = "gbmicrotest-win9-b"
+rom = "win9_b.gb"

@@ -2150,35 +2150,39 @@ fn real_little_things_report_selects_only_csp_family() {
 }
 
 #[test]
-fn real_gbmicrotest_suite_manifest_loads_memory_byte_oracles() {
+fn real_gbmicrotest_suite_manifest_loads_v7_memory_byte_oracles() {
     let workspace = unique_temp_dir("gbmicrotest-suite-manifest");
-    write_reports(&workspace, "gbmicrotest", "gbmicrotest/sources.report.toml");
+    let report_id = "gbmicrotest";
+    let source_path = "gbmicrotest/sources.report.toml";
+    write_reports(&workspace, report_id, source_path);
     write_source_manifest(
         &workspace,
-        "gbmicrotest/sources.report.toml",
-        include_str!("../../../data/gbmicrotest/sources.report.toml"),
+        source_path,
+        &read_report_source_manifest(report_id),
     );
-    write_manifest(
-        &workspace,
-        "gbmicrotest/gbmicrotest.suite.toml",
-        include_str!("../../../data/gbmicrotest/gbmicrotest.suite.toml"),
-    );
+    let text = read_report_suite_manifest(report_id, "gbmicrotest");
+    write_manifest(&workspace, "gbmicrotest/gbmicrotest.suite.toml", &text);
 
     let reports = load_reports(&workspace).expect("reports should load");
     let report = reports
         .iter()
-        .find(|report| report.id == "gbmicrotest")
+        .find(|report| report.id == report_id)
         .expect("report should exist");
+    assert_eq!(
+        load_selected_suite_families(&workspace, report, Some("gbmicrotest"), None)
+            .expect("c-sp v7 gbmicrotest families should load"),
+        vec!["gbmicrotest".to_string()]
+    );
     let suites = load_selected_suites(&workspace, report, Some("gbmicrotest"), None)
-        .expect("real gbmicrotest manifest should load");
+        .expect("c-sp v7 gbmicrotest manifest should load");
 
     assert_eq!(suites.len(), 1);
     let suite = &suites[0];
     assert_eq!(suite.suite_name, "gbmicrotest");
     assert_eq!(suite.family, "gbmicrotest");
-    assert_eq!(suite.cases.len(), 438);
+    assert_eq!(suite.cases.len(), 482);
     assert!(suite.cases.iter().all(|case| {
-        case.target_root.as_os_str().is_empty()
+        case.target_root == Path::new("gbmicrotest")
             && case.console_model == gb_core::ConsoleModel::GameBoy
             && matches!(&case.oracle, Oracle::MemoryByteEquals(_))
     }));
@@ -2186,16 +2190,33 @@ fn real_gbmicrotest_suite_manifest_loads_memory_byte_oracles() {
     let real_boot_case = suite
         .cases
         .iter()
-        .find(|case| case.id == "gbmicrotest-ppu-hblank-int-scx0-if-a")
+        .find(|case| case.id == "gbmicrotest-hblank-int-scx0-if-a")
         .expect("real boot case should exist");
     assert_eq!(real_boot_case.startup_mode, gb_core::StartupMode::RealBoot);
 
     let long_timeout_case = suite
         .cases
         .iter()
-        .find(|case| case.id == "gbmicrotest-interrupts-is-if-set-during-ime0")
+        .find(|case| case.id == "gbmicrotest-is-if-set-during-ime0")
         .expect("long timeout case should exist");
     assert_eq!(long_timeout_case.timeout_frames, 30);
+
+    let mbc1_rom_banks_case = suite
+        .cases
+        .iter()
+        .find(|case| case.id == "gbmicrotest-mbc1-rom-banks")
+        .expect("MBC1 ROM banks case should remain active");
+    assert_eq!(mbc1_rom_banks_case.rom, Path::new("mbc1_rom_banks.gb"));
+    for disabled_id in [
+        "gbmicrotest-audio-testbench",
+        "gbmicrotest-000-oam-lock",
+        "gbmicrotest-004-tima-boot-phase",
+    ] {
+        assert!(
+            suite.cases.iter().all(|case| case.id != disabled_id),
+            "{disabled_id} should be disabled and skipped"
+        );
+    }
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

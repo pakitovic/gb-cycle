@@ -23,8 +23,9 @@ jobs:
           - name: magen
           # Temporarily disabled while the c-sp v7 Mealybug inventory is validated manually.
           # - name: mealybug-tearoom-tests
-          - name: gbmicrotest
-            boot_roms: true
+          # Temporarily disabled while the c-sp v7 GBMicrotest import is baselined.
+          # - name: gbmicrotest
+          #   boot_roms: true
           - name: mooneye
           - name: wilbertpol
           - name: blargg
