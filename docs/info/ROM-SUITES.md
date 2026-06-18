@@ -21,6 +21,7 @@ Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`.
 | `gb-emulator-shootout` | `cargo rom-suite` | Promoted GB Emulator Shootout report used by `test-roms`. |
 | `docboy` | `cargo rom-suite`, `cargo rom-suite-link` | DocBoy single-machine suites plus DocBoy DMG linked session suite. |
 | `gbmicrotest` | `cargo rom-suite` | Flat gbmicrotest report. |
+| `acid` | `cargo rom-suite` | Standalone c-sp v7 Acid2/Acid Hell framebuffer report. |
 | `blargg` | `cargo rom-suite` | Standalone exploratory Blargg channel archive-backed by c-sp `game-boy-test-roms` v7.0, with GB Emulator Shootout framebuffer fixtures where the promoted Blargg manifests already use them. |
 | `mooneye`, `little-things-gb`, `ashiepaws`, `nitro2k01`, `magen`, `mealybug-tearoom-tests`, `samesuite`, `rtc3test`, `mbc3-tester` | `cargo rom-suite` | Standalone exploratory report channels; `mooneye`, `little-things-gb`, `ashiepaws`, `mealybug-tearoom-tests`, `rtc3test`, and `mbc3-tester` are archive-backed by c-sp `game-boy-test-roms`, `nitro2k01` is pinned to upstream nitro2k01 release assets with local placeholder framebuffer fixtures, and Little Things, Ashiepaws, Mealybug, SameSuite, Nitro2k01, and MBC3 Tester stay out of `test-roms-extra` while their v7 inventories, manual fixtures, or exposed timing/admission gaps are validated manually. |
 | `wilbertpol` | `cargo rom-suite` | Archive-backed standalone Mooneye-derived Wilbertpol channel. |
@@ -29,6 +30,8 @@ Fetchable reports use `crates/gb-test-runner/data/<report>/sources.report.toml`.
 Wilbertpol ROMs are related to Mooneye but are compiled and pinned as independent assets; do not deduplicate Wilbertpol rows against Mooneye by relative path or name.
 
 The standalone `blargg` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `blargg/` ROMs under one family root per original Blargg folder, plus a dedicated `halt_bug` family. It runs both multi-ROMs and individual ROMs; framebuffer fixtures come from the c-sp ZIP for aggregate screenshots and from the pinned GB Emulator Shootout source for individual screenshots already used by the promoted Blargg oracles, including `oam_bug/7-timing_effect.png`.
+
+The standalone `acid` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes only `dmg-acid2/`, `cgb-acid2/`, and `cgb-acid-hell/` under matching family roots. It uses one suite manifest per upstream folder and strict framebuffer fixtures for DMG and CGB rows, including exact CGB framebuffer comparison for the CGB-only Acid2 and Acid Hell fixtures.
 
 The standalone `mooneye` report is archive-backed by the c-sp `game-boy-test-roms` v7.0 ZIP and materializes upstream `mooneye-test-suite/` under `/test/mooneye/mooneye/`. Its upstream `utils/` directory is excluded because those ROMs are helper utilities rather than pass/fail tests.
 

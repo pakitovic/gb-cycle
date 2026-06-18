@@ -1,0 +1,52 @@
+[[source]]
+id = "game-boy-test-roms"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
+
+[[source.family]]
+id = "dmg-acid2"
+target_root = "dmg-acid2"
+
+[[source.family.file]]
+path = "dmg-acid2/dmg-acid2.gb"
+target = "dmg-acid2.gb"
+sha256 = "464e14b7d42e7feea0b7ede42be7071dc88913f75b9ffa444299424b63d1dff1"
+
+[[source.family.file]]
+path = "dmg-acid2/dmg-acid2-dmg.png"
+target = "dmg-acid2-dmg.png"
+sha256 = "ca966d50895c7efef05838590d148c2cbfd7fba57dab986f25b35b4da71abb57"
+
+[[source.family.file]]
+path = "dmg-acid2/dmg-acid2-cgb.png"
+target = "dmg-acid2-cgb.png"
+sha256 = "cbf039fd613a6db3c3d830a6a1d887efbc892aea4578ffc569b61f66a9e07ced"
+
+[[source.family]]
+id = "cgb-acid2"
+target_root = "cgb-acid2"
+
+[[source.family.file]]
+path = "cgb-acid2/cgb-acid2.gbc"
+target = "cgb-acid2.gbc"
+sha256 = "197fb0bcec544f0400527fc707e0a94f55435974986e6986b424ace5de81720e"
+
+[[source.family.file]]
+path = "cgb-acid2/cgb-acid2.png"
+target = "cgb-acid2.png"
+sha256 = "9ea9c262c5383353e77d715d021a0f7c5ccbe438f88082cb225756e50c4fdf01"
+
+[[source.family]]
+id = "cgb-acid-hell"
+target_root = "cgb-acid-hell"
+
+[[source.family.file]]
+path = "cgb-acid-hell/cgb-acid-hell.gbc"
+target = "cgb-acid-hell.gbc"
+sha256 = "3dc6d301ec74ccafa972e4e111d78f7b1004791a5bfbede0ee763f364fded21e"
+
+[[source.family.file]]
+path = "cgb-acid-hell/cgb-acid-hell.png"
+target = "cgb-acid-hell.png"
+sha256 = "fb8bba0a68f6242ef553f975681ad6482badab01cabe0719115d0ff6fd861a3e"

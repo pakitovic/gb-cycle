@@ -1778,6 +1778,14 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             )][..],
         ),
         (
+            "acid",
+            &[
+                ("dmg-acid2", 2, "dmg-acid2", "dmg-acid2"),
+                ("cgb-acid2", 1, "cgb-acid2", "cgb-acid2"),
+                ("cgb-acid-hell", 1, "cgb-acid-hell", "cgb-acid-hell"),
+            ][..],
+        ),
+        (
             "ashiepaws",
             &[
                 ("ashiepaws-bully", 2, "bully", "bully"),

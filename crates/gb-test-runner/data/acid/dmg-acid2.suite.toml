@@ -1,0 +1,18 @@
+family = "dmg-acid2"
+suite_name = "dmg-acid2"
+report = "acid"
+timeout_frames = 180
+report_model_suffix = true
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "acid-dmg-acid2-dmg"
+rom = "dmg-acid2.gb"
+model = "dmg"
+oracle = { fixture = "dmg-acid2-dmg.png" }
+
+[[case]]
+id = "acid-dmg-acid2-cgb"
+rom = "dmg-acid2.gb"
+model = "cgb"
+oracle = { source = "cgb", fixture = "dmg-acid2-cgb.png" }
