@@ -1,0 +1,18 @@
+family = "mbc3-tester"
+suite_name = "mbc3-tester"
+report = "mbc3-tester"
+timeout_frames = 40
+report_model_suffix = true
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "mbc3-tester-dmg"
+rom = "mbc3-tester.gb"
+model = "dmg"
+oracle = { fixture = "mbc3-tester-dmg.png" }
+
+[[case]]
+id = "mbc3-tester-cgb"
+rom = "mbc3-tester.gb"
+model = "cgb"
+oracle = { source = "cgb", fixture = "mbc3-tester-cgb.png" }

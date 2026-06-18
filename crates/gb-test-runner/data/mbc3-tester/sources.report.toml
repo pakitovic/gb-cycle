@@ -1,0 +1,24 @@
+[[source]]
+id = "game-boy-test-roms"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
+
+[[source.family]]
+id = "mbc3-tester"
+target_root = "mbc3-tester"
+
+[[source.family.file]]
+path = "mbc3-tester/mbc3-tester.gb"
+target = "mbc3-tester.gb"
+sha256 = "0d8e975612715b58997b51d54ae832508e0cd9139fe8bc765552d9c0e21f5583"
+
+[[source.family.file]]
+path = "mbc3-tester/mbc3-tester-dmg.png"
+target = "mbc3-tester-dmg.png"
+sha256 = "4b773dd9ac8f97ebdcd919d6c88abf56679d86983443c02f23f072b31f769774"
+
+[[source.family.file]]
+path = "mbc3-tester/mbc3-tester-cgb.png"
+target = "mbc3-tester-cgb.png"
+sha256 = "48f0389d5664080ea7ea76bb8aaa08b8e32cbab3f569f723bae86f72429b7997"

@@ -20,7 +20,7 @@ This file owns the day-to-day implementation workflow: how to choose authority d
 - [`docs/TESTING.md`](TESTING.md) owns validation policy; [`docs/info/ROM-SUITES.md`](info/ROM-SUITES.md) owns external ROM materialization, report channels, and runner commands.
 - [`docs/REFERENCES.md`](REFERENCES.md) owns the current consultation order for Pan Docs, AntonioND, Gekkio, GBEmulatorShootout, DocBoy, and other active references.
 - `crates/gb-test-runner/data/reports.toml` and each report-local `sources.report.toml` own report fetch metadata for `cargo rom-fetch`, `cargo rom-suite`, and `cargo rom-suite-link`; update those files rather than documenting ad hoc source lists elsewhere. Local reports such as `linked` deliberately omit `sources.report.toml` because their assets are committed under `crates/gb-test-runner/data/<report>/`.
-- `/test/gb-emulator-shootout/`, `/test/docboy/`, `/test/gbmicrotest/`, and standalone exploratory report roots such as `/test/mooneye/`, `/test/little-things-gb/`, `/test/magen/`, `/test/mealybug-tearoom-tests/`, `/test/samesuite/`, `/test/wilbertpol/`, or `/test/rtc3test/` are generated/local evidence channels; keep before/after copies when the mandatory external-ROM regression workflow applies.
+- `/test/gb-emulator-shootout/`, `/test/docboy/`, `/test/gbmicrotest/`, and standalone exploratory report roots such as `/test/mooneye/`, `/test/little-things-gb/`, `/test/magen/`, `/test/mealybug-tearoom-tests/`, `/test/samesuite/`, `/test/wilbertpol/`, `/test/rtc3test/`, or `/test/mbc3-tester/` are generated/local evidence channels; keep before/after copies when the mandatory external-ROM regression workflow applies.
 
 ## Change policy
 
