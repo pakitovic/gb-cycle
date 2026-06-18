@@ -3,7 +3,7 @@ suite_name = "cgb-acid2"
 report = "acid"
 model = "cgb"
 timeout_frames = 180
-oracle = { type = "framebuffer", mode = "until-match", source = "cgb", projection = "grayscale", compare = "grayscale-tolerance" }
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb" }
 
 [[case]]
 id = "acid-cgb-acid2"
