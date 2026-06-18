@@ -17,7 +17,7 @@ fn console_models_keep_dmg_and_cgb_families_explicit() {
     );
     assert_eq!(
         ConsoleModel::GameBoyColor.default_revision(),
-        HardwareRevision::CpuCgbE
+        HardwareRevision::CpuCgbD
     );
     assert_eq!(
         ConsoleModel::GameBoyAdvance.default_operating_mode(),

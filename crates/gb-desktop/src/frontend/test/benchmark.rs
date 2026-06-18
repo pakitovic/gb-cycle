@@ -113,7 +113,7 @@ fn benchmark_helpers_apply_cases_and_write_artifacts() {
     );
     assert_eq!(
         cgb_options.config.launch.revision,
-        HardwareRevision::CpuCgbE
+        HardwareRevision::CpuCgbD
     );
     assert_eq!(
         cgb_options.config.video.display_palette,

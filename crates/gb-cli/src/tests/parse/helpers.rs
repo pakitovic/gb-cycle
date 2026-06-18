@@ -59,7 +59,7 @@ fn helper_parsers_names_and_formatters_cover_supported_variants() {
     assert_eq!(RunModel::Color.name(), "CGB");
     assert_eq!(
         RunModel::Color.console_model().default_revision(),
-        HardwareRevision::CpuCgbE
+        HardwareRevision::CpuCgbD
     );
     assert_eq!(RunModel::Advance.name(), "AGB");
     assert_eq!(

@@ -1,7 +1,7 @@
 use gb_core::{
     BootRomBusState, Bus, BusAccessDisposition, BusAccessKind, BusArbitrationState, BusBlockReason,
     BusRegion, BusRegionOwner, BusRequester, ConsoleModel, CycleContext, DmaBusState,
-    DmaMemoryRegionImpact, PpuAccessMode, PpuBusState, SchedulerPhase, TCycle,
+    DmaMemoryRegionImpact, HardwareRevision, PpuAccessMode, PpuBusState, SchedulerPhase, TCycle,
     UnusableAreaReadProfile, UnusableAreaWriteProfile,
 };
 

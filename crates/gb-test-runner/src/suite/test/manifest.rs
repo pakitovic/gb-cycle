@@ -2007,7 +2007,7 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 .iter()
                 .find(|case| case.id == "rtc3test-cgb-basic-tests")
                 .expect("CGB basic row should exist");
-            assert_eq!(cgb.hardware_revision, gb_core::HardwareRevision::CpuCgbE);
+            assert_eq!(cgb.hardware_revision, gb_core::HardwareRevision::CpuCgbD);
             assert_eq!(cgb.report_rom(), "rtc3test.gb (GBC)");
         }
 

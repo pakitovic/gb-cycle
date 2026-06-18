@@ -58,7 +58,7 @@ fn bus_snapshot_and_trace_expose_live_arbitration_state() {
     let snapshot = bus.snapshot(state);
 
     assert_eq!(snapshot.console_model, ConsoleModel::GameBoyColor);
-    assert_eq!(snapshot.revision, gb_core::HardwareRevision::CpuCgbE);
+    assert_eq!(snapshot.revision, gb_core::HardwareRevision::CpuCgbD);
     assert_eq!(snapshot.status, gb_core::BusStatus::Ready);
     assert_eq!(snapshot.arbitration, state);
 
