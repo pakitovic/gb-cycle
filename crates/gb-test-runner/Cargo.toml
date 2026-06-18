@@ -6,6 +6,7 @@ rust-version = "1.96"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+askama = "0.16.0"
 gb-core = { version = "0.2.1", path = "../gb-core" }
 png = "0.18"
 rayon = "1.10"

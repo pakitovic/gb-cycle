@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub(super) const DATA_DIR: &str = "crates/gb-test-runner/data";
 pub(super) const REPORTS_MANIFEST_PATH: &str = "crates/gb-test-runner/data/reports.toml";
+pub(super) const ROM_REPORTS_PAGES_PATH: &str = "crates/gb-test-runner/data/rom-reports-pages.json";
 pub(super) const TEST_ROM_STORE_DIR: &str = "test";
 pub(super) const REPORT_STATUS_PASS_EMOJI: &str = "✅";
 pub(super) const REPORT_STATUS_FAIL_EMOJI: &str = "❌";
@@ -20,18 +21,26 @@ pub(super) struct Report {
     pub(super) family_order: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub(super) struct PersistedSuiteStatus {
     pub(super) suite_name: String,
     pub(super) family: String,
     pub(super) cases: Vec<PersistedCaseStatus>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub(super) struct PersistedCaseStatus {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) family: Option<String>,
     pub(super) rom: String,
     pub(super) status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub(super) struct RomReportsPageEntry {
+    pub(super) name: String,
+    #[serde(default)]
+    pub(super) boot_roms: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +59,27 @@ pub(super) struct ReportRow {
     pub(super) status: String,
     pub(super) suite_name: String,
     pub(super) case_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub(super) struct ReportSummary {
+    pub(super) report_id: String,
+    pub(super) non_failing_cases: usize,
+    pub(super) total_cases: usize,
+}
+
+impl ReportSummary {
+    pub(super) fn from_document(document: &ReportDocument) -> Self {
+        Self {
+            report_id: document.report_id.clone(),
+            non_failing_cases: document.non_failing_cases,
+            total_cases: document.total_cases,
+        }
+    }
+
+    pub(super) fn all_non_failing(&self) -> bool {
+        self.total_cases > 0 && self.non_failing_cases == self.total_cases
+    }
 }
 
 pub(super) fn report_status_display(status: &str) -> Result<&'static str, String> {

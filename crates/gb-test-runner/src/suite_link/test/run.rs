@@ -24,10 +24,10 @@ fn command_runs_selected_link_suite_and_writes_status() {
     assert!(output.contains("suite dmg04: running 1 cases"));
     assert!(output.contains("suite dmg04: 1/1 passed"));
     assert!(output.contains("case dmg04-basic-exchange: PASS after"));
-    let status = fs::read_to_string(workspace.join("test/linked/.status/dmg04.toml"))
+    let status = fs::read_to_string(workspace.join("test/linked/.status/dmg04.json"))
         .expect("status should be written");
-    assert!(status.contains("suite_name = \"dmg04\""));
-    assert!(status.contains("status = \"PASS\""));
+    assert!(status.contains("\"suite_name\": \"dmg04\""));
+    assert!(status.contains("\"status\": \"PASS\""));
 }
 
 #[test]

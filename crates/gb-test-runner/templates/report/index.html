@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gb-cycle ROM reports</title>
+<style>
+body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; }
+a { color: #0645ad; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ccc; padding: .5rem; text-align: left; }
+th { background: #f4f4f4; position: sticky; top: 0; }
+code { background: #f4f4f4; padding: .1rem .25rem; }
+.meta { color: #555; }
+.status-pass { color: #12622a; }
+.status-fail { color: #9f1d20; }
+</style>
+</head>
+<body>
+<h1>gb-cycle ROM reports</h1>
+<p class="meta">Generated <time id="generated-at" datetime="{{ generated_at_datetime }}" data-epoch-seconds="{{ generated_at_epoch_seconds }}">{{ generated_at_utc }}</time>. Counts use non-failing rows (<code>PASS</code> + <code>INFO</code>) over total executed rows.</p>
+<script>
+(() => {
+  const generatedAt = document.getElementById("generated-at");
+  if (!generatedAt) {
+    return;
+  }
+  const epochSeconds = Number(generatedAt.dataset.epochSeconds);
+  if (!Number.isFinite(epochSeconds)) {
+    return;
+  }
+  const date = new Date(epochSeconds * 1000);
+  generatedAt.textContent = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+  generatedAt.title = generatedAt.dateTime;
+})();
+</script>
+<table>
+<thead>
+<tr><th>report</th><th>non-failing / total</th><th>status</th></tr>
+</thead>
+<tbody>
+{% if rows.is_empty() %}
+<tr><td colspan="3">No ROM report pages found.</td></tr>
+{% else %}
+{% for row in rows %}
+<tr>
+<td><a href="{{ row.href }}">{{ row.report_id }}</a></td>
+<td>{{ row.non_failing_cases }}/{{ row.total_cases }}</td>
+<td class="{{ row.status_class }}">{{ row.status_emoji }}</td>
+</tr>
+{% endfor %}
+{% endif %}
+</tbody>
+</table>
+</body>
+</html>

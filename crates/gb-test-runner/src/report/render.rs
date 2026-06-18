@@ -1,7 +1,91 @@
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
 
-use super::model::{ReportDocument, report_status_display};
+use askama::Template;
+
+use super::model::{
+    REPORT_STATUS_FAIL_EMOJI, REPORT_STATUS_PASS_EMOJI, ReportDocument, ReportSummary,
+    report_status_display,
+};
+
+#[derive(Debug, Clone, Template)]
+#[template(path = "report/index.html")]
+pub(super) struct ReportIndexDocument {
+    pub(super) generated_at_epoch_seconds: u64,
+    pub(super) generated_at_datetime: String,
+    pub(super) generated_at_utc: String,
+    pub(super) rows: Vec<ReportIndexRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ReportIndexRow {
+    pub(super) report_id: String,
+    pub(super) href: String,
+    pub(super) non_failing_cases: usize,
+    pub(super) total_cases: usize,
+    pub(super) status_emoji: &'static str,
+    pub(super) status_class: &'static str,
+}
+
+#[derive(Debug, Clone, Template)]
+#[template(path = "report/report.html")]
+struct ReportHtmlDocument {
+    report_id: String,
+    command: String,
+    non_failing_cases: usize,
+    total_cases: usize,
+    rows: Vec<ReportHtmlRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReportHtmlRow {
+    family: String,
+    rom: String,
+    status_display: &'static str,
+    status_class: &'static str,
+}
+
+impl ReportIndexRow {
+    pub(super) fn new(summary: ReportSummary) -> Self {
+        let all_non_failing = summary.all_non_failing();
+        Self {
+            href: format!("reports/{}/index.html", summary.report_id),
+            report_id: summary.report_id,
+            non_failing_cases: summary.non_failing_cases,
+            total_cases: summary.total_cases,
+            status_emoji: if all_non_failing {
+                REPORT_STATUS_PASS_EMOJI
+            } else {
+                REPORT_STATUS_FAIL_EMOJI
+            },
+            status_class: if all_non_failing {
+                "status-pass"
+            } else {
+                "status-fail"
+            },
+        }
+    }
+}
+
+impl ReportHtmlDocument {
+    fn from_report_document(document: &ReportDocument) -> Result<Self, String> {
+        let mut rows = Vec::with_capacity(document.rows.len());
+        for row in &document.rows {
+            rows.push(ReportHtmlRow {
+                family: row.family.clone(),
+                rom: row.rom.clone(),
+                status_display: report_status_display(&row.status)?,
+                status_class: status_class(&row.status),
+            });
+        }
+        Ok(Self {
+            report_id: document.report_id.clone(),
+            command: document.command.clone(),
+            non_failing_cases: document.non_failing_cases,
+            total_cases: document.total_cases,
+            rows,
+        })
+    }
+}
 
 pub(super) fn render_markdown(document: &ReportDocument) -> String {
     let mut report = String::new();
@@ -27,92 +111,20 @@ pub(super) fn render_markdown(document: &ReportDocument) -> String {
     report
 }
 
-pub(super) fn render_html(document: &ReportDocument) -> String {
-    let mut report = String::new();
-    let _ = writeln!(&mut report, "<!doctype html>");
-    let _ = writeln!(&mut report, "<html lang=\"en\">");
-    let _ = writeln!(&mut report, "<head>");
-    let _ = writeln!(&mut report, "<meta charset=\"utf-8\">");
-    let _ = writeln!(
-        &mut report,
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-    );
-    let _ = writeln!(
-        &mut report,
-        "<title>gb-cycle ROM report - {}</title>",
-        html_escape(&document.report_id)
-    );
-    let _ = writeln!(
-        &mut report,
-        "<style>body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; margin: 2rem; color: #111; }} table {{ border-collapse: collapse; width: 100%; }} th, td {{ border: 1px solid #ccc; padding: .5rem; text-align: left; }} th {{ background: #f4f4f4; position: sticky; top: 0; }} code {{ background: #f4f4f4; padding: .1rem .25rem; }} .meta {{ color: #555; }} .status-pass {{ color: #12622a; }} .status-fail {{ color: #9f1d20; }} .status-info {{ color: #555; }}</style>"
-    );
-    let _ = writeln!(&mut report, "</head>");
-    let _ = writeln!(&mut report, "<body>");
-    let _ = writeln!(
-        &mut report,
-        "<h1>gb-cycle ROM report: {}</h1>",
-        html_escape(&document.report_id)
-    );
-    let _ = writeln!(
-        &mut report,
-        "<p class=\"meta\">Summary: <strong>{}/{}</strong>. Command: <code>{}</code>.</p>",
-        document.non_failing_cases,
-        document.total_cases,
-        html_escape(&document.command)
-    );
-    let _ = writeln!(&mut report, "<table>");
-    let _ = writeln!(
-        &mut report,
-        "<thead><tr><th>family</th><th>rom</th><th>status</th></tr></thead>"
-    );
-    let _ = writeln!(&mut report, "<tbody>");
-    if document.rows.is_empty() {
-        let _ = writeln!(
-            &mut report,
-            "<tr><td colspan=\"3\">No status rows found.</td></tr>"
-        );
-    } else {
-        for row in &document.rows {
-            let _ = writeln!(
-                &mut report,
-                "<tr><td>{}</td><td>{}</td><td class=\"{}\">{}</td></tr>",
-                html_escape(&row.family),
-                html_escape(&row.rom),
-                html_escape(status_class(&row.status)),
-                report_status_display(&row.status).expect("document rows are validated")
-            );
-        }
-    }
-    let _ = writeln!(&mut report, "</tbody>");
-    let _ = writeln!(&mut report, "</table>");
-    let _ = writeln!(&mut report, "</body>");
-    let _ = writeln!(&mut report, "</html>");
-    report
+pub(super) fn render_html(document: &ReportDocument) -> Result<String, String> {
+    ReportHtmlDocument::from_report_document(document)?
+        .render()
+        .map_err(|error| format!("failed to render HTML test ROM report: {error}"))
 }
 
-pub(super) fn html_report_path(markdown_path: &Path) -> PathBuf {
-    let mut path = markdown_path.to_path_buf();
-    path.set_extension("html");
-    path
+pub(super) fn render_index(document: &ReportIndexDocument) -> Result<String, String> {
+    document
+        .render()
+        .map_err(|error| format!("failed to render ROM report index: {error}"))
 }
 
 fn markdown_cell(value: &str) -> String {
     value.replace('\n', " ").replace('|', "\\|")
-}
-
-fn html_escape(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len());
-    for character in value.chars() {
-        match character {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&#39;"),
-            other => escaped.push(other),
-        }
-    }
-    escaped
 }
 
 fn status_class(status: &str) -> &'static str {

@@ -55,7 +55,7 @@ family_order = ["acid", "blargg", "mooneye"]
 pub(super) fn write_status(workspace_root: &Path, report_id: &str, suite_name: &str, text: &str) {
     let status_root = workspace_root.join("test").join(report_id).join(".status");
     fs::create_dir_all(&status_root).expect("status dir should be created");
-    fs::write(status_root.join(format!("{suite_name}.toml")), text)
+    fs::write(status_root.join(format!("{suite_name}.json")), text)
         .expect("status should be writable");
 }
 

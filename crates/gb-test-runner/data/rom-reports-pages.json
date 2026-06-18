@@ -1,0 +1,13 @@
+[
+  { "name": "gb-emulator-shootout" },
+  { "name": "blargg" },
+  { "name": "mooneye" },
+  { "name": "wilbertpol" },
+  { "name": "gbmicrotest", "boot_roms": true },
+  { "name": "mealybug-tearoom-tests" },
+  { "name": "samesuite" },
+  { "name": "rtc3test" },
+  { "name": "nitro2k01", "boot_roms": true },
+  { "name": "little-things-gb" },
+  { "name": "magen" }
+]
