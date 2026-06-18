@@ -1319,10 +1319,12 @@ startup = "real-boot"
 [[case]]
 id = "gbmicrotest-poweron-obp0-000"
 rom = "poweron_obp0_000.gb"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-poweron-obp1-000"
 rom = "poweron_obp1_000.gb"
+startup = "real-boot"
 
 [[case]]
 id = "gbmicrotest-poweron-sb-000"

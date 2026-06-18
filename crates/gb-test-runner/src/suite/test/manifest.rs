@@ -2193,6 +2193,20 @@ fn real_gbmicrotest_suite_manifest_loads_v7_memory_byte_oracles() {
         .find(|case| case.id == "gbmicrotest-hblank-int-scx0-if-a")
         .expect("real boot case should exist");
     assert_eq!(real_boot_case.startup_mode, gb_core::StartupMode::RealBoot);
+    for poweron_obp_case_id in [
+        "gbmicrotest-poweron-obp0-000",
+        "gbmicrotest-poweron-obp1-000",
+    ] {
+        let poweron_obp_case = suite
+            .cases
+            .iter()
+            .find(|case| case.id == poweron_obp_case_id)
+            .expect("power-on OBP case should exist");
+        assert_eq!(
+            poweron_obp_case.startup_mode,
+            gb_core::StartupMode::RealBoot
+        );
+    }
 
     let long_timeout_case = suite
         .cases
