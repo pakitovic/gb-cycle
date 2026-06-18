@@ -1725,7 +1725,7 @@ fn real_remaining_gb_emulator_shootout_suite_manifests_load_framebuffer_oracles(
         .iter()
         .find(|case| case.id == "ashiepaws-bully-cgb")
         .expect("CGB bully row should exist");
-    assert_eq!(bully_cgb.startup_mode, gb_core::StartupMode::CustomBoot);
+    assert_eq!(bully_cgb.startup_mode, gb_core::StartupMode::RealBoot);
 
     fs::remove_dir_all(workspace).expect("workspace should be removable");
 }

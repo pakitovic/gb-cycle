@@ -21,12 +21,14 @@ jobs:
           - name: blargg-timing-memory-oam
           - name: daid
           - name: ashiepaws
+            boot_roms: true
           - name: cpp
           - name: samesuite
           - name: mooneye-acceptance-manual-misc
           - name: mooneye-emulator-mbc1-mbc5
           - name: mooneye-emulator-mbc2
           - name: mealybug-tearoom-tests
+            boot_roms: true
           - name: blargg-cgb-sound
           - name: samesuite-apu
           - name: ax6
@@ -41,5 +43,17 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Fetch ${{ matrix.name }} boot ROMs
+        if: ${{ matrix.boot_roms == true }}
+        run: |
+          BOOT_ROM_DIR="${RUNNER_TEMP}/boot-rom"
+          cargo rom-fetch --boot-rom "$BOOT_ROM_DIR"
+          echo "BOOT_ROM_DIR=$BOOT_ROM_DIR" >> "$GITHUB_ENV"
+
       - name: Run ${{ matrix.name }} ROM suite
-        run: cargo rom-suite gb-emulator-shootout --suite ${{ matrix.name }}
+        run: |
+          if [[ "${{ matrix.boot_roms == true }}" == "true" ]]; then
+            cargo rom-suite gb-emulator-shootout --suite "${{ matrix.name }}" --boot-rom-dir "$BOOT_ROM_DIR"
+          else
+            cargo rom-suite gb-emulator-shootout --suite "${{ matrix.name }}"
+          fi

@@ -19,7 +19,7 @@ oracle = { fixture = "ppu/m3_bgp_change_dmg_blob.png" }
 [[case]]
 id = "mealybug-tearoom-tests-ppu-m3-bgp-change-sprites"
 rom = "ppu/m3_bgp_change_sprites.gb"
-startup = "custom-boot"
+startup = "real-boot"
 oracle = { fixture = "ppu/m3_bgp_change_sprites_dmg_blob.png" }
 
 [[case]]
@@ -30,19 +30,19 @@ oracle = { fixture = "ppu/m3_lcdc_bg_en_change_dmg_blob.png" }
 [[case]]
 id = "mealybug-tearoom-tests-ppu-m3-lcdc-bg-map-change"
 rom = "ppu/m3_lcdc_bg_map_change.gb"
-startup = "custom-boot"
+startup = "real-boot"
 oracle = { fixture = "ppu/m3_lcdc_bg_map_change_dmg_blob.png" }
 
 [[case]]
 id = "mealybug-tearoom-tests-ppu-m3-lcdc-obj-en-change"
 rom = "ppu/m3_lcdc_obj_en_change.gb"
-startup = "custom-boot"
+startup = "real-boot"
 oracle = { fixture = "ppu/m3_lcdc_obj_en_change_dmg_blob.png" }
 
 [[case]]
 id = "mealybug-tearoom-tests-ppu-m3-lcdc-obj-en-change-variant"
 rom = "ppu/m3_lcdc_obj_en_change_variant.gb"
-startup = "custom-boot"
+startup = "real-boot"
 oracle = { fixture = "ppu/m3_lcdc_obj_en_change_variant_dmg_blob.png" }
 
 [[case]]
@@ -58,7 +58,7 @@ oracle = { fixture = "ppu/m3_lcdc_obj_size_change_scx_dmg_blob.png" }
 [[case]]
 id = "mealybug-tearoom-tests-ppu-m3-lcdc-tile-sel-change"
 rom = "ppu/m3_lcdc_tile_sel_change.gb"
-startup = "custom-boot"
+startup = "real-boot"
 oracle = { fixture = "ppu/m3_lcdc_tile_sel_change_dmg_blob.png" }
 
 [[case]]
@@ -84,7 +84,7 @@ oracle = { fixture = "ppu/m3_lcdc_win_map_change_dmg_blob.png" }
 [[case]]
 id = "mealybug-tearoom-tests-ppu-m3-obp0-change"
 rom = "ppu/m3_obp0_change.gb"
-startup = "custom-boot"
+startup = "real-boot"
 oracle = { fixture = "ppu/m3_obp0_change_dmg_blob.png" }
 
 [[case]]
@@ -95,7 +95,7 @@ oracle = { fixture = "ppu/m3_scx_high_5_bits_dmg_blob.png" }
 [[case]]
 id = "mealybug-tearoom-tests-ppu-m3-scx-low-3-bits"
 rom = "ppu/m3_scx_low_3_bits.gb"
-startup = "custom-boot"
+startup = "real-boot"
 oracle = { fixture = "ppu/m3_scx_low_3_bits_dmg_blob.png" }
 
 [[case]]
