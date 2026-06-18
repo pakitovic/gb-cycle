@@ -16,7 +16,7 @@ id = "ashiepaws-bully-cgb"
 rom = "bully.gb"
 model = "cgb"
 report_model_suffix = true
-startup = "custom-boot"
+startup = "real-boot"
 oracle = { type = "framebuffer", source = "cgb", fixture = "bully.png" }
 
 [[case]]
