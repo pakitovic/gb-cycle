@@ -35,6 +35,16 @@ store_dir = "gbmicrotest"
 sources = "gbmicrotest/sources.report.toml"
 
 [[report]]
+id = "acid"
+store_dir = "acid"
+sources = "acid/sources.report.toml"
+family_order = [
+  "dmg-acid2",
+  "cgb-acid2",
+  "cgb-acid-hell",
+]
+
+[[report]]
 id = "ashiepaws"
 store_dir = "ashiepaws"
 sources = "ashiepaws/sources.report.toml"

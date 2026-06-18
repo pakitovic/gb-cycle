@@ -1,0 +1,11 @@
+family = "cgb-acid-hell"
+suite_name = "cgb-acid-hell"
+report = "acid"
+model = "cgb"
+timeout_frames = 180
+oracle = { type = "framebuffer", mode = "until-match", source = "cgb" }
+
+[[case]]
+id = "acid-cgb-acid-hell"
+rom = "cgb-acid-hell.gbc"
+oracle = { fixture = "cgb-acid-hell.png" }
