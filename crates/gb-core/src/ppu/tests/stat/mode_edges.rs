@@ -514,14 +514,30 @@ fn ordinary_mode1_stat_edge_is_hidden_from_same_cycle_cpu_if_reads() {
 
 #[test]
 fn mode2_stat_pretrigger_defers_halt_wake_only_during_reenable_blank_frame() {
+    let len = dmg_mode2_stat_ppu().current_scanline_length();
+
+    // Steady frame: the mode2 halt-wake is never deferred (no blank-frame +1 offset),
+    // even inside the pretrigger window.
     let mut steady_state = dmg_mode2_stat_ppu();
-    steady_state.line_dot = steady_state.current_scanline_length() - 4;
+    steady_state.line_dot = len - 3;
     assert!(!steady_state.dmg_mode2_oam_halt_wake_deferred());
 
-    let mut first_blank_frame = dmg_mode2_stat_ppu();
-    first_blank_frame.blank_frame_active = true;
-    first_blank_frame.line_dot = first_blank_frame.current_scanline_length() - 4;
-    assert!(first_blank_frame.dmg_mode2_oam_halt_wake_deferred());
+    // Blank frame: the deferral holds across the mode2 pretrigger window (the last three
+    // dots, blank lead 3) AND through the line-wrap dot of the freshly-entered OAM scan,
+    // so the wake dispatches on `main`'s wall-clock cycle rather than one dot early. It is
+    // not yet armed one dot before the window, and it releases on the dot after the wrap.
+    let deferred_at = |line_dot: u16, ly: u8| {
+        let mut ppu = dmg_mode2_stat_ppu();
+        ppu.blank_frame_active = true;
+        ppu.ly = ly;
+        ppu.line_dot = line_dot;
+        ppu.dmg_mode2_oam_halt_wake_deferred()
+    };
+    assert!(!deferred_at(len - 4, 1));
+    assert!(deferred_at(len - 3, 1));
+    assert!(deferred_at(len - 1, 1));
+    assert!(deferred_at(0, 1));
+    assert!(!deferred_at(1, 1));
 }
 
 #[test]

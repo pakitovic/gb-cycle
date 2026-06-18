@@ -513,9 +513,23 @@ impl Ppu {
     }
 
     pub(crate) fn dmg_mode2_oam_halt_wake_deferred(&self) -> bool {
-        self.console_model.is_dmg_family()
-            && self.runtime.blank_frame_active
-            && self.ordinary_mode2_stat_pretrigger_source()
+        if !self.console_model.is_dmg_family() || !self.runtime.blank_frame_active {
+            return false;
+        }
+
+        // The blank-frame internal raster leads `main` by one dot (the restart fires a
+        // cycle early), so the ordinary mode2 pretrigger source — the deferral window —
+        // releases at the line wrap one wall-clock cycle early, and the woken handler's
+        // mode-boundary readback lands a dot short. Hold the wake through the wrap dot of
+        // the freshly-entered OAM scan, applying the same `line_dot - 1` blank-frame
+        // correction the readback un-shift already uses, so the dispatch lands on `main`'s
+        // wall-clock cycle. (Interim; the §24.18 mid-line `self.ly` lead removes the offset
+        // at source and deletes this with the rest of the blank compensations.)
+        self.ordinary_mode2_stat_pretrigger_source()
+            || (self.line_dot == 0
+                && (1..VISIBLE_SCANLINES).contains(&self.ly)
+                && self.stat_interrupt_enable & STAT_MODE2_INTERRUPT_ENABLE_BIT != 0
+                && self.is_lcd_enabled())
     }
 
     pub(crate) fn dmg_mode2_vblank_entry_halt_wake_deferred(&self) -> bool {
