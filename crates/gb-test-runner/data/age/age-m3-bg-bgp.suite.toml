@@ -4,7 +4,7 @@ report = "age"
 timeout_frames = 180
 report_model_suffix = true
 report_revision_suffix = true
-oracle = { type = "framebuffer", mode = "until-match" }
+oracle = { type = "framebuffer", mode = "until-match", projection = "rgb" }
 
 [[case]]
 id = "age-m3-bg-bgp-dmg"

@@ -2039,6 +2039,13 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                     );
                     if expects_framebuffer {
                         assert!(matches!(&case.oracle, Oracle::Framebuffer(_)));
+                        assert_eq!(
+                            case.oracle
+                                .framebuffer_artifact_descriptor()
+                                .expect("AGE framebuffer rows should expose artifacts")
+                                .projection,
+                            "rgb"
+                        );
                     } else {
                         assert!(matches!(&case.oracle, Oracle::FibonacciResult(_)));
                     }
