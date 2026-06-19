@@ -45,6 +45,27 @@ family_order = [
 ]
 
 [[report]]
+id = "age"
+store_dir = "age"
+sources = "age/sources.report.toml"
+family_order = [
+  "stat-mode",
+  "stat-mode-sprites",
+  "stat-mode-window",
+  "lcd-align-ly",
+  "halt",
+  "vram",
+  "speed-switch",
+  "speed-switch-caution",
+  "m3-bg-lcdc",
+  "stat-interrupt",
+  "oam",
+  "m3-bg-scx",
+  "ly",
+  "m3-bg-bgp",
+]
+
+[[report]]
 id = "ashiepaws"
 store_dir = "ashiepaws"
 sources = "ashiepaws/sources.report.toml"

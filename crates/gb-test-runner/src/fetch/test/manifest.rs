@@ -28,6 +28,7 @@ fn built_in_reports_manifest_loads_all_reports() {
             "docboy",
             "gbmicrotest",
             "acid",
+            "age",
             "ashiepaws",
             "blargg",
             "mooneye",

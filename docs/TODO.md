@@ -58,6 +58,8 @@ PPU hardening toward a hardware-true engine (post PR #245): the sprite Mode 3 pe
 
 ## Phase 10 — CGB implementation roadmap
 
+- [TESTING][AGE-V7-BASELINE] The standalone c-sp v7 `age` report is Pages-only and currently red at 0/51 non-failing rows: Fibonacci rows either time out, stop at core loops without observing the upstream `0x40` terminal signal, or reach pass registers without the runner terminal signal, while all framebuffer rows mismatch upstream PNG fixtures. Evidence: `cargo rom-report age --html` writes `/test/age/test-report.md`, `.status/summary.json`, and `.status/index.html` with `0/51`. Highest-value next step: compare AGE terminal signaling, CGB compatibility-mode palette setup, PPU STAT/LY/OAM/VRAM timing, and speed-switch behavior against hardware-facing captures or a trusted implementation before changing oracles, timeouts, startup mode, or fixtures.
+
 - [BOOT][CGB-DIRECT-DIV-PREDICTOR] CGB direct-start has validated header-aware timer buckets for missing/DMG-compatible headers (`0x2674`), native CGB non-Nintendo old-licensee headers (`0x1E84`), and native CGB old-licensee `$33` headers with binary-zero new-licensee bytes (`0x1E98`), but a full DocBoy-style predictor for other Nintendo, new-licensee, and DMG-compatibility checksum-table buckets remains deferred; re-entry should start from generated revision-derived CGB RealBoot measurements, not ROM-specific runner timer overrides or blind DocBoy phase constants.
 
 ## Phase 11 — SGB/SGB2 implementation roadmap

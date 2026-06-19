@@ -1,0 +1,19 @@
+family = "lcd-align-ly"
+suite_name = "age-lcd-align-ly"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "age-lcd-align-ly-lcd-align-ly-cgb-bc"
+rom = "lcd-align-ly-cgbBC.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-lcd-align-ly-lcd-align-ly-cgb-e"
+rom = "lcd-align-ly-cgbE.gb"
+model = "cgb"
+revision = "cpu-cgb-e"

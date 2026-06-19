@@ -1,0 +1,19 @@
+family = "speed-switch-caution"
+suite_name = "age-speed-switch-caution"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "age-speed-switch-caution-spsw-interrupts-cgb-e"
+rom = "spsw-interrupts-cgbE.gb"
+model = "cgb"
+revision = "cpu-cgb-e"
+
+[[case]]
+id = "age-speed-switch-caution-spsw-interrupts-cgb-bc"
+rom = "spsw-interrupts-cgbBC.gb"
+model = "cgb"
+revision = "cpu-cgb-c"

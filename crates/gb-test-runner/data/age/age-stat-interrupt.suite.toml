@@ -1,0 +1,19 @@
+family = "stat-interrupt"
+suite_name = "age-stat-interrupt"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result" }
+
+[[case]]
+id = "age-stat-interrupt-stat-int-ncm-bce"
+rom = "stat-int-ncmBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-stat-interrupt-stat-int-dmg-c-cgb-bce"
+rom = "stat-int-dmgC-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"

@@ -1,0 +1,28 @@
+family = "m3-bg-bgp"
+suite_name = "age-m3-bg-bgp"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "age-m3-bg-bgp-dmg"
+rom = "m3-bg-bgp.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { fixture = "m3-bg-bgp-dmgC.png" }
+
+[[case]]
+id = "age-m3-bg-bgp-ncm-c"
+rom = "m3-bg-bgp.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { source = "cgb", fixture = "m3-bg-bgp-ncmBC.png" }
+
+[[case]]
+id = "age-m3-bg-bgp-ncm-e"
+rom = "m3-bg-bgp.gb"
+model = "cgb"
+revision = "cpu-cgb-e"
+oracle = { source = "cgb", fixture = "m3-bg-bgp-ncmE.png" }
