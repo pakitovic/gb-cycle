@@ -2731,3 +2731,37 @@ User chose Path 1. Executed and verified to a clean 105/105.
 - `cargo fmt-check` + `cargo lint` clean; `cargo test --workspace` 1530 passed / 7 failed (the 7 are the pre-existing reorder-debt lib reds; committed had 8 — the `mode2_stat_pretrigger_defers_halt_wake_only_during_reenable_blank_frame` test was re-grounded to the current blank lead-3 window + the new wrap-hold and now PASSES; the other 7 are byte-identical to committed, none touched by this change).
 
 **STATE: working tree carries the Path-1 fix (irq.rs predicate body + the one re-grounded unit test); not committed (awaiting user).** The §24.18 proper Cut 1 remains the canon-clean end-state that would delete this and the rest of the blank-frame compensations at source; Path 1 is the landed pragmatic 105/105 with net debt reduced and no new seam mechanism.
+
+### 24.26 P1a canonical mode3 STARTUP — NO-OP: startup already matches the DocBoy oracle (no fetcher-lead, no seam to delete) (2026-06-19)
+
+P1a's brief was "close the BG fetcher-lead: make the first VISIBLE BG tile-index read land ~dot 91, replace the
+AlignmentSeedPending→PostAlignment seam with the canonical junk-fill + first-discarded tile model." Both halves of the
+premise are already resolved by the §24.7 L1-b+L1-d landed pass; nothing canonical remained to change.
+
+**(1) The AlignmentSeedPending→PostAlignment seam no longer exists.** Grep over `crates/gb-core/src/ppu` (prod + tests)
+for `BgStartupFetchSeamState`, `begin_post_alignment*`, `post_alignment_fetch_restart*`, `startup_alignment_seed*`,
+`StartupAlignmentSeed`, `StartupContinuation`, `peek_startup_background_fetch_origin`, `startup_fifo_placeholders`
+returns ZERO matches. The entire DELETION LIST in §24.6 is gone. What remains in `start_line` (state.rs:1509) is the
+canonical model §24.7 explicitly KEPT: `push_dummy_fifo_pixels(8)` (8 real junk FIFO pixels), `startup_fetch_idle_dots
+= 3` (the 3 dummy dots 80/81/82), `start_background()`, and the entry-delay bookkeeping (`startup_source_state =
+EntryDelay{4}`, per-push `entry_delay_remaining = 1`). The `Mode3StartupSourceState::Abstract` /
+`Mode3TransferSourceWindow::AbstractStartup` enum that still exists is the junk-drain *lane* bookkeeping, NOT the
+deleted seam — `current_transfer` (mode3_policies.rs:127) is now purely `bg_fifo_empty`-driven; the abstract-vs-real
+backing distinction is already gone (its own comment confirms it).
+
+**(2) There is NO fetcher-lead, and the prompt's "first real tile is ALSO discarded → first visible tile-index ~dot 91"
+does NOT match the DocBoy oracle.** Read DocBoy `pixel_transfer_dummy_lx0` (ppu.cpp:967), `pixel_transfer_discard_lx0`
+(:1004), `pixel_transfer_lx0` (:1047), `pixel_transfer_lx8` (:1086): the ONLY thing discarded at startup is the
+`bg_fifo.fill()` junk (the 8 pre-fill pixels), popped-without-emit during `lx € [0,8)`. The FIRST real fetched tile
+(GetTile0 at dot 83) is the FIRST VISIBLE tile (tile 0 of the tilemap) — its pixels become the first emitted pixels at
+`lx == 8`. DocBoy does NOT discard the first real tile; the junk-fill IS the priming discard. gb-cycle is already
+structurally identical: junk `[0;8]` drains across `current_transfer_x 0..8`, the dot-83 tile becomes visible tile 0,
+first visible pixel @ dot 92. The gate test `mode3_startup_*` (startup_core.rs:390-465) pins exactly this — dot-80 FIFO
+`[0;8]`, first real tile-index @ dot 83, dot-89 FIFO `[0,0]`, first visible @ dot 92, three visible tiles in order
+0,1,2 — and it is the DocBoy-equivalent end state. The first visible tile-index reading at dot 83 (not 91) is CORRECT;
+"~91" would require an extra discard of the first real tile, which the oracle refutes and which would ADD a seam.
+
+**Decision: no code change.** Per the canon rules, introducing a +shift to force the first visible tile-index from 83
+to 91 would be a magic constant contradicting the DocBoy oracle and would RAISE the seam count — the opposite of the
+goal. `cargo build -p gb-core` compiles clean on the inherited tree. P1b (raw-dot constants / `MODE0_START_DOT`) is
+where the remaining mode3-timing canonicalisation lives; the startup automaton itself is done.
