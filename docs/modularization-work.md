@@ -123,10 +123,18 @@ pub trait Emulator {
     /// Load ROM bytes and reset runtime, preserving input state.
     fn load_rom(&mut self, rom: Vec<u8>) -> Result<(), EmulatorError>;
 
+    /// Advance exactly one T-cycle. Callers that need exact stop points
+    /// perform their limit/stimulus checks before calling this method.
+    fn step_t_cycle(&mut self) -> Result<(), EmulatorError>;
+
+    /// Whether the machine is currently at the video frame origin after
+    /// the most recent T-cycle. This mirrors the existing CLI boundary check.
+    fn at_frame_origin(&self) -> bool;
+
     /// Advance exactly one whole video frame. Implementations step T-cycles
     /// internally and stop at the next frame origin. Audio for the frame is
-    /// retrievable via `take_audio`. Sufficient for the CLI run path and any
-    /// headless host.
+    /// retrievable via `take_audio`. Sufficient for hosts that do not need
+    /// exact mid-frame stop points.
     fn run_frame(&mut self) -> Result<FrameOutput, EmulatorError>;
 
     /// Advance one whole video frame, invoking `per_cycle` after every stepped
@@ -297,8 +305,10 @@ pub enum EmulatorError {
 | --- | --- | --- |
 | `Emulator::new(EmulatorConfig)` | `Machine::new` / `new_summary` + `MachineConfig` (`machine.rs:296,302`) | `gb-cli` run path (`run/execution.rs:67`), `gb-desktop` play loop |
 | `load_rom(Vec<u8>)` | `Machine::load_cartridge` (`machine/access.rs:155`) | `gb-cli` run (`execution.rs:69`), `gb-desktop` |
-| `run_frame()` | loop over `step_t_cycle` (`step.rs:1160`) + `at_frame_origin` (`run/machine.rs:62`) | `gb-cli` run (`execution.rs:136-171`), headless hosts |
-| `run_frame_with(per_cycle)` | same loop, invoking `per_cycle` each cycle; `CycleView.audio_sample` from `apu().host_output_sample()` (`apu.rs:474`) | `gb-desktop` interactive loop (per-cycle audio/RTC/telemetry, `frame_loop.rs:605-800+`) |
+| `step_t_cycle()` | `Machine::step_t_cycle` (`step.rs:1160`) | `gb-cli` run exact `--tcycle-limit` and benchmark `TCycle` stimuli (`execution.rs:117-137`) |
+| `at_frame_origin()` | `ppu().ly() == 0 && ppu().line_dot() == 0` (`run/machine.rs:62`) | `gb-cli` frame-boundary budgets and frame artifacts |
+| `run_frame()` | loop over `step_t_cycle` + `at_frame_origin` | headless hosts that only need whole frames |
+| `run_frame_with(per_cycle)` | same loop, invoking `per_cycle` after each cycle; `CycleView.audio_sample` from `apu().host_output_sample()` (`apu.rs:474`) | `gb-desktop` standalone interactive loop (per-cycle audio/RTC/telemetry, `frame_loop.rs:605-800+`) |
 | `framebuffer()` | `ppu().framebuffer()` (`ppu/api.rs:1571`), `cgb_framebuffer_rgb555()` (`ppu/api.rs:1575`), `sgb_framebuffer_rgb555()` (`machine.rs:485`) | `gb-cli` run (`execution.rs:181-190`), `gb-desktop` |
 | `take_audio()` | `apu().host_output_sample()` (`apu.rs:474`) collected per step; `ApuHostSample` (`apu/output.rs:24`) | `gb-desktop` (audio output); empty when `audio` feature off |
 | `take_serial_output()` | `take_serial_output_bytes()` (`machine.rs:527`) | `gb-cli` run (`execution.rs:146`) |
@@ -344,7 +354,7 @@ Each phase is a sequence of commits on the single branch (Section 8) and ends wi
 
 **Steps.**
 1. Add `crates/gb-api/src/frontier.rs` (Section 4.1) and `crates/gb-api/src/emulator.rs` (Section 3.2), referencing domain types only via `crate::types`.
-2. Add `crates/gb-api/src/gameboy.rs` defining `pub struct Gameboy { inner: Machine<TraceSummaryBuffer>, … }` and `impl Emulator for Gameboy` (plus `impl EmulatorSaveState` under `#[cfg(feature = "persistence")]`). Translate `EmulatorConfig` → `MachineConfig` per Section 4.1 (`ExecutionMode` is the caller's job; `boot_rom_assets` via `with_boot_rom_assets`). Implement `run_frame_with` as the `step_t_cycle` + `at_frame_origin` loop mirroring `run/execution.rs:117-172`, invoking `per_cycle` after each step with a `CycleView` built from `apu().host_output_sample()`; implement `run_frame` as `run_frame_with(&mut |_| {})`. Map `Framebuffer` variants from the PPU getters; route cartridge persistence through `cartridge().persistent_state()` / `persistence_metadata()` / `restore_cartridge_persistent_state`; wrap `capture_save_state`/`restore_save_state` in the `gb-persistence` envelope (Section 3.3), and expose only the encoded bytes via `SaveStateBlob::{from_bytes, as_bytes, into_bytes}` so CLI/desktop state-slot code can persist and reload blobs without seeing the envelope internals.
+2. Add `crates/gb-api/src/gameboy.rs` defining `pub struct Gameboy { inner: Machine<TraceSummaryBuffer>, … }` and `impl Emulator for Gameboy` (plus `impl EmulatorSaveState` under `#[cfg(feature = "persistence")]`). Translate `EmulatorConfig` → `MachineConfig` per Section 4.1 (`ExecutionMode` is the caller's job; `boot_rom_assets` via `with_boot_rom_assets`). Implement `step_t_cycle` as the direct one-T-cycle hardware tick and `at_frame_origin` as the existing raster-origin predicate; implement `run_frame_with` as the `step_t_cycle` + `at_frame_origin` loop mirroring `run/execution.rs:117-172`, invoking `per_cycle` after each step with a `CycleView` built from `apu().host_output_sample()`; implement `run_frame` as `run_frame_with(&mut |_| {})`. Map `Framebuffer` variants from the PPU getters; route cartridge persistence through `cartridge().persistent_state()` / `persistence_metadata()` / `restore_cartridge_persistent_state`; wrap `capture_save_state`/`restore_save_state` in the `gb-persistence` envelope (Section 3.3), and expose only the encoded bytes via `SaveStateBlob::{from_bytes, as_bytes, into_bytes}` so CLI/desktop state-slot code can persist and reload blobs without seeing the envelope internals.
 3. Re-export the public contract from `lib.rs`: `pub use emulator::{Emulator, CycleView}; pub use gameboy::Gameboy; pub use frontier::*;` (and `EmulatorSaveState` under the feature).
 4. Add `crates/gb-api/tests/parity.rs`: run a fixed frame count of a named in-tree ROM (e.g. a blargg `cpu_instrs` sub-ROM already vendored for the report) through both `Gameboy` and a hand-written direct-`Machine` loop. Assert byte-equality on **each `Framebuffer` variant the ROM exercises** (Indexed for DMG; add CGB `Rgb555` and SGB `SgbRgb555` cases with the appropriate config), on `take_serial_output`, and — gathering audio via `run_frame_with` — on the per-frame `AudioBatch` (`ApuHostSample` sequence). If audio parity cannot be proven, that is itself the signal the per-cycle hook is wired wrong.
 5. Add a public-API leakage guard: a `#[test]` (cargo-public-api snapshot, or a documented `cargo doc --no-deps` audit step checked in CI) asserting no `gb_core::*` path appears in `gb-api`'s public signatures.
@@ -359,22 +369,23 @@ Each phase is a sequence of commits on the single branch (Section 8) and ends wi
 
 ### P2 — Migrate the `gb-cli` run path (cleanest proof first)
 
-**Goal.** Move only the `run` subcommand onto `gb-api`, including `--save-dir` save-file orchestration; keep the direct `gb-core` dependency for `test`/`inspect`/`trace` tooling.
+**Goal.** Move the non-tracing `run` subcommand path onto `gb-api`, including exact T-cycle budgets, benchmark stimuli, and `--save-dir` save-file orchestration; keep `run --trace-out` and the non-run `test`/`inspect`/`trace` tooling on the direct `gb-core` path because text trace export is intentionally not part of the facade.
 
 **Steps.**
 1. Add `gb-api` (with `persistence` + `audio` features) to `crates/gb-cli/Cargo.toml` (keep `gb-core`).
-2. Replace `CliMachine`'s run usage (`crates/gb-cli/src/run/machine.rs`, `run/execution.rs`) with `gb_api::Gameboy`. The enum-over-`TraceBuffer`/`TraceSummaryBuffer` dispatch collapses — the facade owns the sink choice — so `CliMachine` either disappears for the run path or wraps `Gameboy`.
-3. Map CLI options to `EmulatorConfig` (translate `ExecutionMode` → `CompatibilityPolicy`, build `BootRomAssets`); keep benchmark-stimulus application via `set_button`; keep serial drain via `take_serial_output`; keep whole-machine save/restore via the `SaveStateBlob` API, writing with `as_bytes`/`into_bytes` and restoring bytes read from disk with `from_bytes`.
-4. Re-point the save session (`crates/gb-cli/src/run/save_session.rs`) onto the facade: `cartridge_persistent_state()` / `cartridge_persistence_metadata()` / `restore_cartridge_persistent_state()` replace the direct `machine.cartridge()…` calls, so `--save-dir` battery/RTC flushing keeps working through `gb-api`.
-5. Confirm non-run subcommands still import `gb_core` directly and are unchanged.
+2. Replace the non-tracing `CliMachine` run usage (`crates/gb-cli/src/run/machine.rs`, `run/execution.rs`) with `gb_api::Gameboy`, but keep a direct `Machine<TraceBuffer>` variant for `--trace-out` so `machine.trace_text()` continues to work without exposing `TraceBuffer`/`Tracer` in `gb-api`.
+3. Preserve the existing exact-cycle loop for the facade path: before each `step_t_cycle()`, check `run_limit_reached` and apply `BenchmarkStimulusRuntime::apply_due`; after the step, drain serial via `take_serial_output()` and use `at_frame_origin()` for frame-boundary artifacts. Use `run_frame` only for future hosts that do not need mid-frame stop points.
+4. Map CLI options to `EmulatorConfig` (translate `ExecutionMode` → `CompatibilityPolicy`, build `BootRomAssets`); keep whole-machine save/restore via the `SaveStateBlob` API, writing with `as_bytes`/`into_bytes` and restoring bytes read from disk with `from_bytes`.
+5. Re-point the save session (`crates/gb-cli/src/run/save_session.rs`) onto the facade for non-tracing runs: `cartridge_persistent_state()` / `cartridge_persistence_metadata()` / `restore_cartridge_persistent_state()` replace the direct `machine.cartridge()…` calls, so `--save-dir` battery/RTC flushing keeps working through `gb-api`.
+6. Confirm `run --trace-out`, `test`, `inspect`, and `trace` still import `gb_core` directly and are unchanged at the behavior boundary.
 
 **Files touched.** `crates/gb-cli/Cargo.toml`; `crates/gb-cli/src/run/*` (including `save_session.rs`). Non-run subcommands untouched.
 
-**Definition of Done.** `cargo rom-report blargg` (driven through the CLI run path) passes via the facade; `--save-dir` save-file create/load round-trips through the facade; CLI test/inspect tooling unchanged.
+**Definition of Done.** `cargo rom-report blargg` (driven through the non-tracing CLI run path) passes via the facade; `--tcycle-limit` stops at the exact requested T-cycle; benchmark `TCycle` stimuli fire before the target step as before; `--save-dir` save-file create/load round-trips through the facade; `run --trace-out` still writes the same trace text through the direct `gb-core` path; CLI test/inspect tooling unchanged.
 
-**CI gate.** Full gate green — `cargo rom-report blargg` here directly exercises the migrated path.
+**CI gate.** Full gate green — `cargo rom-report blargg` here directly exercises the migrated non-tracing path.
 
-**Risk & rollback.** ROM-report regression if `run_frame` diverges from the old loop, or save-file regression if the persistence accessors are wired incorrectly. Mitigated by the P1 parity test + running the blargg report and a `--save-dir` round-trip before committing. Rollback = revert run-path commits.
+**Risk & rollback.** ROM-report regression if the facade `step_t_cycle` loop diverges from the old loop, exact-cycle regression if limit/stimulus checks move after the step, trace regression if `--trace-out` is accidentally routed through `Gameboy`, or save-file regression if the persistence accessors are wired incorrectly. Mitigated by the P1 parity test + running the blargg report, an exact `--tcycle-limit`/benchmark-stimulus smoke test, a `--trace-out` smoke test, and a `--save-dir` round-trip before committing. Rollback = revert run-path commits.
 
 ### P3 — Migrate `gb-desktop`'s standalone play loop
 
