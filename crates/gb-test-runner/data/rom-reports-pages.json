@@ -12,5 +12,6 @@
   { "name": "mbc3-tester" },
   { "name": "nitro2k01", "boot_roms": true },
   { "name": "little-things-gb" },
+  { "name": "turtle-tests" },
   { "name": "magen" }
 ]
