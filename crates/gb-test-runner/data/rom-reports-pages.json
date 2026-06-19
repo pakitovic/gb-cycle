@@ -11,6 +11,7 @@
   { "name": "samesuite" },
   { "name": "rtc3test" },
   { "name": "mbc3-tester" },
+  { "name": "gambatte" },
   { "name": "nitro2k01", "boot_roms": true },
   { "name": "little-things-gb" },
   { "name": "turtle-tests" },

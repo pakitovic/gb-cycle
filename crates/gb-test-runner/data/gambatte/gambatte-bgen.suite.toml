@@ -1,0 +1,36 @@
+family = "gambatte"
+suite_name = "gambatte-bgen"
+report = "gambatte"
+timeout_frames = 15
+report_model_suffix = true
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "gambatte-bgen-bgoff-bgon-sprite-above-window-cgb04c"
+rom = "bgen/bgoff_bgon_sprite_above_window.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgen/bgoff_bgon_sprite_above_window_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgen-bgoff-bgon-sprite-above-window-xdmg08"
+rom = "bgen/bgoff_bgon_sprite_above_window.gbc"
+model = "dmg"
+disabled = true
+comment = "Upstream fixture uses an x-prefixed Gambatte hardware label; keep disabled until the label semantics are confirmed."
+
+[[case]]
+id = "gambatte-bgen-bgoff-bgon-sprite-below-window-cgb04c"
+rom = "bgen/bgoff_bgon_sprite_below_window.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgen/bgoff_bgon_sprite_below_window_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgen-bgoff-bgon-sprite-below-window-xdmg08"
+rom = "bgen/bgoff_bgon_sprite_below_window.gbc"
+model = "dmg"
+disabled = true
+comment = "Upstream fixture uses an x-prefixed Gambatte hardware label; keep disabled until the label semantics are confirmed."

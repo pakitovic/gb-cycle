@@ -1,0 +1,54 @@
+family = "gambatte"
+suite_name = "gambatte-halt"
+report = "gambatte"
+timeout_frames = 15
+report_model_suffix = true
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "gambatte-halt-lycint-dmgpalette-during-m3-1-dmg"
+rom = "halt/lycint_dmgpalette_during_m3_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "halt/lycint_dmgpalette_during_m3_1.png" }
+
+[[case]]
+id = "gambatte-halt-lycint-dmgpalette-during-m3-1-gba"
+rom = "halt/lycint_dmgpalette_during_m3_1.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "halt/lycint_dmgpalette_during_m3_1_gba.png" }
+
+[[case]]
+id = "gambatte-halt-lycint-dmgpalette-during-m3-2-dmg"
+rom = "halt/lycint_dmgpalette_during_m3_2.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "halt/lycint_dmgpalette_during_m3_2.png" }
+
+[[case]]
+id = "gambatte-halt-lycint-dmgpalette-during-m3-2-gba"
+rom = "halt/lycint_dmgpalette_during_m3_2.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "halt/lycint_dmgpalette_during_m3_2_gba.png" }
+
+[[case]]
+id = "gambatte-halt-lycint-dmgpalette-during-m3-3-dmg"
+rom = "halt/lycint_dmgpalette_during_m3_3.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "halt/lycint_dmgpalette_during_m3_3.png" }
+
+[[case]]
+id = "gambatte-halt-lycint-dmgpalette-during-m3-3-gba"
+rom = "halt/lycint_dmgpalette_during_m3_3.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "halt/lycint_dmgpalette_during_m3_3_gba.png" }
+
+[[case]]
+id = "gambatte-halt-lycint-dmgpalette-during-m3-4-dmg"
+rom = "halt/lycint_dmgpalette_during_m3_4.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "halt/lycint_dmgpalette_during_m3_4.png" }
+
+[[case]]
+id = "gambatte-halt-lycint-dmgpalette-during-m3-4-gba"
+rom = "halt/lycint_dmgpalette_during_m3_4.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "halt/lycint_dmgpalette_during_m3_4_gba.png" }

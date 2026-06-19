@@ -1,0 +1,294 @@
+family = "gambatte"
+suite_name = "gambatte-bgtiledata"
+report = "gambatte"
+timeout_frames = 15
+report_model_suffix = true
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-1-cgb04c"
+rom = "bgtiledata/bgtiledata_spx08_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx08_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-1-dmg08"
+rom = "bgtiledata/bgtiledata_spx08_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx08_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-2-cgb04c"
+rom = "bgtiledata/bgtiledata_spx08_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx08_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-2-dmg08"
+rom = "bgtiledata/bgtiledata_spx08_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx08_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-3-cgb04c"
+rom = "bgtiledata/bgtiledata_spx08_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx08_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-3-dmg08"
+rom = "bgtiledata/bgtiledata_spx08_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx08_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-4-cgb04c"
+rom = "bgtiledata/bgtiledata_spx08_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx08_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-4-dmg08"
+rom = "bgtiledata/bgtiledata_spx08_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx08_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-ds-1-xcgb"
+rom = "bgtiledata/bgtiledata_spx08_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+disabled = true
+comment = "Upstream fixture uses an x-prefixed Gambatte hardware label; keep disabled until the label semantics are confirmed."
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-ds-2-xcgb"
+rom = "bgtiledata/bgtiledata_spx08_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+disabled = true
+comment = "Upstream fixture uses an x-prefixed Gambatte hardware label; keep disabled until the label semantics are confirmed."
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-ds-3-cgb04c"
+rom = "bgtiledata/bgtiledata_spx08_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx08_ds_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx08-ds-4-cgb04c"
+rom = "bgtiledata/bgtiledata_spx08_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx08_ds_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-1-cgb04c"
+rom = "bgtiledata/bgtiledata_spx09_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx09_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-1-dmg08"
+rom = "bgtiledata/bgtiledata_spx09_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx09_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-2-dmg08"
+rom = "bgtiledata/bgtiledata_spx09_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx09_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-2-xcgb"
+rom = "bgtiledata/bgtiledata_spx09_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+disabled = true
+comment = "Upstream fixture uses an x-prefixed Gambatte hardware label; keep disabled until the label semantics are confirmed."
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-3-cgb04c"
+rom = "bgtiledata/bgtiledata_spx09_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx09_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-3-dmg08"
+rom = "bgtiledata/bgtiledata_spx09_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx09_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-4-dmg08"
+rom = "bgtiledata/bgtiledata_spx09_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx09_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-4-xcgb"
+rom = "bgtiledata/bgtiledata_spx09_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+disabled = true
+comment = "Upstream fixture uses an x-prefixed Gambatte hardware label; keep disabled until the label semantics are confirmed."
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-ds-1-cgb04c"
+rom = "bgtiledata/bgtiledata_spx09_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx09_ds_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-ds-2-cgb04c"
+rom = "bgtiledata/bgtiledata_spx09_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx09_ds_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-ds-3-cgb04c"
+rom = "bgtiledata/bgtiledata_spx09_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx09_ds_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx09-ds-4-cgb04c"
+rom = "bgtiledata/bgtiledata_spx09_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx09_ds_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0a-1-cgb04c"
+rom = "bgtiledata/bgtiledata_spx0A_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx0A_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0a-1-dmg08"
+rom = "bgtiledata/bgtiledata_spx0A_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx0A_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0a-2-cgb04c"
+rom = "bgtiledata/bgtiledata_spx0A_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx0A_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0a-2-dmg08"
+rom = "bgtiledata/bgtiledata_spx0A_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx0A_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0a-3-cgb04c"
+rom = "bgtiledata/bgtiledata_spx0A_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx0A_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0a-3-dmg08"
+rom = "bgtiledata/bgtiledata_spx0A_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx0A_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0a-4-cgb04c"
+rom = "bgtiledata/bgtiledata_spx0A_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx0A_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0a-4-dmg08"
+rom = "bgtiledata/bgtiledata_spx0A_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx0A_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0b-1-dmg08"
+rom = "bgtiledata/bgtiledata_spx0B_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx0B_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0b-1-xcgb"
+rom = "bgtiledata/bgtiledata_spx0B_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+disabled = true
+comment = "Upstream fixture uses an x-prefixed Gambatte hardware label; keep disabled until the label semantics are confirmed."
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0b-2-cgb04c"
+rom = "bgtiledata/bgtiledata_spx0B_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx0B_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0b-2-dmg08"
+rom = "bgtiledata/bgtiledata_spx0B_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx0B_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0b-3-dmg08"
+rom = "bgtiledata/bgtiledata_spx0B_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx0B_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0b-3-xcgb"
+rom = "bgtiledata/bgtiledata_spx0B_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+disabled = true
+comment = "Upstream fixture uses an x-prefixed Gambatte hardware label; keep disabled until the label semantics are confirmed."
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0b-4-cgb04c"
+rom = "bgtiledata/bgtiledata_spx0B_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "bgtiledata/bgtiledata_spx0B_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-bgtiledata-bgtiledata-spx0b-4-dmg08"
+rom = "bgtiledata/bgtiledata_spx0B_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "bgtiledata/bgtiledata_spx0B_4_dmg08.png" }
