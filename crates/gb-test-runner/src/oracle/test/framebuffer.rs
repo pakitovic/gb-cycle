@@ -39,6 +39,23 @@ fn write_pgm(path: &Path, pixels: &[u8]) {
     fs::write(path, bytes).expect("PGM fixture should be writable");
 }
 
+fn write_rgb_png(path: &Path, pixels: &[[u8; 3]]) {
+    let mut bytes = Vec::with_capacity(pixels.len() * 3);
+    for pixel in pixels {
+        bytes.extend_from_slice(pixel);
+    }
+    let file = fs::File::create(path).expect("RGB PNG fixture should be writable");
+    let mut encoder = png::Encoder::new(file, 160, 144);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder
+        .write_header()
+        .expect("RGB PNG header should be writable");
+    writer
+        .write_image_data(&bytes)
+        .expect("RGB PNG data should be writable");
+}
+
 fn observations<'a>(
     executed_tcycles: u64,
     dmg: Option<&'a [u8]>,
@@ -331,6 +348,51 @@ fn framebuffer_cgb_grayscale_tolerance_compares_absolute_luma() {
             .expect("oracle should finish"),
         OracleOutcome::Passed
     );
+
+    fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
+}
+
+#[test]
+fn framebuffer_cgb_rgb_projection_compares_exact_color() {
+    let temp_dir = temp_dir("cgb-rgb-exact");
+    fs::create_dir_all(&temp_dir).expect("temp dir should be creatable");
+    let red_fixture = temp_dir.join("red.png");
+    let green_fixture = temp_dir.join("green.png");
+    write_rgb_png(&red_fixture, &vec![[255, 0, 0]; PIXELS]);
+    write_rgb_png(&green_fixture, &vec![[0, 255, 0]; PIXELS]);
+
+    let rgb555 = vec![0x001F; PIXELS];
+    let mut matching_oracle = Oracle::from_manifest(&parse_oracle_config(&format!(
+        "oracle = {{ type = \"framebuffer\", source = \"cgb\", projection = \"rgb\", fixture = {:?} }}",
+        red_fixture.to_string_lossy()
+    )))
+    .expect("RGB framebuffer oracle should parse");
+    assert_eq!(
+        matching_oracle
+            .framebuffer_artifact_descriptor()
+            .expect("RGB framebuffer oracle should expose artifacts")
+            .projection,
+        "rgb"
+    );
+    assert_eq!(
+        matching_oracle
+            .finish(observations(1, None, Some(&rgb555), true))
+            .expect("oracle should finish"),
+        OracleOutcome::Passed
+    );
+
+    let mut mismatching_oracle = Oracle::from_manifest(&parse_oracle_config(&format!(
+        "oracle = {{ type = \"framebuffer\", source = \"cgb\", projection = \"rgb\", fixture = {:?} }}",
+        green_fixture.to_string_lossy()
+    )))
+    .expect("RGB framebuffer oracle should parse");
+    let outcome = mismatching_oracle
+        .finish(observations(1, None, Some(&rgb555), true))
+        .expect("oracle should finish");
+    assert!(matches!(
+        outcome,
+        OracleOutcome::Failed(message) if message.contains("exact RGB")
+    ));
 
     fs::remove_dir_all(temp_dir).expect("temp dir should be removable");
 }

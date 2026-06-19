@@ -1,0 +1,25 @@
+family = "age"
+suite_name = "age-halt"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result", fail_on_terminal_non_pass = true }
+
+[[case]]
+id = "age-halt-ei-halt-dmg-c-cgb-bce"
+rom = "halt/ei-halt-dmgC-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-halt-halt-m0-interrupt-dmg-c-cgb-bce"
+rom = "halt/halt-m0-interrupt-dmgC-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-halt-halt-prefetch-dmg-c-cgb-bce"
+rom = "halt/halt-prefetch-dmgC-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"

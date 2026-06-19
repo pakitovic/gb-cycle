@@ -1803,6 +1803,25 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             ][..],
         ),
         (
+            "age",
+            &[
+                ("age-stat-mode", 5, "age", "age"),
+                ("age-stat-mode-sprites", 2, "age", "age"),
+                ("age-stat-mode-window", 4, "age", "age"),
+                ("age-lcd-align-ly", 2, "age", "age"),
+                ("age-halt", 3, "age", "age"),
+                ("age-vram", 3, "age", "age"),
+                ("age-speed-switch", 6, "age", "age"),
+                ("age-speed-switch-caution", 2, "age", "age"),
+                ("age-m3-bg-lcdc", 4, "age", "age"),
+                ("age-stat-interrupt", 2, "age", "age"),
+                ("age-oam", 7, "age", "age"),
+                ("age-m3-bg-scx", 4, "age", "age"),
+                ("age-ly", 4, "age", "age"),
+                ("age-m3-bg-bgp", 3, "age", "age"),
+            ][..],
+        ),
+        (
             "ashiepaws",
             &[
                 ("ashiepaws-bully", 2, "bully", "bully"),
@@ -2023,6 +2042,45 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                     .timeout_frames,
                 300
             );
+        }
+        if report_id == "age" {
+            let suites = load_selected_suites(&workspace, report, None, None)
+                .expect("AGE suites should load");
+            assert_eq!(
+                suites.iter().map(|suite| suite.cases.len()).sum::<usize>(),
+                51
+            );
+            for suite in suites {
+                let expects_framebuffer = matches!(
+                    suite.suite_name.as_str(),
+                    "age-m3-bg-bgp" | "age-m3-bg-lcdc" | "age-m3-bg-scx"
+                );
+                for case in suite.cases {
+                    assert!(case.report_model_suffix);
+                    assert!(case.report_revision_suffix);
+                    assert_eq!(case.timeout_frames, 180);
+                    assert_eq!(case.startup_mode, gb_core::StartupMode::SkipBoot);
+                    assert!(
+                        !matches!(
+                            case.hardware_revision,
+                            gb_core::HardwareRevision::CpuCgbB | gb_core::HardwareRevision::CpuCgbD
+                        ),
+                        "AGE rows should map cgbBC/BCE to CPU-CGB-C, cgbE to CPU-CGB-E, and never use unsupported CPU-CGB-B or unlisted CPU-CGB-D"
+                    );
+                    if expects_framebuffer {
+                        assert!(matches!(&case.oracle, Oracle::Framebuffer(_)));
+                        assert_eq!(
+                            case.oracle
+                                .framebuffer_artifact_descriptor()
+                                .expect("AGE framebuffer rows should expose artifacts")
+                                .projection,
+                            "rgb"
+                        );
+                    } else {
+                        assert!(matches!(&case.oracle, Oracle::FibonacciResult(_)));
+                    }
+                }
+            }
         }
         if report_id == "magen" {
             let suites = load_selected_suites(&workspace, report, Some("magen"), None)

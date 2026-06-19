@@ -1,0 +1,35 @@
+family = "age"
+suite_name = "age-m3-bg-scx"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "framebuffer", mode = "until-match", projection = "rgb" }
+
+[[case]]
+id = "age-m3-bg-scx-dmg"
+rom = "m3-bg-scx/m3-bg-scx.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+oracle = { fixture = "m3-bg-scx/m3-bg-scx-dmgC.png" }
+
+[[case]]
+id = "age-m3-bg-scx-cgb-c"
+rom = "m3-bg-scx/m3-bg-scx.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { source = "cgb", fixture = "m3-bg-scx/m3-bg-scx-cgbBCE.png" }
+
+[[case]]
+id = "age-m3-bg-scx-ds-cgb-c"
+rom = "m3-bg-scx/m3-bg-scx-ds.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { source = "cgb", fixture = "m3-bg-scx/m3-bg-scx-ds-cgbBCE.png" }
+
+[[case]]
+id = "age-m3-bg-scx-nocgb-ncm-c"
+rom = "m3-bg-scx/m3-bg-scx-nocgb.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { source = "cgb", fixture = "m3-bg-scx/m3-bg-scx-nocgb-ncmBCE.png" }

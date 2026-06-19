@@ -1,0 +1,43 @@
+family = "age"
+suite_name = "age-speed-switch"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result", fail_on_terminal_non_pass = true }
+
+[[case]]
+id = "age-speed-switch-spsw-mode0-cgb-bce"
+rom = "speed-switch/spsw-mode0-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-speed-switch-spsw-div-cgb-bce"
+rom = "speed-switch/spsw-div-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-speed-switch-spsw-tima-cgb-bc"
+rom = "speed-switch/spsw-tima-cgbBC.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-speed-switch-spsw-ch2-lc-delay-cgb-bce"
+rom = "speed-switch/spsw-ch2-lc-delay-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-speed-switch-spsw-stop-prefetch-cgb-bce"
+rom = "speed-switch/spsw-stop-prefetch-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-speed-switch-spsw-tima-cgb-e"
+rom = "speed-switch/spsw-tima-cgbE.gb"
+model = "cgb"
+revision = "cpu-cgb-e"

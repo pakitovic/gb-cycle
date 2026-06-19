@@ -1,0 +1,31 @@
+family = "age"
+suite_name = "age-stat-mode-window"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result", fail_on_terminal_non_pass = true }
+
+[[case]]
+id = "age-stat-mode-window-stat-mode-window-ncm-bce"
+rom = "stat-mode-window/stat-mode-window-ncmBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-stat-mode-window-stat-mode-window-cgb-bce"
+rom = "stat-mode-window/stat-mode-window-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-stat-mode-window-stat-mode-window-dmg-c"
+rom = "stat-mode-window/stat-mode-window-dmgC.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+
+[[case]]
+id = "age-stat-mode-window-stat-mode-window-ds-cgb-bce"
+rom = "stat-mode-window/stat-mode-window-ds-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"

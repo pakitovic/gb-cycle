@@ -1,0 +1,25 @@
+family = "age"
+suite_name = "age-vram"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result", fail_on_terminal_non_pass = true }
+
+[[case]]
+id = "age-vram-vram-read-ncm-bce"
+rom = "vram/vram-read-ncmBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-vram-vram-read-dmg-c"
+rom = "vram/vram-read-dmgC.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+
+[[case]]
+id = "age-vram-vram-read-cgb-bce"
+rom = "vram/vram-read-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"

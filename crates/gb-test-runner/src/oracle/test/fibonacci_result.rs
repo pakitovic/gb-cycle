@@ -81,6 +81,13 @@ fn legacy_fibonacci_oracle() -> Oracle {
     .expect("legacy fibonacci-result oracle should parse")
 }
 
+fn terminal_non_pass_failure_oracle() -> Oracle {
+    Oracle::from_manifest(&parse_oracle_config(
+        "oracle = { type = \"fibonacci-result\", fail_on_terminal_non_pass = true }",
+    ))
+    .expect("terminal-failing fibonacci-result oracle should parse")
+}
+
 #[test]
 fn catalog_builds_fibonacci_result_oracle_from_manifest_config() {
     assert!(matches!(fibonacci_oracle(), Oracle::FibonacciResult(_)));
@@ -213,6 +220,41 @@ fn fibonacci_result_default_mode_ignores_legacy_breakpoint_without_pass_signatur
             .finish(observations([0; 6], Some(0xED), no_halt_loop_window()))
             .expect("oracle should finish"),
         OracleOutcome::Failed(message) if message.contains("was not reached")
+    ));
+}
+
+#[test]
+fn fibonacci_result_default_mode_ignores_magic_breakpoint_without_pass_signature() {
+    let mut oracle = fibonacci_oracle();
+    assert_eq!(
+        oracle
+            .observe(observations([0; 6], Some(0x40), no_halt_loop_window()))
+            .expect("oracle should observe"),
+        OracleStep::Continue
+    );
+    assert!(matches!(
+        oracle
+            .finish(observations([0; 6], Some(0x40), no_halt_loop_window()))
+            .expect("oracle should finish"),
+        OracleOutcome::Failed(message) if message.contains("was not reached")
+    ));
+}
+
+#[test]
+fn fibonacci_result_can_fail_magic_breakpoint_without_pass_signature() {
+    let mut oracle = terminal_non_pass_failure_oracle();
+    assert_eq!(
+        oracle
+            .observe(observations([0; 6], Some(0x40), no_halt_loop_window()))
+            .expect("oracle should observe"),
+        OracleStep::Stop
+    );
+    assert!(matches!(
+        oracle
+            .finish(observations([0; 6], Some(0x40), no_halt_loop_window()))
+            .expect("oracle should finish"),
+        OracleOutcome::Failed(message)
+            if message.contains("fibonacci terminal reached without pass signature")
     ));
 }
 

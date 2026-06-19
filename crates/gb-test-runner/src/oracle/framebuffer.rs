@@ -127,6 +127,17 @@ impl FramebufferOracle {
                         })
                         .collect::<Result<Vec<_>, String>>()?,
                 },
+                FramebufferProjection::Rgb => FramebufferComparison::Rgb {
+                    fixtures: fixture_paths
+                        .into_iter()
+                        .map(|path| {
+                            Ok(FramebufferRgbFixture {
+                                framebuffer: read_rgb_fixture(&path)?,
+                                path,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, String>>()?,
+                },
             }
         };
 
@@ -260,6 +271,21 @@ impl FramebufferOracle {
                     }
                 }))
             }
+            FramebufferComparison::Rgb { fixtures } => {
+                let actual = match self.source {
+                    FramebufferSource::Dmg => dmg_rgb_framebuffer(
+                        framebuffer
+                            .dmg
+                            .ok_or_else(|| "DMG framebuffer is not available".to_string())?,
+                    )?,
+                    FramebufferSource::Cgb => {
+                        rgb555_rgb_framebuffer(framebuffer.cgb_rgb555.ok_or_else(|| {
+                            "CGB RGB555 framebuffer is not available".to_string()
+                        })?)?
+                    }
+                };
+                Ok(fixtures.iter().any(|fixture| fixture.framebuffer == actual))
+            }
         }
     }
 
@@ -312,6 +338,10 @@ impl FramebufferOracle {
                     fixture_list(fixtures.iter().map(|fixture| &fixture.path))
                 )
             }
+            FramebufferComparison::Rgb { fixtures } => format!(
+                "framebuffer did not match exact RGB fixture {}",
+                fixture_list(fixtures.iter().map(|fixture| &fixture.path))
+            ),
         }
     }
 
@@ -335,6 +365,15 @@ impl FramebufferOracle {
                 "grayscale",
                 compare.as_str(),
                 Some(*tolerance),
+                fixtures
+                    .iter()
+                    .map(|fixture| fixture.path.clone())
+                    .collect::<Vec<_>>(),
+            ),
+            FramebufferComparison::Rgb { fixtures } => (
+                "rgb",
+                "exact",
+                None,
                 fixtures
                     .iter()
                     .map(|fixture| fixture.path.clone())
@@ -417,6 +456,7 @@ impl FramebufferSource {
 enum FramebufferProjection {
     PaletteRank,
     Grayscale,
+    Rgb,
 }
 
 impl FramebufferProjection {
@@ -424,6 +464,7 @@ impl FramebufferProjection {
         match value.unwrap_or("palette-rank") {
             "palette-rank" => Ok(Self::PaletteRank),
             "grayscale" => Ok(Self::Grayscale),
+            "rgb" => Ok(Self::Rgb),
             other => Err(format!("unsupported framebuffer projection {other:?}")),
         }
     }
@@ -489,6 +530,9 @@ enum FramebufferComparison {
         tolerance: u8,
         fixtures: Vec<FramebufferGrayscaleFixture>,
     },
+    Rgb {
+        fixtures: Vec<FramebufferRgbFixture>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -504,6 +548,12 @@ struct FramebufferGrayscaleFixture {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct FramebufferRgbFixture {
+    path: PathBuf,
+    framebuffer: RgbFramebuffer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PaletteRankFramebuffer {
     width: usize,
     height: usize,
@@ -515,6 +565,13 @@ struct GrayscaleFramebuffer {
     width: usize,
     height: usize,
     pixels: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RgbFramebuffer {
+    width: usize,
+    height: usize,
+    pixels: Vec<[u8; 3]>,
 }
 
 fn resolve_fixture_path(
@@ -580,6 +637,16 @@ fn read_grayscale_fixture(path: &Path) -> Result<GrayscaleFramebuffer, String> {
     decode_grayscale_fixture_bytes(path, &bytes)
 }
 
+fn read_rgb_fixture(path: &Path) -> Result<RgbFramebuffer, String> {
+    let bytes = std::fs::read(path).map_err(|error| {
+        format!(
+            "failed to read framebuffer fixture {}: {error}",
+            path.display()
+        )
+    })?;
+    decode_rgb_fixture_bytes(path, &bytes)
+}
+
 fn decode_palette_fixture_bytes(
     path: &Path,
     bytes: &[u8],
@@ -611,6 +678,24 @@ fn decode_grayscale_fixture_bytes(
             })
         }
         Some("png") => decode_png_grayscale_fixture(path, bytes),
+        _ => Err(format!(
+            "unsupported framebuffer fixture extension for {}",
+            path.display()
+        )),
+    }
+}
+
+fn decode_rgb_fixture_bytes(path: &Path, bytes: &[u8]) -> Result<RgbFramebuffer, String> {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("pgm") => {
+            let (width, height, pixels) = parse_pgm(path, bytes)?;
+            Ok(RgbFramebuffer {
+                width,
+                height,
+                pixels: pixels.iter().copied().map(|pixel| [pixel; 3]).collect(),
+            })
+        }
+        Some("png") => decode_png_rgb_fixture(path, bytes),
         _ => Err(format!(
             "unsupported framebuffer fixture extension for {}",
             path.display()
@@ -687,6 +772,39 @@ fn decode_png_grayscale_fixture(path: &Path, bytes: &[u8]) -> Result<GrayscaleFr
         }
     };
     Ok(GrayscaleFramebuffer {
+        width: decoded.width,
+        height: decoded.height,
+        pixels,
+    })
+}
+
+fn decode_png_rgb_fixture(path: &Path, bytes: &[u8]) -> Result<RgbFramebuffer, String> {
+    let decoded = decode_png(path, bytes)?;
+    let pixels = match decoded.color_type {
+        png::ColorType::Grayscale => decoded.bytes.into_iter().map(|pixel| [pixel; 3]).collect(),
+        png::ColorType::Rgb => decoded
+            .bytes
+            .chunks_exact(3)
+            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .collect(),
+        png::ColorType::Rgba => decoded
+            .bytes
+            .chunks_exact(4)
+            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .collect(),
+        png::ColorType::GrayscaleAlpha => decoded
+            .bytes
+            .chunks_exact(2)
+            .map(|chunk| [chunk[0]; 3])
+            .collect(),
+        png::ColorType::Indexed => {
+            return Err(format!(
+                "indexed PNG framebuffer fixtures are not supported: {}",
+                path.display()
+            ));
+        }
+    };
+    Ok(RgbFramebuffer {
         width: decoded.width,
         height: decoded.height,
         pixels,
@@ -815,6 +933,17 @@ fn dmg_grayscale_framebuffer(pixels: &[u8]) -> Result<GrayscaleFramebuffer, Stri
     })
 }
 
+fn dmg_rgb_framebuffer(pixels: &[u8]) -> Result<RgbFramebuffer, String> {
+    Ok(RgbFramebuffer {
+        width: FRAMEBUFFER_WIDTH,
+        height: FRAMEBUFFER_HEIGHT,
+        pixels: dmg_grayscale_pixels(pixels)?
+            .into_iter()
+            .map(|pixel| [pixel; 3])
+            .collect(),
+    })
+}
+
 fn dmg_grayscale_pixels(pixels: &[u8]) -> Result<Vec<u8>, String> {
     let expected_len = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
     if pixels.len() != expected_len {
@@ -850,6 +979,14 @@ fn rgb555_grayscale_framebuffer(pixels: &[u16]) -> Result<GrayscaleFramebuffer, 
             .into_iter()
             .map(grayscale_luma)
             .collect(),
+    })
+}
+
+fn rgb555_rgb_framebuffer(pixels: &[u16]) -> Result<RgbFramebuffer, String> {
+    Ok(RgbFramebuffer {
+        width: FRAMEBUFFER_WIDTH,
+        height: FRAMEBUFFER_HEIGHT,
+        pixels: rgb555_colors(pixels)?,
     })
 }
 

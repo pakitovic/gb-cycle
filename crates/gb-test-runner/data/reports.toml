@@ -45,6 +45,12 @@ family_order = [
 ]
 
 [[report]]
+id = "age"
+store_dir = "age"
+sources = "age/sources.report.toml"
+family_order = ["age"]
+
+[[report]]
 id = "ashiepaws"
 store_dir = "ashiepaws"
 sources = "ashiepaws/sources.report.toml"

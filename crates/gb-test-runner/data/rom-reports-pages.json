@@ -1,6 +1,7 @@
 [
   { "name": "gb-emulator-shootout", "boot_roms": true },
   { "name": "acid" },
+  { "name": "age" },
   { "name": "blargg" },
   { "name": "mooneye" },
   { "name": "wilbertpol" },

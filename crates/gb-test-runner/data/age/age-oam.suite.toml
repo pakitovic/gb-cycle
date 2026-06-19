@@ -1,0 +1,49 @@
+family = "age"
+suite_name = "age-oam"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result", fail_on_terminal_non_pass = true }
+
+[[case]]
+id = "age-oam-oam-read-ncm-e"
+rom = "oam/oam-read-ncmE.gb"
+model = "cgb"
+revision = "cpu-cgb-e"
+
+[[case]]
+id = "age-oam-oam-write-dmg-c"
+rom = "oam/oam-write-dmgC.gb"
+model = "dmg"
+revision = "dmg-cpu-c"
+
+[[case]]
+id = "age-oam-oam-read-ncm-bc"
+rom = "oam/oam-read-ncmBC.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-oam-oam-read-dmg-c-cgb-bc"
+rom = "oam/oam-read-dmgC-cgbBC.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-oam-oam-write-cgb-bce"
+rom = "oam/oam-write-cgbBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-oam-oam-write-ncm-bce"
+rom = "oam/oam-write-ncmBCE.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-oam-oam-read-cgb-e"
+rom = "oam/oam-read-cgbE.gb"
+model = "cgb"
+revision = "cpu-cgb-e"

@@ -1,0 +1,31 @@
+family = "age"
+suite_name = "age-ly"
+report = "age"
+timeout_frames = 180
+report_model_suffix = true
+report_revision_suffix = true
+oracle = { type = "fibonacci-result", fail_on_terminal_non_pass = true }
+
+[[case]]
+id = "age-ly-ly-ncm-e"
+rom = "ly/ly-ncmE.gb"
+model = "cgb"
+revision = "cpu-cgb-e"
+
+[[case]]
+id = "age-ly-ly-dmg-c-cgb-bc"
+rom = "ly/ly-dmgC-cgbBC.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-ly-ly-ncm-bc"
+rom = "ly/ly-ncmBC.gb"
+model = "cgb"
+revision = "cpu-cgb-c"
+
+[[case]]
+id = "age-ly-ly-cgb-e"
+rom = "ly/ly-cgbE.gb"
+model = "cgb"
+revision = "cpu-cgb-e"
