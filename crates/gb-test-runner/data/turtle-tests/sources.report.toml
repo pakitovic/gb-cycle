@@ -1,0 +1,29 @@
+[[source]]
+id = "game-boy-test-roms"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
+
+[[source.family]]
+id = "turtle-tests"
+target_root = "turtle-tests"
+
+[[source.family.file]]
+path = "turtle-tests/window_y_trigger/window_y_trigger.gb"
+target = "window_y_trigger/window_y_trigger.gb"
+sha256 = "c844be570060efeab721e8a8e160f518e4295ca46e47e55f5083a181a5dc4fe8"
+
+[[source.family.file]]
+path = "turtle-tests/window_y_trigger/window_y_trigger.png"
+target = "window_y_trigger/window_y_trigger.png"
+sha256 = "5ccea69d275ca538aac535e56da47fcac394bd1a7fc48da27c98774c77d3466f"
+
+[[source.family.file]]
+path = "turtle-tests/window_y_trigger_wx_offscreen/window_y_trigger_wx_offscreen.gb"
+target = "window_y_trigger_wx_offscreen/window_y_trigger_wx_offscreen.gb"
+sha256 = "6eeae0e54a083f0b84cc136f72c0f926bbb9bbe8194faeb8735d6f4a9d88e021"
+
+[[source.family.file]]
+path = "turtle-tests/window_y_trigger_wx_offscreen/window_y_trigger_wx_offscreen.png"
+target = "window_y_trigger_wx_offscreen/window_y_trigger_wx_offscreen.png"
+sha256 = "cbca426b18a00730fec2d4bc54f164414a8beea22e0bf66efbaff6fc77391819"

@@ -33,6 +33,7 @@ fn built_in_reports_manifest_loads_all_reports() {
             "blargg",
             "mooneye",
             "little-things-gb",
+            "turtle-tests",
             "nitro2k01",
             "magen",
             "mealybug-tearoom-tests",

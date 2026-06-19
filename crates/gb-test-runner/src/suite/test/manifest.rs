@@ -1778,6 +1778,23 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             )][..],
         ),
         (
+            "turtle-tests",
+            &[
+                (
+                    "turtle-tests-window-y-trigger",
+                    1,
+                    "turtle-tests",
+                    "turtle-tests",
+                ),
+                (
+                    "turtle-tests-window-y-trigger-wx-offscreen",
+                    1,
+                    "turtle-tests",
+                    "turtle-tests",
+                ),
+            ][..],
+        ),
+        (
             "acid",
             &[
                 ("dmg-acid2", 2, "dmg-acid2", "dmg-acid2"),
@@ -2125,6 +2142,24 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 .expect("CGB basic row should exist");
             assert_eq!(cgb.hardware_revision, gb_core::HardwareRevision::CpuCgbD);
             assert_eq!(cgb.report_rom(), "rtc3test.gb (GBC)");
+        }
+        if report_id == "turtle-tests" {
+            for suite_name in [
+                "turtle-tests-window-y-trigger",
+                "turtle-tests-window-y-trigger-wx-offscreen",
+            ] {
+                let suites = load_selected_suites(&workspace, report, Some(suite_name), None)
+                    .unwrap_or_else(|error| panic!("{suite_name} should load: {error}"));
+                let suite = &suites[0];
+                assert!(suite.cases.iter().all(|case| {
+                    case.console_model == gb_core::ConsoleModel::GameBoy
+                        && case.hardware_revision == gb_core::HardwareRevision::DmgCpuC
+                        && case.startup_mode == gb_core::StartupMode::SkipBoot
+                        && case.timeout_frames == 30
+                        && !case.report_model_suffix
+                        && matches!(&case.oracle, Oracle::Framebuffer(_))
+                }));
+            }
         }
         if report_id == "mbc3-tester" {
             let suites = load_selected_suites(&workspace, report, Some("mbc3-tester"), None)

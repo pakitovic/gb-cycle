@@ -1,0 +1,11 @@
+family = "turtle-tests"
+suite_name = "turtle-tests-window-y-trigger"
+report = "turtle-tests"
+model = "dmg"
+timeout_frames = 30
+oracle = { type = "framebuffer", mode = "until-match" }
+
+[[case]]
+id = "turtle-tests-window-y-trigger"
+rom = "window_y_trigger/window_y_trigger.gb"
+oracle = { fixture = "window_y_trigger/window_y_trigger.png" }
