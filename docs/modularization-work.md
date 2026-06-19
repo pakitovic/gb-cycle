@@ -182,7 +182,7 @@ pub trait EmulatorSaveState: Emulator {
 
 ### 3.3 Opaque, versioned save-state blob (codec home = `gb-persistence`)
 
-The facade never exposes `MachineSaveState`, `MachineSaveStateRestoreError`, or `PersistentCartState` byte layouts as its contract. `save_state()` returns a `SaveStateBlob` (a versioned `Vec<u8>` wrapper); `restore_state()` consumes one.
+The facade never exposes `MachineSaveState`, `MachineSaveStateRestoreError`, or `PersistentCartState` byte layouts as its contract. `save_state()` returns a `SaveStateBlob` (a versioned `Vec<u8>` wrapper); `restore_state()` consumes one. The blob owns encoded bytes but exposes only host-storage accessors (`from_bytes`, `as_bytes`, `into_bytes`), never the internal envelope payload.
 
 The opaque boundary is the **`gb-persistence` envelope**, *not* the `gb-core` struct. Inside the concrete `Gameboy`, `save_state()` calls `MachineSaveStateEnvelope::new(machine.capture_save_state())` and `encode_machine_save_state_envelope(&envelope)` to produce the magic-tagged, version-stamped bytes; `restore_state()` calls `decode_machine_save_state_envelope(&blob.bytes)` and feeds the structured payload into `Machine::restore_save_state()`. `MachineSaveState` is therefore a *codec implementation detail* of `gb-persistence`, never part of the facade surface, so a future `gb-base`/`gb-core-2` can carry its own snapshot type behind the same blob without changing any frontend. This is exactly the path `gb-cli` already uses through `run/state.rs`.
 
@@ -272,6 +272,17 @@ pub struct SaveStateBlob {
     pub(crate) bytes: Vec<u8>,
 }
 
+impl SaveStateBlob {
+    /// Wrap encoded envelope bytes read from disk or host storage.
+    pub fn from_bytes(bytes: Vec<u8>) -> Self { Self { bytes } }
+
+    /// Borrow encoded envelope bytes for host persistence.
+    pub fn as_bytes(&self) -> &[u8] { &self.bytes }
+
+    /// Consume the blob into encoded envelope bytes for host persistence.
+    pub fn into_bytes(self) -> Vec<u8> { self.bytes }
+}
+
 #[derive(Debug)]
 pub enum EmulatorError {
     CartridgeLoad(String),
@@ -295,7 +306,7 @@ pub enum EmulatorError {
 | `cartridge_persistent_state()` | `Machine::cartridge().persistent_state()` (`cartridge/device.rs:362`) → `PersistentCartState` | `gb-cli` run `--save-dir` (`save_session.rs:55,82,108`), `gb-desktop` |
 | `cartridge_persistence_metadata()` | `Machine::cartridge().persistence_metadata()` (`cartridge/device.rs:294`) → `CartridgePersistenceMetadata` | `gb-cli` run `--save-dir` (`save_session.rs:41,115`) |
 | `restore_cartridge_persistent_state(&PersistentCartState)` | `Machine::restore_cartridge_persistent_state` (`save_session.rs:80` call site) | `gb-cli` run `--save-dir`, `gb-desktop` |
-| `save_state()` / `restore_state()` *(feature `persistence`)* | `capture_save_state` / `restore_save_state` (`machine.rs:649,685`) wrapped by `MachineSaveStateEnvelope` + `encode`/`decode` (`gb-persistence` `machine_state/envelope.rs`) | `gb-cli` run (`execution.rs:203`), `gb-desktop` |
+| `save_state()` / `restore_state()` *(feature `persistence`)* | `capture_save_state` / `restore_save_state` (`machine.rs:649,685`) wrapped by `MachineSaveStateEnvelope` + `encode`/`decode` (`gb-persistence` `machine_state/envelope.rs`); `SaveStateBlob::{from_bytes, as_bytes, into_bytes}` expose only encoded envelope bytes | `gb-cli` run (`execution.rs:203`), `gb-desktop` |
 | `reset()` | `load_cartridge` re-entry | `gb-desktop` |
 | `EmulatorConfig` → `MachineConfig` | translated in `gameboy.rs` (Section 4.1) | all three consumers |
 | `types::{DMG_T_CYCLES_PER_FRAME, DMG_T_CYCLES_PER_SECOND}` | `rewind.rs:9,10` | `gb-benchmark` (frame pacing / speed %) |
@@ -333,7 +344,7 @@ Each phase is a sequence of commits on the single branch (Section 8) and ends wi
 
 **Steps.**
 1. Add `crates/gb-api/src/frontier.rs` (Section 4.1) and `crates/gb-api/src/emulator.rs` (Section 3.2), referencing domain types only via `crate::types`.
-2. Add `crates/gb-api/src/gameboy.rs` defining `pub struct Gameboy { inner: Machine<TraceSummaryBuffer>, … }` and `impl Emulator for Gameboy` (plus `impl EmulatorSaveState` under `#[cfg(feature = "persistence")]`). Translate `EmulatorConfig` → `MachineConfig` per Section 4.1 (`ExecutionMode` is the caller's job; `boot_rom_assets` via `with_boot_rom_assets`). Implement `run_frame_with` as the `step_t_cycle` + `at_frame_origin` loop mirroring `run/execution.rs:117-172`, invoking `per_cycle` after each step with a `CycleView` built from `apu().host_output_sample()`; implement `run_frame` as `run_frame_with(&mut |_| {})`. Map `Framebuffer` variants from the PPU getters; route cartridge persistence through `cartridge().persistent_state()` / `persistence_metadata()` / `restore_cartridge_persistent_state`; wrap `capture_save_state`/`restore_save_state` in the `gb-persistence` envelope (Section 3.3).
+2. Add `crates/gb-api/src/gameboy.rs` defining `pub struct Gameboy { inner: Machine<TraceSummaryBuffer>, … }` and `impl Emulator for Gameboy` (plus `impl EmulatorSaveState` under `#[cfg(feature = "persistence")]`). Translate `EmulatorConfig` → `MachineConfig` per Section 4.1 (`ExecutionMode` is the caller's job; `boot_rom_assets` via `with_boot_rom_assets`). Implement `run_frame_with` as the `step_t_cycle` + `at_frame_origin` loop mirroring `run/execution.rs:117-172`, invoking `per_cycle` after each step with a `CycleView` built from `apu().host_output_sample()`; implement `run_frame` as `run_frame_with(&mut |_| {})`. Map `Framebuffer` variants from the PPU getters; route cartridge persistence through `cartridge().persistent_state()` / `persistence_metadata()` / `restore_cartridge_persistent_state`; wrap `capture_save_state`/`restore_save_state` in the `gb-persistence` envelope (Section 3.3), and expose only the encoded bytes via `SaveStateBlob::{from_bytes, as_bytes, into_bytes}` so CLI/desktop state-slot code can persist and reload blobs without seeing the envelope internals.
 3. Re-export the public contract from `lib.rs`: `pub use emulator::{Emulator, CycleView}; pub use gameboy::Gameboy; pub use frontier::*;` (and `EmulatorSaveState` under the feature).
 4. Add `crates/gb-api/tests/parity.rs`: run a fixed frame count of a named in-tree ROM (e.g. a blargg `cpu_instrs` sub-ROM already vendored for the report) through both `Gameboy` and a hand-written direct-`Machine` loop. Assert byte-equality on **each `Framebuffer` variant the ROM exercises** (Indexed for DMG; add CGB `Rgb555` and SGB `SgbRgb555` cases with the appropriate config), on `take_serial_output`, and — gathering audio via `run_frame_with` — on the per-frame `AudioBatch` (`ApuHostSample` sequence). If audio parity cannot be proven, that is itself the signal the per-cycle hook is wired wrong.
 5. Add a public-API leakage guard: a `#[test]` (cargo-public-api snapshot, or a documented `cargo doc --no-deps` audit step checked in CI) asserting no `gb_core::*` path appears in `gb-api`'s public signatures.
@@ -353,7 +364,7 @@ Each phase is a sequence of commits on the single branch (Section 8) and ends wi
 **Steps.**
 1. Add `gb-api` (with `persistence` + `audio` features) to `crates/gb-cli/Cargo.toml` (keep `gb-core`).
 2. Replace `CliMachine`'s run usage (`crates/gb-cli/src/run/machine.rs`, `run/execution.rs`) with `gb_api::Gameboy`. The enum-over-`TraceBuffer`/`TraceSummaryBuffer` dispatch collapses — the facade owns the sink choice — so `CliMachine` either disappears for the run path or wraps `Gameboy`.
-3. Map CLI options to `EmulatorConfig` (translate `ExecutionMode` → `CompatibilityPolicy`, build `BootRomAssets`); keep benchmark-stimulus application via `set_button`; keep serial drain via `take_serial_output`; keep whole-machine save/restore via the `SaveStateBlob` API.
+3. Map CLI options to `EmulatorConfig` (translate `ExecutionMode` → `CompatibilityPolicy`, build `BootRomAssets`); keep benchmark-stimulus application via `set_button`; keep serial drain via `take_serial_output`; keep whole-machine save/restore via the `SaveStateBlob` API, writing with `as_bytes`/`into_bytes` and restoring bytes read from disk with `from_bytes`.
 4. Re-point the save session (`crates/gb-cli/src/run/save_session.rs`) onto the facade: `cartridge_persistent_state()` / `cartridge_persistence_metadata()` / `restore_cartridge_persistent_state()` replace the direct `machine.cartridge()…` calls, so `--save-dir` battery/RTC flushing keeps working through `gb-api`.
 5. Confirm non-run subcommands still import `gb_core` directly and are unchanged.
 
@@ -363,25 +374,25 @@ Each phase is a sequence of commits on the single branch (Section 8) and ends wi
 
 **CI gate.** Full gate green — `cargo rom-report blargg` here directly exercises the migrated path.
 
-**Risk & rollback.** ROM-report regression if `run_frame` diverges from the old loop, or save-file regression if the persistence accessors are miswired. Mitigated by the P1 parity test + running the blargg report and a `--save-dir` round-trip before committing. Rollback = revert run-path commits.
+**Risk & rollback.** ROM-report regression if `run_frame` diverges from the old loop, or save-file regression if the persistence accessors are wired incorrectly. Mitigated by the P1 parity test + running the blargg report and a `--save-dir` round-trip before committing. Rollback = revert run-path commits.
 
-### P3 — Migrate `gb-desktop`'s play loop
+### P3 — Migrate `gb-desktop`'s standalone play loop
 
-**Goal.** Move `gb-desktop`'s **play loop** (config → load → run frame → present → input → save/restore) onto `gb-api` via `run_frame_with`, while leaving its debugger/inspection features on the direct `gb-core` dependency.
+**Goal.** Move only `gb-desktop`'s **single-machine play loop** (config → load → run frame → present → input → save/restore) onto `gb-api` via `run_frame_with`. Linked sessions, Pokémon IR sessions, and DMG-07 sessions continue to step through the existing `DesktopEmulationSession`/`LinkedMachines` path until a separate facade session API exists.
 
 **Steps.**
 1. Add `gb-api` (with `persistence` + `audio` features) to `crates/gb-desktop/Cargo.toml`, alongside the retained `gb-core` dependency.
-2. Replace the play-loop construction/stepping/presentation calls with `gb_api::{Gameboy, Emulator}` and `gb_api::types::*`. Drive `step_until_next_frame`'s per-cycle work (audio `capture_t_cycle`, RTC sync, event polling, telemetry counters) through `run_frame_with`'s `CycleView`; route battery/RTC saves through `cartridge_persistent_state` and whole-machine saves through the `SaveStateBlob` API. Switch domain imports (`JoypadButton`, `HardwareRevision`, `ConsoleModel`, `StartupMode`, `ApuHostSample`, …) from `gb_core::` to `gb_api::types::`.
-3. Telemetry that reads internals not on `CycleView` (e.g. raw `mode0_start_dot()`/`lcd_state()` for the diagnostic overlays) stays on the direct `gb-core` handle, as do debugger, snapshot, rewind, link, and IR-session code — these are deliberately not on the facade.
-4. A/B the migrated loop against the retained `gb-core` path for audio/timing parity before removing any old code.
+2. For standalone sessions only, replace the play-loop construction/stepping/presentation calls with `gb_api::{Gameboy, Emulator}` and `gb_api::types::*`. Drive `step_until_next_frame`'s per-cycle work (audio `capture_t_cycle`, RTC sync, event polling, telemetry counters) through `run_frame_with`'s `CycleView`; route battery/RTC saves through `cartridge_persistent_state` and whole-machine saves through the `SaveStateBlob` API, writing with `as_bytes`/`into_bytes` and restoring bytes read from disk with `from_bytes`. Switch domain imports (`JoypadButton`, `HardwareRevision`, `ConsoleModel`, `StartupMode`, `ApuHostSample`, …) from `gb_core::` to `gb_api::types::` only in the standalone path.
+3. Keep linked/IR/DMG-07 desktop variants on the existing direct `gb-core` stepping path so all participants continue advancing atomically; do not attempt to drive them through a single `Gameboy`. Telemetry that reads internals not on `CycleView` (e.g. raw `mode0_start_dot()`/`lcd_state()` for the diagnostic overlays) also stays on the direct `gb-core` handle, as do debugger, snapshot, rewind, link, and IR-session code — these are deliberately not on the facade.
+4. A/B the migrated standalone loop against the retained `gb-core` path for audio/timing parity before removing any old standalone-only code.
 
-**Files touched.** `crates/gb-desktop/Cargo.toml`; the desktop run/present/input/audio modules (`frontend/frame_loop.rs`, `audio.rs`, …). No `gb-core` changes.
+**Files touched.** `crates/gb-desktop/Cargo.toml`; the desktop standalone run/present/input/audio modules (`frontend/frame_loop.rs`, `audio.rs`, …). No `gb-core` changes.
 
-**Definition of Done.** `gb-desktop` builds and runs a ROM through `gb-api` with per-cycle audio intact; debugger/telemetry features still compile via `gb-core`.
+**Definition of Done.** `gb-desktop` builds and runs a standalone ROM through `gb-api` with per-cycle audio intact; linked/IR/DMG-07 sessions still run through the existing direct `gb-core` session path; debugger/telemetry features still compile via `gb-core`.
 
 **CI gate.** Full gate green.
 
-**Risk & rollback.** Audio/timing regressions in the interactive loop — the hardest consumer. Mitigated by `run_frame_with` (the same per-cycle hook the P1 parity test exercises) and keeping `gb-core` available for A/B during migration. Rollback = revert desktop commits; `gb-api` unaffected.
+**Risk & rollback.** Audio/timing regressions in the standalone interactive loop, or accidental desynchronization of linked/IR sessions if they are routed through the single-machine facade. Mitigated by `run_frame_with` (the same per-cycle hook the P1 parity test exercises), explicitly leaving linked/IR/DMG-07 on `DesktopEmulationSession`, and keeping `gb-core` available for A/B during migration. Rollback = revert desktop commits; `gb-api` unaffected.
 
 ### P4 — Migrate `gb-benchmark`
 
@@ -469,7 +480,7 @@ Because every frontend already imports these as `gb_api::types::*`, the contract
 - **No `gb-base`, `gb-core-2`, `gb-lib`, or `gb-libretro` in this work.** They are unlocked, not built.
 - **No change to `gb-core`'s internal architecture or public surface.** `gb-api` is purely additive on top of the existing core; the wide `gb-core` re-exports remain available for consumers that legitimately need internals.
 - **`gb-test-runner` is out of scope** and stays on `gb-core` directly.
-- **`gb-desktop`'s debugger/inspection/rewind/link/IR features stay on `gb-core` directly** — only the play loop moves to `gb-api`, and even then telemetry that reads internals not on `CycleView` keeps a direct `gb-core` handle.
+- **`gb-desktop`'s debugger/inspection/rewind/link/IR features stay on `gb-core` directly** — only the standalone play loop moves to `gb-api`; linked/IR/DMG-07 sessions and telemetry that reads internals not on `CycleView` keep the existing direct `gb-core` handle.
 - **The `gb-cli` `test`/`inspect`/`trace` subcommands stay on `gb-core` directly** — only the `run` path moves.
 - **No emulation-accuracy changes.** This is a structural refactor; ROM behavior must be byte-identical (enforced by the P1 parity test on framebuffer/serial/audio and the blargg report).
 - **No merge to `main`.** See Section 8.
