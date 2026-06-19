@@ -1,0 +1,186 @@
+family = "gambatte"
+suite_name = "gambatte-dmgpalette-during-m3"
+report = "gambatte"
+timeout_frames = 15
+report_model_suffix = true
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-1-dmg"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/dmgpalette_during_m3_1.png", "dmgpalette_during_m3/dmgpalette_during_m3_1_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-2-dmg"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_2.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/dmgpalette_during_m3_2.png", "dmgpalette_during_m3/dmgpalette_during_m3_2_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-2-gba"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_2.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/dmgpalette_during_m3_2_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-3-dmg"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_3.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/dmgpalette_during_m3_3.png", "dmgpalette_during_m3/dmgpalette_during_m3_3_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-3-gba"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_3.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/dmgpalette_during_m3_3_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-4-dmg"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_4.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/dmgpalette_during_m3_4.png", "dmgpalette_during_m3/dmgpalette_during_m3_4_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-4-gba"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_4.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/dmgpalette_during_m3_4_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-5-dmg"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_5.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/dmgpalette_during_m3_5.png", "dmgpalette_during_m3/dmgpalette_during_m3_5_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-5-gba"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_5.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/dmgpalette_during_m3_5_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-scx1-1-dmg08"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_scx1_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "dmgpalette_during_m3/dmgpalette_during_m3_scx1_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-scx1-4-dmg08"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_scx1_4.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "dmgpalette_during_m3/dmgpalette_during_m3_scx1_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-dmgpalette-during-m3-scx2-1-dmg08"
+rom = "dmgpalette_during_m3/dmgpalette_during_m3_scx2_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "dmgpalette_during_m3/dmgpalette_during_m3_scx2_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-lycint-dmgpalette-during-m3-1-dmg"
+rom = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/lycint_dmgpalette_during_m3_1.png", "dmgpalette_during_m3/lycint_dmgpalette_during_m3_1_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-lycint-dmgpalette-during-m3-1-gba"
+rom = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_1.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_1_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-lycint-dmgpalette-during-m3-2-dmg"
+rom = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_2.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/lycint_dmgpalette_during_m3_2.png", "dmgpalette_during_m3/lycint_dmgpalette_during_m3_2_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-lycint-dmgpalette-during-m3-2-gba"
+rom = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_2.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_2_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-lycint-dmgpalette-during-m3-3-dmg"
+rom = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_3.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/lycint_dmgpalette_during_m3_3.png", "dmgpalette_during_m3/lycint_dmgpalette_during_m3_3_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-lycint-dmgpalette-during-m3-3-gba"
+rom = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_3.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_3_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-lycint-dmgpalette-during-m3-4-dmg"
+rom = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_4.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/lycint_dmgpalette_during_m3_4.png", "dmgpalette_during_m3/lycint_dmgpalette_during_m3_4_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-lycint-dmgpalette-during-m3-4-gba"
+rom = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_4.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_4_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-1-dmg"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/scx3/dmgpalette_during_m3_1.png", "dmgpalette_during_m3/scx3/dmgpalette_during_m3_1_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-1-gba"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_1.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_1_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-2-dmg"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_2.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/scx3/dmgpalette_during_m3_2.png", "dmgpalette_during_m3/scx3/dmgpalette_during_m3_2_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-2-gba"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_2.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_2_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-3-dmg"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_3.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/scx3/dmgpalette_during_m3_3.png", "dmgpalette_during_m3/scx3/dmgpalette_during_m3_3_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-3-gba"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_3.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_3_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-4-dmg"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_4.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/scx3/dmgpalette_during_m3_4.png", "dmgpalette_during_m3/scx3/dmgpalette_during_m3_4_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-4-gba"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_4.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_4_gba.png" }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-5-dmg"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_5.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = ["dmgpalette_during_m3/scx3/dmgpalette_during_m3_5.png", "dmgpalette_during_m3/scx3/dmgpalette_during_m3_5_dmg08.png"] }
+
+[[case]]
+id = "gambatte-dmgpalette-during-m3-scx3-dmgpalette-during-m3-5-gba"
+rom = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_5.gb"
+model = "agb"
+oracle = { type = "framebuffer", source = "cgb", fixture = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_5_gba.png" }

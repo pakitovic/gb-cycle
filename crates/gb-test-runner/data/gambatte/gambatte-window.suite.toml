@@ -1,0 +1,272 @@
+family = "gambatte"
+suite_name = "gambatte-window"
+report = "gambatte"
+timeout_frames = 15
+report_model_suffix = true
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "gambatte-window-on-screen-late-wx-ds-1-cgb"
+rom = "window/on_screen/late_wx_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/late_wx_ds_1.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-late-wx-ds-2-cgb"
+rom = "window/on_screen/late_wx_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/late_wx_ds_2.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-weon-wx18-weoff-weon-wx80-cgb04c"
+rom = "window/on_screen/weon_wx18_weoff_weon_wx80.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/weon_wx18_weoff_weon_wx80_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-weon-wx18-weoff-weon-wx80-dmg08"
+rom = "window/on_screen/weon_wx18_weoff_weon_wx80.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/weon_wx18_weoff_weon_wx80_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wx17-weoff-wxa5-weon-cgb04c"
+rom = "window/on_screen/wx17_weoff_wxA5_weon.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wx17_weoff_wxA5_weon_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wx17-weoff-wxa5-weon-dmg08"
+rom = "window/on_screen/wx17_weoff_wxA5_weon.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wx17_weoff_wxA5_weon_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wx17-wxa5-cgb04c"
+rom = "window/on_screen/wx17_wxA5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wx17_wxA5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wx17-wxa5-dmg08"
+rom = "window/on_screen/wx17_wxA5.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wx17_wxA5_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa5-weoff-at-xposa5-cgb04c"
+rom = "window/on_screen/wxA5_weoff_at_xposA5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA5_weoff_at_xposA5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa5-weoff-at-xposa5-dmg08"
+rom = "window/on_screen/wxA5_weoff_at_xposA5.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA5_weoff_at_xposA5_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-3-cgb04c"
+rom = "window/on_screen/wxA6_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-3-dmg08"
+rom = "window/on_screen/wxA6_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-late-we-reenable-1-cgb04c"
+rom = "window/on_screen/wxA6_late_we_reenable_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_late_we_reenable_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-late-we-reenable-1-dmg08"
+rom = "window/on_screen/wxA6_late_we_reenable_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_late_we_reenable_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-late-we-reenable-2-cgb04c"
+rom = "window/on_screen/wxA6_late_we_reenable_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_late_we_reenable_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-late-we-reenable-2-dmg08"
+rom = "window/on_screen/wxA6_late_we_reenable_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_late_we_reenable_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-late-we-reenable-3-cgb04c"
+rom = "window/on_screen/wxA6_late_we_reenable_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_late_we_reenable_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-late-we-reenable-3-dmg08"
+rom = "window/on_screen/wxA6_late_we_reenable_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_late_we_reenable_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-late-we-reenable-4-cgb04c"
+rom = "window/on_screen/wxA6_late_we_reenable_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_late_we_reenable_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-late-we-reenable-4-dmg08"
+rom = "window/on_screen/wxA6_late_we_reenable_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_late_we_reenable_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-scx7-cgb04c"
+rom = "window/on_screen/wxA6_scx7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_scx7_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-scx7-dmg08"
+rom = "window/on_screen/wxA6_scx7.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_scx7_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-weoff-at-xposa6-cgb04c"
+rom = "window/on_screen/wxA6_weoff_at_xposA6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_weoff_at_xposA6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-weoff-at-xposa6-dmg08"
+rom = "window/on_screen/wxA6_weoff_at_xposA6.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_weoff_at_xposA6_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy00-cgb04c"
+rom = "window/on_screen/wxA6_wy00.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_wy00_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy00-dmg08"
+rom = "window/on_screen/wxA6_wy00.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_wy00_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-cgb04c"
+rom = "window/on_screen/wxA6_wy01.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_wy01_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-dmg08"
+rom = "window/on_screen/wxA6_wy01.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_wy01_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-weoff-ly02-cgb04c"
+rom = "window/on_screen/wxA6_wy01_weoff_ly02.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_wy01_weoff_ly02_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-weoff-ly02-dmg08"
+rom = "window/on_screen/wxA6_wy01_weoff_ly02.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_wy01_weoff_ly02_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-weoff-ly02-weon-ly60-cgb04c"
+rom = "window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-weoff-ly02-weon-ly60-dmg08"
+rom = "window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-wxa5-ly02-cgb04c"
+rom = "window/on_screen/wxA6_wy01_wxA5_ly02.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_wy01_wxA5_ly02_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-wxa5-ly02-dmg08"
+rom = "window/on_screen/wxA6_wy01_wxA5_ly02.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_wy01_wxA5_ly02_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-wxa7-ly02-cgb04c"
+rom = "window/on_screen/wxA6_wy01_wxA7_ly02.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_wy01_wxA7_ly02_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy01-wxa7-ly02-dmg08"
+rom = "window/on_screen/wxA6_wy01_wxA7_ly02.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_wy01_wxA7_ly02_dmg08.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy8f-cgb04c"
+rom = "window/on_screen/wxA6_wy8F.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "window/on_screen/wxA6_wy8F_cgb04c.png" }
+
+[[case]]
+id = "gambatte-window-on-screen-wxa6-wy8f-dmg08"
+rom = "window/on_screen/wxA6_wy8F.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "window/on_screen/wxA6_wy8F_dmg08.png" }
