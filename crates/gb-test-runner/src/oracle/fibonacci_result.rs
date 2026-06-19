@@ -12,6 +12,7 @@ const COMPACT_TERMINAL_LOOP_BYTES: [u8; 3] = [0x40, 0x18, 0xFE];
 pub(crate) struct FibonacciResultOracle {
     result: Option<FibonacciResult>,
     legacy: bool,
+    fail_on_terminal_non_pass: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,15 +24,19 @@ enum FibonacciResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FibonacciFailure {
     FailureSignature,
-    LegacyTerminalWithoutPassSignature,
+    LegacyTerminalNonPass,
+    TerminalNonPass,
 }
 
 impl FibonacciResultOracle {
     pub(super) fn from_manifest(config: &OracleConfig) -> Result<Self, String> {
-        config.reject_unknown_parameters(&["legacy"])?;
+        config.reject_unknown_parameters(&["legacy", "fail_on_terminal_non_pass"])?;
         Ok(Self {
             result: None,
             legacy: config.optional_bool("legacy")?.unwrap_or(false),
+            fail_on_terminal_non_pass: config
+                .optional_bool("fail_on_terminal_non_pass")?
+                .unwrap_or(false),
         })
     }
 
@@ -74,14 +79,19 @@ impl FibonacciResultOracle {
         let result = result_for_signature(cpu);
         if self.legacy && legacy_terminal_signal_reached(cpu) {
             return Ok(Some(result.unwrap_or(FibonacciResult::Failed(
-                FibonacciFailure::LegacyTerminalWithoutPassSignature,
+                FibonacciFailure::LegacyTerminalNonPass,
             ))));
         }
-        let Some(result) = result else {
-            return Ok(None);
-        };
         if terminal_signal_reached(cpu, self.legacy) {
-            Ok(Some(result))
+            if let Some(result) = result {
+                Ok(Some(result))
+            } else if self.fail_on_terminal_non_pass {
+                Ok(Some(FibonacciResult::Failed(
+                    FibonacciFailure::TerminalNonPass,
+                )))
+            } else {
+                Ok(None)
+            }
         } else {
             Ok(None)
         }
@@ -117,12 +127,19 @@ impl FibonacciFailure {
     fn message(self, observations: OracleObservations<'_>) -> String {
         match self {
             Self::FailureSignature => "fibonacci result reported failure signature".to_string(),
-            Self::LegacyTerminalWithoutPassSignature => match observations.cpu {
+            Self::LegacyTerminalNonPass => match observations.cpu {
                 Some(cpu) => format!(
                     "legacy fibonacci terminal reached without pass signature at PC {:#06X}",
                     cpu.pc
                 ),
                 None => "legacy fibonacci terminal reached without pass signature".to_string(),
+            },
+            Self::TerminalNonPass => match observations.cpu {
+                Some(cpu) => format!(
+                    "fibonacci terminal reached without pass signature at PC {:#06X}",
+                    cpu.pc
+                ),
+                None => "fibonacci terminal reached without pass signature".to_string(),
             },
         }
     }

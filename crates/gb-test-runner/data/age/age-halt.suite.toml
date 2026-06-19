@@ -4,7 +4,7 @@ report = "age"
 timeout_frames = 180
 report_model_suffix = true
 report_revision_suffix = true
-oracle = { type = "fibonacci-result" }
+oracle = { type = "fibonacci-result", fail_on_terminal_non_pass = true }
 
 [[case]]
 id = "age-halt-ei-halt-dmg-c-cgb-bce"
