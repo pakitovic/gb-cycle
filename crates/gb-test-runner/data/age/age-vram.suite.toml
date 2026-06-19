@@ -1,4 +1,4 @@
-family = "vram"
+family = "age"
 suite_name = "age-vram"
 report = "age"
 timeout_frames = 180
@@ -8,18 +8,18 @@ oracle = { type = "fibonacci-result" }
 
 [[case]]
 id = "age-vram-vram-read-ncm-bce"
-rom = "vram-read-ncmBCE.gb"
+rom = "vram/vram-read-ncmBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-vram-vram-read-dmg-c"
-rom = "vram-read-dmgC.gb"
+rom = "vram/vram-read-dmgC.gb"
 model = "dmg"
 revision = "dmg-cpu-c"
 
 [[case]]
 id = "age-vram-vram-read-cgb-bce"
-rom = "vram-read-cgbBCE.gb"
+rom = "vram/vram-read-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"

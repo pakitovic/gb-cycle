@@ -1,4 +1,4 @@
-family = "m3-bg-lcdc"
+family = "age"
 suite_name = "age-m3-bg-lcdc"
 report = "age"
 timeout_frames = 180
@@ -8,28 +8,28 @@ oracle = { type = "framebuffer", mode = "until-match" }
 
 [[case]]
 id = "age-m3-bg-lcdc-dmg"
-rom = "m3-bg-lcdc.gb"
+rom = "m3-bg-lcdc/m3-bg-lcdc.gb"
 model = "dmg"
 revision = "dmg-cpu-c"
-oracle = { fixture = "m3-bg-lcdc-dmgC.png" }
+oracle = { fixture = "m3-bg-lcdc/m3-bg-lcdc-dmgC.png" }
 
 [[case]]
 id = "age-m3-bg-lcdc-cgb-c"
-rom = "m3-bg-lcdc.gb"
+rom = "m3-bg-lcdc/m3-bg-lcdc.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
-oracle = { source = "cgb", fixture = "m3-bg-lcdc-cgbBCE.png" }
+oracle = { source = "cgb", fixture = "m3-bg-lcdc/m3-bg-lcdc-cgbBCE.png" }
 
 [[case]]
 id = "age-m3-bg-lcdc-ds-cgb-c"
-rom = "m3-bg-lcdc-ds.gb"
+rom = "m3-bg-lcdc/m3-bg-lcdc-ds.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
-oracle = { source = "cgb", fixture = "m3-bg-lcdc-ds-cgbBCE.png" }
+oracle = { source = "cgb", fixture = "m3-bg-lcdc/m3-bg-lcdc-ds-cgbBCE.png" }
 
 [[case]]
 id = "age-m3-bg-lcdc-nocgb-ncm-c"
-rom = "m3-bg-lcdc-nocgb.gb"
+rom = "m3-bg-lcdc/m3-bg-lcdc-nocgb.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
-oracle = { source = "cgb", fixture = "m3-bg-lcdc-nocgb-ncmBCE.png" }
+oracle = { source = "cgb", fixture = "m3-bg-lcdc/m3-bg-lcdc-nocgb-ncmBCE.png" }

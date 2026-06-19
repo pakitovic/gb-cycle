@@ -1,4 +1,4 @@
-family = "ly"
+family = "age"
 suite_name = "age-ly"
 report = "age"
 timeout_frames = 180
@@ -8,24 +8,24 @@ oracle = { type = "fibonacci-result" }
 
 [[case]]
 id = "age-ly-ly-ncm-e"
-rom = "ly-ncmE.gb"
+rom = "ly/ly-ncmE.gb"
 model = "cgb"
 revision = "cpu-cgb-e"
 
 [[case]]
 id = "age-ly-ly-dmg-c-cgb-bc"
-rom = "ly-dmgC-cgbBC.gb"
+rom = "ly/ly-dmgC-cgbBC.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-ly-ly-ncm-bc"
-rom = "ly-ncmBC.gb"
+rom = "ly/ly-ncmBC.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-ly-ly-cgb-e"
-rom = "ly-cgbE.gb"
+rom = "ly/ly-cgbE.gb"
 model = "cgb"
 revision = "cpu-cgb-e"

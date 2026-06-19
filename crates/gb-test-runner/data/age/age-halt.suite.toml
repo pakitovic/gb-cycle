@@ -1,4 +1,4 @@
-family = "halt"
+family = "age"
 suite_name = "age-halt"
 report = "age"
 timeout_frames = 180
@@ -8,18 +8,18 @@ oracle = { type = "fibonacci-result" }
 
 [[case]]
 id = "age-halt-ei-halt-dmg-c-cgb-bce"
-rom = "ei-halt-dmgC-cgbBCE.gb"
+rom = "halt/ei-halt-dmgC-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-halt-halt-m0-interrupt-dmg-c-cgb-bce"
-rom = "halt-m0-interrupt-dmgC-cgbBCE.gb"
+rom = "halt/halt-m0-interrupt-dmgC-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-halt-halt-prefetch-dmg-c-cgb-bce"
-rom = "halt-prefetch-dmgC-cgbBCE.gb"
+rom = "halt/halt-prefetch-dmgC-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"

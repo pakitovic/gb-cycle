@@ -1,4 +1,4 @@
-family = "stat-mode-window"
+family = "age"
 suite_name = "age-stat-mode-window"
 report = "age"
 timeout_frames = 180
@@ -8,24 +8,24 @@ oracle = { type = "fibonacci-result" }
 
 [[case]]
 id = "age-stat-mode-window-stat-mode-window-ncm-bce"
-rom = "stat-mode-window-ncmBCE.gb"
+rom = "stat-mode-window/stat-mode-window-ncmBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-stat-mode-window-stat-mode-window-cgb-bce"
-rom = "stat-mode-window-cgbBCE.gb"
+rom = "stat-mode-window/stat-mode-window-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-stat-mode-window-stat-mode-window-dmg-c"
-rom = "stat-mode-window-dmgC.gb"
+rom = "stat-mode-window/stat-mode-window-dmgC.gb"
 model = "dmg"
 revision = "dmg-cpu-c"
 
 [[case]]
 id = "age-stat-mode-window-stat-mode-window-ds-cgb-bce"
-rom = "stat-mode-window-ds-cgbBCE.gb"
+rom = "stat-mode-window/stat-mode-window-ds-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"

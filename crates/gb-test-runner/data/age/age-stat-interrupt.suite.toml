@@ -1,4 +1,4 @@
-family = "stat-interrupt"
+family = "age"
 suite_name = "age-stat-interrupt"
 report = "age"
 timeout_frames = 180
@@ -8,12 +8,12 @@ oracle = { type = "fibonacci-result" }
 
 [[case]]
 id = "age-stat-interrupt-stat-int-ncm-bce"
-rom = "stat-int-ncmBCE.gb"
+rom = "stat-interrupt/stat-int-ncmBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-stat-interrupt-stat-int-dmg-c-cgb-bce"
-rom = "stat-int-dmgC-cgbBCE.gb"
+rom = "stat-interrupt/stat-int-dmgC-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"

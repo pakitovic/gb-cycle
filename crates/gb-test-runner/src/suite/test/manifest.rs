@@ -1788,35 +1788,20 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
         (
             "age",
             &[
-                ("age-stat-mode", 5, "stat-mode", "stat-mode"),
-                (
-                    "age-stat-mode-sprites",
-                    2,
-                    "stat-mode-sprites",
-                    "stat-mode-sprites",
-                ),
-                (
-                    "age-stat-mode-window",
-                    4,
-                    "stat-mode-window",
-                    "stat-mode-window",
-                ),
-                ("age-lcd-align-ly", 2, "lcd-align-ly", "lcd-align-ly"),
-                ("age-halt", 3, "halt", "halt"),
-                ("age-vram", 3, "vram", "vram"),
-                ("age-speed-switch", 6, "speed-switch", "speed-switch"),
-                (
-                    "age-speed-switch-caution",
-                    2,
-                    "speed-switch-caution",
-                    "speed-switch/caution",
-                ),
-                ("age-m3-bg-lcdc", 4, "m3-bg-lcdc", "m3-bg-lcdc"),
-                ("age-stat-interrupt", 2, "stat-interrupt", "stat-interrupt"),
-                ("age-oam", 7, "oam", "oam"),
-                ("age-m3-bg-scx", 4, "m3-bg-scx", "m3-bg-scx"),
-                ("age-ly", 4, "ly", "ly"),
-                ("age-m3-bg-bgp", 3, "m3-bg-bgp", "m3-bg-bgp"),
+                ("age-stat-mode", 5, "age", "age"),
+                ("age-stat-mode-sprites", 2, "age", "age"),
+                ("age-stat-mode-window", 4, "age", "age"),
+                ("age-lcd-align-ly", 2, "age", "age"),
+                ("age-halt", 3, "age", "age"),
+                ("age-vram", 3, "age", "age"),
+                ("age-speed-switch", 6, "age", "age"),
+                ("age-speed-switch-caution", 2, "age", "age"),
+                ("age-m3-bg-lcdc", 4, "age", "age"),
+                ("age-stat-interrupt", 2, "age", "age"),
+                ("age-oam", 7, "age", "age"),
+                ("age-m3-bg-scx", 4, "age", "age"),
+                ("age-ly", 4, "age", "age"),
+                ("age-m3-bg-bgp", 3, "age", "age"),
             ][..],
         ),
         (
@@ -2037,8 +2022,8 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             );
             for suite in suites {
                 let expects_framebuffer = matches!(
-                    suite.family.as_str(),
-                    "m3-bg-bgp" | "m3-bg-lcdc" | "m3-bg-scx"
+                    suite.suite_name.as_str(),
+                    "age-m3-bg-bgp" | "age-m3-bg-lcdc" | "age-m3-bg-scx"
                 );
                 for case in suite.cases {
                     assert!(case.report_model_suffix);

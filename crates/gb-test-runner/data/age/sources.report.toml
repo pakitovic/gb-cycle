@@ -5,347 +5,295 @@ archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c383
 archive_format = "zip"
 
 [[source.family]]
-id = "stat-mode"
-target_root = "stat-mode"
+id = "age"
+target_root = "age"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode/stat-mode-ds-cgbBCE.gb"
-target = "stat-mode-ds-cgbBCE.gb"
+target = "stat-mode/stat-mode-ds-cgbBCE.gb"
 sha256 = "c371664f71cb95b6de9cf9a1ecd4ff80147b5603b08deacea7c9495eb45d1cf0"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode/stat-mode-dmgC-cgbBC.gb"
-target = "stat-mode-dmgC-cgbBC.gb"
+target = "stat-mode/stat-mode-dmgC-cgbBC.gb"
 sha256 = "9343972976dd4555cbd8cbcd6752c7256715de28b2114fe2a6c0fb18bd39bd9b"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode/stat-mode-cgbE.gb"
-target = "stat-mode-cgbE.gb"
+target = "stat-mode/stat-mode-cgbE.gb"
 sha256 = "b2789ba04e79c25aba7a947e0d4b7938171457960264702dbaa4826acfdb2fc3"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode/stat-mode-ncmE.gb"
-target = "stat-mode-ncmE.gb"
+target = "stat-mode/stat-mode-ncmE.gb"
 sha256 = "9e5e25fd7967c2bdb3880cf23c4e43a35a5d8f65d9bbac0d069a8eb88f04b2fa"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode/stat-mode-ncmBC.gb"
-target = "stat-mode-ncmBC.gb"
+target = "stat-mode/stat-mode-ncmBC.gb"
 sha256 = "d5c36aef85dbd06b93de34ce4449aad124b01f1ef03fbcb3aa1f95807958bf65"
-
-[[source.family]]
-id = "stat-mode-sprites"
-target_root = "stat-mode-sprites"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode-sprites/stat-mode-sprites-ds-cgbBCE.gb"
-target = "stat-mode-sprites-ds-cgbBCE.gb"
+target = "stat-mode-sprites/stat-mode-sprites-ds-cgbBCE.gb"
 sha256 = "3ee5bb3fc7fa724a832a082dd8c4979af5abb3f837dbc489a2f04cdf2332a64d"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE.gb"
-target = "stat-mode-sprites-dmgC-cgbBCE.gb"
+target = "stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE.gb"
 sha256 = "173ff267a4ecbd2e5bb3bd209f7b08c971900d54382bd6281969c7a3a98507c1"
-
-[[source.family]]
-id = "stat-mode-window"
-target_root = "stat-mode-window"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode-window/stat-mode-window-ncmBCE.gb"
-target = "stat-mode-window-ncmBCE.gb"
+target = "stat-mode-window/stat-mode-window-ncmBCE.gb"
 sha256 = "e14672c02de58a046e094b622d8624fb0d77584a3e7f484077193239d5683112"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode-window/stat-mode-window-cgbBCE.gb"
-target = "stat-mode-window-cgbBCE.gb"
+target = "stat-mode-window/stat-mode-window-cgbBCE.gb"
 sha256 = "69fb62868aa256ff79e77cabb88caab9db43dbe302eb6f4628550d99b7ef12da"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode-window/stat-mode-window-dmgC.gb"
-target = "stat-mode-window-dmgC.gb"
+target = "stat-mode-window/stat-mode-window-dmgC.gb"
 sha256 = "b54c7680990263bfa0f22fa4390c9c190ad12fc35c9f8c2a0c0ab7a9832b2b73"
 
 [[source.family.file]]
 path = "age-test-roms/stat-mode-window/stat-mode-window-ds-cgbBCE.gb"
-target = "stat-mode-window-ds-cgbBCE.gb"
+target = "stat-mode-window/stat-mode-window-ds-cgbBCE.gb"
 sha256 = "055c641aaf9464b637f6206126a165fa23433fbced0d5fbafa0d3cdb813aaa41"
-
-[[source.family]]
-id = "lcd-align-ly"
-target_root = "lcd-align-ly"
 
 [[source.family.file]]
 path = "age-test-roms/lcd-align-ly/lcd-align-ly-cgbBC.gb"
-target = "lcd-align-ly-cgbBC.gb"
+target = "lcd-align-ly/lcd-align-ly-cgbBC.gb"
 sha256 = "4d662046955f898aacc9c241a42a28f481ae66e1978c606b6ea432c08f3800b0"
 
 [[source.family.file]]
 path = "age-test-roms/lcd-align-ly/lcd-align-ly-cgbE.gb"
-target = "lcd-align-ly-cgbE.gb"
+target = "lcd-align-ly/lcd-align-ly-cgbE.gb"
 sha256 = "9ef735c0226c9cda701211ab4d483000a62a3a6baaac9492dbc49b5914b68fcd"
-
-[[source.family]]
-id = "halt"
-target_root = "halt"
 
 [[source.family.file]]
 path = "age-test-roms/halt/ei-halt-dmgC-cgbBCE.gb"
-target = "ei-halt-dmgC-cgbBCE.gb"
+target = "halt/ei-halt-dmgC-cgbBCE.gb"
 sha256 = "5501692dc81bbe33ba55bb204ed453de864d280a5daa43b1209794fca651f6dd"
 
 [[source.family.file]]
 path = "age-test-roms/halt/halt-m0-interrupt-dmgC-cgbBCE.gb"
-target = "halt-m0-interrupt-dmgC-cgbBCE.gb"
+target = "halt/halt-m0-interrupt-dmgC-cgbBCE.gb"
 sha256 = "89dbc351352be50ab1e099561decb643d0b6aae5785f6623414240ce7bab8413"
 
 [[source.family.file]]
 path = "age-test-roms/halt/halt-prefetch-dmgC-cgbBCE.gb"
-target = "halt-prefetch-dmgC-cgbBCE.gb"
+target = "halt/halt-prefetch-dmgC-cgbBCE.gb"
 sha256 = "57a3e5d533857621e0d57b3eaccf2a4c2158ff6f121025e9b8d149a8f3a47153"
-
-[[source.family]]
-id = "vram"
-target_root = "vram"
 
 [[source.family.file]]
 path = "age-test-roms/vram/vram-read-ncmBCE.gb"
-target = "vram-read-ncmBCE.gb"
+target = "vram/vram-read-ncmBCE.gb"
 sha256 = "ff3af666dd360dc807986f7c2fb4b744b42c4b200f61d871b8934c4015266e36"
 
 [[source.family.file]]
 path = "age-test-roms/vram/vram-read-dmgC.gb"
-target = "vram-read-dmgC.gb"
+target = "vram/vram-read-dmgC.gb"
 sha256 = "25b8fe51ed436b037d56742317614aa565d4f6ce5f04e319ea3a4d8e11ea6b6c"
 
 [[source.family.file]]
 path = "age-test-roms/vram/vram-read-cgbBCE.gb"
-target = "vram-read-cgbBCE.gb"
+target = "vram/vram-read-cgbBCE.gb"
 sha256 = "2ca94115cc94b7bbcbe5c18a156666c81484685a207cd23efb7f9f65b31352d9"
-
-[[source.family]]
-id = "speed-switch"
-target_root = "speed-switch"
 
 [[source.family.file]]
 path = "age-test-roms/speed-switch/spsw-mode0-cgbBCE.gb"
-target = "spsw-mode0-cgbBCE.gb"
+target = "speed-switch/spsw-mode0-cgbBCE.gb"
 sha256 = "07eefc27d8bdd98569510ebef662aba388715bbe5ddf9993763fbf1aab290f2e"
 
 [[source.family.file]]
 path = "age-test-roms/speed-switch/spsw-div-cgbBCE.gb"
-target = "spsw-div-cgbBCE.gb"
+target = "speed-switch/spsw-div-cgbBCE.gb"
 sha256 = "2c836288b58651f72a335417f11ba346863145dd9996048979ad8e5b9cd0aa7b"
 
 [[source.family.file]]
 path = "age-test-roms/speed-switch/spsw-tima-cgbBC.gb"
-target = "spsw-tima-cgbBC.gb"
+target = "speed-switch/spsw-tima-cgbBC.gb"
 sha256 = "2fcfdc0d8595b642cfc1c16cab42f619a13b9a0d20e668a9c471436573a2e860"
 
 [[source.family.file]]
 path = "age-test-roms/speed-switch/spsw-ch2-lc-delay-cgbBCE.gb"
-target = "spsw-ch2-lc-delay-cgbBCE.gb"
+target = "speed-switch/spsw-ch2-lc-delay-cgbBCE.gb"
 sha256 = "76920fa2f63f5a5b9b8b907b98a78e06410d88fb09491826f3930dedf96cff19"
 
 [[source.family.file]]
 path = "age-test-roms/speed-switch/spsw-stop-prefetch-cgbBCE.gb"
-target = "spsw-stop-prefetch-cgbBCE.gb"
+target = "speed-switch/spsw-stop-prefetch-cgbBCE.gb"
 sha256 = "df782c73f08c6778c7b926c6a4ebbd0816c58b53faf4b6abf5b2b812766eab4f"
 
 [[source.family.file]]
 path = "age-test-roms/speed-switch/spsw-tima-cgbE.gb"
-target = "spsw-tima-cgbE.gb"
+target = "speed-switch/spsw-tima-cgbE.gb"
 sha256 = "3cb0918fb194d2704bb57f2afd5af3be21b5e97e269fde5224c34914d5f5936e"
-
-[[source.family]]
-id = "speed-switch-caution"
-target_root = "speed-switch/caution"
 
 [[source.family.file]]
 path = "age-test-roms/speed-switch/caution/spsw-interrupts-cgbE.gb"
-target = "spsw-interrupts-cgbE.gb"
+target = "speed-switch/caution/spsw-interrupts-cgbE.gb"
 sha256 = "5bae65daffa5e36421221d971d602cb307febe71f221b46b4556b3c7bca22dc4"
 
 [[source.family.file]]
 path = "age-test-roms/speed-switch/caution/spsw-interrupts-cgbBC.gb"
-target = "spsw-interrupts-cgbBC.gb"
+target = "speed-switch/caution/spsw-interrupts-cgbBC.gb"
 sha256 = "f96506dc4d2ec0d735f963f2520740d11f1a23b27e86b3ac4b1b909833eef6d8"
-
-[[source.family]]
-id = "m3-bg-lcdc"
-target_root = "m3-bg-lcdc"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-lcdc/m3-bg-lcdc-ds-cgbBCE.png"
-target = "m3-bg-lcdc-ds-cgbBCE.png"
+target = "m3-bg-lcdc/m3-bg-lcdc-ds-cgbBCE.png"
 sha256 = "804f5692b2d4897a6edcf2691004f1484cfbf9b77f5f779923aba91237a5abba"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-lcdc/m3-bg-lcdc-dmgC.png"
-target = "m3-bg-lcdc-dmgC.png"
+target = "m3-bg-lcdc/m3-bg-lcdc-dmgC.png"
 sha256 = "0ea5464a75aa674ade5942cee2c57b4ff7b506916a62986a1545531f0f200588"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-lcdc/m3-bg-lcdc.gb"
-target = "m3-bg-lcdc.gb"
+target = "m3-bg-lcdc/m3-bg-lcdc.gb"
 sha256 = "b809826cbe370675d8fb173dc56c81db134668b3b844ac15c66033b0b3acb7eb"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-lcdc/m3-bg-lcdc-cgbBCE.png"
-target = "m3-bg-lcdc-cgbBCE.png"
+target = "m3-bg-lcdc/m3-bg-lcdc-cgbBCE.png"
 sha256 = "69a0b85a82eddc884ec225a3c6353622876afe589125809d6517439cbeb91cef"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-lcdc/m3-bg-lcdc-ds.gb"
-target = "m3-bg-lcdc-ds.gb"
+target = "m3-bg-lcdc/m3-bg-lcdc-ds.gb"
 sha256 = "082d02a65ecefd93fee8540890258bdea605ede902b2401151b50cb48bdf137d"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-lcdc/m3-bg-lcdc-nocgb.gb"
-target = "m3-bg-lcdc-nocgb.gb"
+target = "m3-bg-lcdc/m3-bg-lcdc-nocgb.gb"
 sha256 = "a292a76221b5ba3b605cf756c2774d9e4229bec2055c2496622c25c7f37c27b4"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-lcdc/m3-bg-lcdc-nocgb-ncmBCE.png"
-target = "m3-bg-lcdc-nocgb-ncmBCE.png"
+target = "m3-bg-lcdc/m3-bg-lcdc-nocgb-ncmBCE.png"
 sha256 = "f4dbb03aff6fbd95c69eb85d264712b28727a1403f81b28ebba357bceb02f908"
-
-[[source.family]]
-id = "stat-interrupt"
-target_root = "stat-interrupt"
 
 [[source.family.file]]
 path = "age-test-roms/stat-interrupt/stat-int-ncmBCE.gb"
-target = "stat-int-ncmBCE.gb"
+target = "stat-interrupt/stat-int-ncmBCE.gb"
 sha256 = "21b7ff38cc04d220e7117d1b37571c3af0cc2ec8e67a885c5ded5bf3cbde8640"
 
 [[source.family.file]]
 path = "age-test-roms/stat-interrupt/stat-int-dmgC-cgbBCE.gb"
-target = "stat-int-dmgC-cgbBCE.gb"
+target = "stat-interrupt/stat-int-dmgC-cgbBCE.gb"
 sha256 = "f567a5b6d5855ebecf667b8439f8caf0288829d90b8a3db323f50e1a5469491a"
-
-[[source.family]]
-id = "oam"
-target_root = "oam"
 
 [[source.family.file]]
 path = "age-test-roms/oam/oam-read-ncmE.gb"
-target = "oam-read-ncmE.gb"
+target = "oam/oam-read-ncmE.gb"
 sha256 = "53755e8cc5661a9def7180dc88d872fcb8f2d970f73090c06d3a6f6647226721"
 
 [[source.family.file]]
 path = "age-test-roms/oam/oam-write-dmgC.gb"
-target = "oam-write-dmgC.gb"
+target = "oam/oam-write-dmgC.gb"
 sha256 = "9acc90ea81caa18ecaf369817c90079a4d57bbcfc2ed5c6bbf26223452b82183"
 
 [[source.family.file]]
 path = "age-test-roms/oam/oam-read-ncmBC.gb"
-target = "oam-read-ncmBC.gb"
+target = "oam/oam-read-ncmBC.gb"
 sha256 = "92ddd53a65fafed4ec1322bfa5ea14f2a857d546efce4f46c1f46e5e40d30262"
 
 [[source.family.file]]
 path = "age-test-roms/oam/oam-read-dmgC-cgbBC.gb"
-target = "oam-read-dmgC-cgbBC.gb"
+target = "oam/oam-read-dmgC-cgbBC.gb"
 sha256 = "62010c08c09cb677789e1f8f61c538c790269d29796e0783ad45c5c1977ae234"
 
 [[source.family.file]]
 path = "age-test-roms/oam/oam-write-cgbBCE.gb"
-target = "oam-write-cgbBCE.gb"
+target = "oam/oam-write-cgbBCE.gb"
 sha256 = "e8954fdc816a91273a24e993c09d55668f16d4e9f4bc8008933819419f981c37"
 
 [[source.family.file]]
 path = "age-test-roms/oam/oam-write-ncmBCE.gb"
-target = "oam-write-ncmBCE.gb"
+target = "oam/oam-write-ncmBCE.gb"
 sha256 = "8e623367556f02aa10894abd33ad1bb69ee914ed83c8769a15fe9e8bd474fcdf"
 
 [[source.family.file]]
 path = "age-test-roms/oam/oam-read-cgbE.gb"
-target = "oam-read-cgbE.gb"
+target = "oam/oam-read-cgbE.gb"
 sha256 = "ae9fa83973e572d0484d47601a2232c5675c0c485f8db99389277ea9ea0559f7"
-
-[[source.family]]
-id = "m3-bg-scx"
-target_root = "m3-bg-scx"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-scx/m3-bg-scx-nocgb-ncmBCE.png"
-target = "m3-bg-scx-nocgb-ncmBCE.png"
+target = "m3-bg-scx/m3-bg-scx-nocgb-ncmBCE.png"
 sha256 = "1224f9f27644355067bec6e17f3db619926b85fbcd90ec8b06e5fa93ec536114"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-scx/m3-bg-scx-cgbBCE.png"
-target = "m3-bg-scx-cgbBCE.png"
+target = "m3-bg-scx/m3-bg-scx-cgbBCE.png"
 sha256 = "6895b6111d432ea5f0422991a1d7143f1fe133481e018b3c8652616af759085d"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-scx/m3-bg-scx-nocgb.gb"
-target = "m3-bg-scx-nocgb.gb"
+target = "m3-bg-scx/m3-bg-scx-nocgb.gb"
 sha256 = "9d1002a664a0945298df9db7ae99de88c4c83be8ad4a437ecf458f546a09ab9e"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-scx/m3-bg-scx-ds-cgbBCE.png"
-target = "m3-bg-scx-ds-cgbBCE.png"
+target = "m3-bg-scx/m3-bg-scx-ds-cgbBCE.png"
 sha256 = "6895b6111d432ea5f0422991a1d7143f1fe133481e018b3c8652616af759085d"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-scx/m3-bg-scx-ds.gb"
-target = "m3-bg-scx-ds.gb"
+target = "m3-bg-scx/m3-bg-scx-ds.gb"
 sha256 = "d52196f8c962eb078a98d0cf5c1c25a650bfd057f2bcddf9d3981cb0fc886809"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-scx/m3-bg-scx.gb"
-target = "m3-bg-scx.gb"
+target = "m3-bg-scx/m3-bg-scx.gb"
 sha256 = "3eb6302ed9c850550504b03c56dd9105dd03c89f2bad1eeeb2fae0a859bf1de5"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-scx/m3-bg-scx-dmgC.png"
-target = "m3-bg-scx-dmgC.png"
+target = "m3-bg-scx/m3-bg-scx-dmgC.png"
 sha256 = "7a501a6a49340a422e8346cd49e9804dd880a8735093f38fba0855c42cd4ba34"
-
-[[source.family]]
-id = "ly"
-target_root = "ly"
 
 [[source.family.file]]
 path = "age-test-roms/ly/ly-ncmE.gb"
-target = "ly-ncmE.gb"
+target = "ly/ly-ncmE.gb"
 sha256 = "ca311cc0de6ddcc7792e12393722c323b5c3c335e045f0dcdf374b56a5f7282f"
 
 [[source.family.file]]
 path = "age-test-roms/ly/ly-dmgC-cgbBC.gb"
-target = "ly-dmgC-cgbBC.gb"
+target = "ly/ly-dmgC-cgbBC.gb"
 sha256 = "f090f28fa8e632ad3661b953bccfa4e05bcff8c37186a613d2e68546cfc31480"
 
 [[source.family.file]]
 path = "age-test-roms/ly/ly-ncmBC.gb"
-target = "ly-ncmBC.gb"
+target = "ly/ly-ncmBC.gb"
 sha256 = "88df56767bb26f8edecdc6dd11789451e521e51d98befd6629f12ef247433872"
 
 [[source.family.file]]
 path = "age-test-roms/ly/ly-cgbE.gb"
-target = "ly-cgbE.gb"
+target = "ly/ly-cgbE.gb"
 sha256 = "9050cb6f66d3a65c0b3bda6ed9c057f4313b8f7cfa21ec66c39522aa8c3c513c"
-
-[[source.family]]
-id = "m3-bg-bgp"
-target_root = "m3-bg-bgp"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-bgp/m3-bg-bgp.gb"
-target = "m3-bg-bgp.gb"
+target = "m3-bg-bgp/m3-bg-bgp.gb"
 sha256 = "8e4c9b69843d3277e6815b994769893949e61d076a3fbd814d7c3ebec3e316ec"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-bgp/m3-bg-bgp-ncmE.png"
-target = "m3-bg-bgp-ncmE.png"
+target = "m3-bg-bgp/m3-bg-bgp-ncmE.png"
 sha256 = "a872ddd3225015cba1e466e035337fb6cedf2c24ed48661828bb24866fe6713f"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-bgp/m3-bg-bgp-ncmBC.png"
-target = "m3-bg-bgp-ncmBC.png"
+target = "m3-bg-bgp/m3-bg-bgp-ncmBC.png"
 sha256 = "38fc4a904b318ef2ca7d25d8d7da189a8d70ad6bf51c25f20a6402f7983b24be"
 
 [[source.family.file]]
 path = "age-test-roms/m3-bg-bgp/m3-bg-bgp-dmgC.png"
-target = "m3-bg-bgp-dmgC.png"
+target = "m3-bg-bgp/m3-bg-bgp-dmgC.png"
 sha256 = "92922e3bad63f5062807fe507cfdc91e22130e42df7cd9d88ba14bec84e77eda"

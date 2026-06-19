@@ -1,4 +1,4 @@
-family = "stat-mode-sprites"
+family = "age"
 suite_name = "age-stat-mode-sprites"
 report = "age"
 timeout_frames = 180
@@ -8,12 +8,12 @@ oracle = { type = "fibonacci-result" }
 
 [[case]]
 id = "age-stat-mode-sprites-stat-mode-sprites-ds-cgb-bce"
-rom = "stat-mode-sprites-ds-cgbBCE.gb"
+rom = "stat-mode-sprites/stat-mode-sprites-ds-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
 
 [[case]]
 id = "age-stat-mode-sprites-stat-mode-sprites-dmg-c-cgb-bce"
-rom = "stat-mode-sprites-dmgC-cgbBCE.gb"
+rom = "stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE.gb"
 model = "cgb"
 revision = "cpu-cgb-c"
