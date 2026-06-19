@@ -1,0 +1,1247 @@
+family = "gambatte"
+suite_name = "gambatte-scx-during-m3"
+report = "gambatte"
+timeout_frames = 15
+report_model_suffix = true
+oracle = { type = "framebuffer" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-1-dmg"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/offset_3/scx_during_m3_1.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-2-dmg"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_2.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/offset_3/scx_during_m3_2.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-3-dmg"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_3.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/offset_3/scx_during_m3_3.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-4-dmg"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_4.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/offset_3/scx_during_m3_4.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-5-dmg"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_5.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/offset_3/scx_during_m3_5.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-ds-1-cgb"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/offset_3/scx_during_m3_ds_1.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-ds-2-cgb"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/offset_3/scx_during_m3_ds_2.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-ds-3-cgb"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/offset_3/scx_during_m3_ds_3.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-ds-4-cgb"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/offset_3/scx_during_m3_ds_4.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-ds-5-cgb"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/offset_3/scx_during_m3_ds_5.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-ds-6-cgb"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/offset_3/scx_during_m3_ds_6.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-offset-3-scx-during-m3-ds-7-cgb"
+rom = "scx_during_m3/old/offset_3/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/offset_3/scx_during_m3_ds_7.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-1-dmg"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_1.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-2-dmg"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_2.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_2.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-3-dmg"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_3.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_3.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-4-dmg"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_4.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_4.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-5-dmg"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_5.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_5.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-ds-1-cgb"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_1.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-ds-2-cgb"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_2.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-ds-3-cgb"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_3.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-ds-4-cgb"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_4.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-ds-5-cgb"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_5.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-ds-6-cgb"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_6.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-revoffset-3-scx-during-m3-ds-7-cgb"
+rom = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_7.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-1-dmg"
+rom = "scx_during_m3/old/scx_during_m3_1.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/scx_during_m3_1.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-2-dmg"
+rom = "scx_during_m3/old/scx_during_m3_2.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/scx_during_m3_2.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-3-dmg"
+rom = "scx_during_m3/old/scx_during_m3_3.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/scx_during_m3_3.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-4-dmg"
+rom = "scx_during_m3/old/scx_during_m3_4.gb"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/old/scx_during_m3_4.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-ds-1-cgb"
+rom = "scx_during_m3/old/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/scx_during_m3_ds_1.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-ds-2-cgb"
+rom = "scx_during_m3/old/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/scx_during_m3_ds_2.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-ds-3-cgb"
+rom = "scx_during_m3/old/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/scx_during_m3_ds_3.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-ds-4-cgb"
+rom = "scx_during_m3/old/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/scx_during_m3_ds_4.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-ds-5-cgb"
+rom = "scx_during_m3/old/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/scx_during_m3_ds_5.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-ds-6-cgb"
+rom = "scx_during_m3/old/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/scx_during_m3_ds_6.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-old-scx-during-m3-ds-7-cgb"
+rom = "scx_during_m3/old/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/old/scx_during_m3_ds_7.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx1-scx0-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx1_scx0_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx1_scx0_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx1-scx0-during-m3-1-dmg08"
+rom = "scx_during_m3/scx1_scx0_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx1_scx0_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx2-scx0-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx2_scx0_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx2_scx0_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx2-scx0-during-m3-1-dmg08"
+rom = "scx_during_m3/scx2_scx0_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx2_scx0_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx2-scx1-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx2_scx1_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx2_scx1_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx2-scx1-during-m3-1-dmg08"
+rom = "scx_during_m3/scx2_scx1_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx2_scx1_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-1-dmg08"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-2-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-2-dmg08"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-3-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-3-dmg08"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-4-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-4-dmg08"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-5-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-5-dmg08"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_5.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_5_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-6-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-6-dmg08"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_6.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_6_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-ds-1-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_ds_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-ds-2-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_ds_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-ds-3-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_ds_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-ds-4-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_ds_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-ds-5-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_ds_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-ds-6-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_ds_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-ds-7-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_ds_7_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0060c0-scx-during-m3-ds-8-cgb04c"
+rom = "scx_during_m3/scx_0060c0/scx_during_m3_ds_8.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0060c0/scx_during_m3_ds_8_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-1-dmg08"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-2-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-2-dmg08"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-3-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-3-dmg08"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-4-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-4-dmg08"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-5-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-5-dmg08"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_5.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_5_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-6-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-6-dmg08"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_6.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_6_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-ds-1-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_ds_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-ds-2-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_ds_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-ds-3-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_ds_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-ds-4-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_ds_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-ds-5-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_ds_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-ds-6-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_ds_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-ds-7-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_ds_7_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0063c0-scx-during-m3-ds-8-cgb04c"
+rom = "scx_during_m3/scx_0063c0/scx_during_m3_ds_8.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0063c0/scx_during_m3_ds_8_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-1-dmg08"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-2-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-2-dmg08"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-3-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-3-dmg08"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-4-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-4-dmg08"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-5-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-5-dmg08"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_5.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_5_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-6-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-6-dmg08"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_6.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_6_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-ds-1-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_ds_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-ds-2-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_ds_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-ds-3-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_ds_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-ds-4-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_ds_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-ds-5-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_ds_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-ds-6-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_ds_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-ds-7-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_ds_7_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0360c0-scx-during-m3-ds-8-cgb04c"
+rom = "scx_during_m3/scx_0360c0/scx_during_m3_ds_8.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0360c0/scx_during_m3_ds_8_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-1-dmg08"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-2-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-2-dmg08"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-3-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-3-dmg08"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-4-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-4-dmg08"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-5-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-5-dmg08"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_5.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_5_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-6-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-6-dmg08"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_6.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_6_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-ds-1-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_ds_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-ds-2-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_ds_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-ds-3-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_ds_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-ds-4-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_ds_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-ds-5-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_ds_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-ds-6-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_ds_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-ds-7-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_ds_7_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0363c0-scx-during-m3-ds-8-cgb04c"
+rom = "scx_during_m3/scx_0363c0/scx_during_m3_ds_8.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0363c0/scx_during_m3_ds_8_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-1-dmg08"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-2-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-2-dmg08"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-3-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-3-dmg08"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-4-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-4-dmg08"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-5-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-5-dmg08"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_5.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_5_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-6-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-6-dmg08"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_6.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_6_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-ds-1-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_ds_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-ds-2-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_ds_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-ds-3-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_ds_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-ds-4-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_ds_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-ds-5-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_ds_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-ds-6-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_ds_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-ds-7-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_ds_7_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0367c0-scx-during-m3-ds-8-cgb04c"
+rom = "scx_during_m3/scx_0367c0/scx_during_m3_ds_8.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0367c0/scx_during_m3_ds_8_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-1-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-1-dmg08"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-2-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-2-dmg08"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_2_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-3-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-3-dmg08"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_3.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_3_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-4-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-4-dmg08"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_4.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_4_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-5-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-5-dmg08"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_5.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_5_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-6-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-6-dmg08"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_6.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_6_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-ds-1-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_ds_1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_ds_1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-ds-2-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_ds_2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_ds_2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-ds-3-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_ds_3.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_ds_3_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-ds-4-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_ds_4.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_ds_4_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-ds-5-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_ds_5.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_ds_5_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-ds-6-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_ds_6.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_ds_6_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-ds-7-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_ds_7.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_ds_7_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-0761c0-scx-during-m3-ds-8-cgb04c"
+rom = "scx_during_m3/scx_0761c0/scx_during_m3_ds_8.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_0761c0/scx_during_m3_ds_8_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-attrib-during-m3-spx0-cgb"
+rom = "scx_during_m3/scx_attrib_during_m3_spx0.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_attrib_during_m3_spx0.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-attrib-during-m3-spx1-cgb"
+rom = "scx_during_m3/scx_attrib_during_m3_spx1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_attrib_during_m3_spx1.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-attrib-during-m3-spx1-ds-cgb04c"
+rom = "scx_during_m3/scx_attrib_during_m3_spx1_ds.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_attrib_during_m3_spx1_ds_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-attrib-during-m3-spx2-ds-cgb04c"
+rom = "scx_during_m3/scx_attrib_during_m3_spx2_ds.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_attrib_during_m3_spx2_ds_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-during-m3-spx0-cgb04c"
+rom = "scx_during_m3/scx_during_m3_spx0.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_during_m3_spx0_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-during-m3-spx0-dmg08"
+rom = "scx_during_m3/scx_during_m3_spx0.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_during_m3_spx0_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-during-m3-spx1-cgb04c"
+rom = "scx_during_m3/scx_during_m3_spx1.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_during_m3_spx1_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-during-m3-spx1-dmg08"
+rom = "scx_during_m3/scx_during_m3_spx1.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_during_m3_spx1_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-during-m3-spx2-cgb04c"
+rom = "scx_during_m3/scx_during_m3_spx2.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_during_m3_spx2_cgb04c.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-during-m3-spx2-dmg08"
+rom = "scx_during_m3/scx_during_m3_spx2.gbc"
+model = "dmg"
+oracle = { type = "framebuffer", fixture = "scx_during_m3/scx_during_m3_spx2_dmg08.png" }
+
+[[case]]
+id = "gambatte-scx-during-m3-scx-during-m3-spx2-ds-cgb04c"
+rom = "scx_during_m3/scx_during_m3_spx2_ds.gbc"
+model = "cgb"
+revision = "cpu-cgb-c"
+report_revision_suffix = true
+oracle = { type = "framebuffer", source = "cgb", fixture = "scx_during_m3/scx_during_m3_spx2_ds_cgb04c.png" }

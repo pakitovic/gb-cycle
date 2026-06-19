@@ -1,0 +1,3394 @@
+[[source]]
+id = "game-boy-test-roms"
+archive_url = "https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip"
+archive_sha256 = "b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"
+archive_format = "zip"
+
+[[source.family]]
+id = "gambatte"
+target_root = "gambatte"
+
+[[source.family.file]]
+path = "gambatte/bgen/bgoff_bgon_sprite_above_window.gbc"
+target = "bgen/bgoff_bgon_sprite_above_window.gbc"
+sha256 = "dc33155b56b35a49a4d29553acdc0fc3fa573a877ff5684dd849c17daf281d9f"
+
+[[source.family.file]]
+path = "gambatte/bgen/bgoff_bgon_sprite_above_window_cgb04c.png"
+target = "bgen/bgoff_bgon_sprite_above_window_cgb04c.png"
+sha256 = "2c303f48a8a79e0187ec2d55e83732e296fc73f3f342a5e0f3f4c49e05f1af41"
+
+[[source.family.file]]
+path = "gambatte/bgen/bgoff_bgon_sprite_above_window_xdmg08.png"
+target = "bgen/bgoff_bgon_sprite_above_window_xdmg08.png"
+sha256 = "473fa4c3d19f36ac580daa27984ee9149a63c62455ca967b952d8d2f73b7e7ae"
+
+[[source.family.file]]
+path = "gambatte/bgen/bgoff_bgon_sprite_below_window.gbc"
+target = "bgen/bgoff_bgon_sprite_below_window.gbc"
+sha256 = "ef1f0e61e30ee4c0b2e3775a96ddeb17ddd3c8739079ad988e947a0e5ed4bf5e"
+
+[[source.family.file]]
+path = "gambatte/bgen/bgoff_bgon_sprite_below_window_cgb04c.png"
+target = "bgen/bgoff_bgon_sprite_below_window_cgb04c.png"
+sha256 = "df953abe3a961af3d73ff657c091f71a95c2129af262ba44cde829c6aae3b2db"
+
+[[source.family.file]]
+path = "gambatte/bgen/bgoff_bgon_sprite_below_window_xdmg08.png"
+target = "bgen/bgoff_bgon_sprite_below_window_xdmg08.png"
+sha256 = "66716a07d78151f6e24b2e5dcd0ed4f4c24fcf4035e840e6ac085ad62e833720"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_1.gbc"
+target = "bgtiledata/bgtiledata_spx08_1.gbc"
+sha256 = "e0d2a2b8807527508aa93387869faa77890a2c1da5ca8fdb3010bf6b74c61e67"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_1_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx08_1_cgb04c.png"
+sha256 = "6cfe64e699d34e6c191b78d658c9ca79e3f774a328449b54b7d73076e1ccc30a"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_1_dmg08.png"
+target = "bgtiledata/bgtiledata_spx08_1_dmg08.png"
+sha256 = "9c930a19ceaf9d22b063e9c45c22e51150d72ecf66cbf0ec40055678b7e7b802"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_2.gbc"
+target = "bgtiledata/bgtiledata_spx08_2.gbc"
+sha256 = "6f8327d5f9992dae778afe3518f97e3f0908ed083a1edfe0b4983e2d0b53cd72"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_2_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx08_2_cgb04c.png"
+sha256 = "3dfc101da60fc87f2311f1753ec664897670a29c84cf04171ecd10e070f1762d"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_2_dmg08.png"
+target = "bgtiledata/bgtiledata_spx08_2_dmg08.png"
+sha256 = "458c686d94ff39964afeed80c0e7e7af7d08e22d3b758bbf0e8e719a19ba2a43"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_3.gbc"
+target = "bgtiledata/bgtiledata_spx08_3.gbc"
+sha256 = "a87968e523ebdeae11986481ba33c25aa4683fc0132b0d175b4eda4f67eede01"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_3_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx08_3_cgb04c.png"
+sha256 = "b9889537a4656d36ae136c7a066d1116b7a3312f56c8a3f5fa66a7a2eacde789"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_3_dmg08.png"
+target = "bgtiledata/bgtiledata_spx08_3_dmg08.png"
+sha256 = "1c34d797186cfdaaee4aeec169e1431b64dbcaddc15c413d370fd8ac4d60f0d1"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_4.gbc"
+target = "bgtiledata/bgtiledata_spx08_4.gbc"
+sha256 = "e0408de630d0a11da757378ac8d7ae7df754b66226130bde464126c6f04e278d"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_4_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx08_4_cgb04c.png"
+sha256 = "913fca42b1c92895b2344d29a5cdd7fdfdfe8e27456d14a0041d6a9ee5c53ea8"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_4_dmg08.png"
+target = "bgtiledata/bgtiledata_spx08_4_dmg08.png"
+sha256 = "2db91d8a43faf5ae7bb15f8b47414a2bf211de7de27756c7003bf5cefef9f994"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_ds_1.gbc"
+target = "bgtiledata/bgtiledata_spx08_ds_1.gbc"
+sha256 = "06fac6a12f85c9b5b4c4a248cd0a59b5febb068111182df29b82fece9cfd556d"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_ds_1_xcgb.png"
+target = "bgtiledata/bgtiledata_spx08_ds_1_xcgb.png"
+sha256 = "4d8a5afd9e17771c7d1f2b93dab7ca29dbf17f4f4416077eab730b4d1c324e2d"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_ds_2.gbc"
+target = "bgtiledata/bgtiledata_spx08_ds_2.gbc"
+sha256 = "3ce31a063dcb8935324bad1e7b57e6760ad7632e8ccfd6d1b9c0021e513db041"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_ds_2_xcgb.png"
+target = "bgtiledata/bgtiledata_spx08_ds_2_xcgb.png"
+sha256 = "1aab4e562b38de5795064e02a76314b2a85271a33048e5d206cb4ccab0749d0c"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_ds_3.gbc"
+target = "bgtiledata/bgtiledata_spx08_ds_3.gbc"
+sha256 = "09a13372d16929a97b227410a87a62f1555b976ca5e48bfa7f9b1c20e96cde48"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_ds_3_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx08_ds_3_cgb04c.png"
+sha256 = "274e39371ac1b930d364b49ae7f78800b0de5fcd9b9faa6e744b4fe9dff2a822"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_ds_4.gbc"
+target = "bgtiledata/bgtiledata_spx08_ds_4.gbc"
+sha256 = "79a891fc7e9869c68e9b1a109f3b2def5866ad622468bb8d5d8fb17b8b8d93af"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx08_ds_4_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx08_ds_4_cgb04c.png"
+sha256 = "d57ff9aea5246161932b893965272bde4156a8b80883f81b57363eedb223a963"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_1.gbc"
+target = "bgtiledata/bgtiledata_spx09_1.gbc"
+sha256 = "3f95f84399f79d0a60557160bffe2839a2b5e81f2422b7820a5626e165086f81"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_1_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx09_1_cgb04c.png"
+sha256 = "01b90a906c33297c6fd2a57e0b4ddd872dab510a32ade7199de854af7463aaf9"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_1_dmg08.png"
+target = "bgtiledata/bgtiledata_spx09_1_dmg08.png"
+sha256 = "48eb1850f321f62d8927ed07933282a847c6f64a322619d8639c247a7c7cff61"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_2.gbc"
+target = "bgtiledata/bgtiledata_spx09_2.gbc"
+sha256 = "66679578c1eb5df7ba875181a8d1b799fa0662e91b23f500e31364b7e1f680ff"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_2_dmg08.png"
+target = "bgtiledata/bgtiledata_spx09_2_dmg08.png"
+sha256 = "e3309e28a1654da8480b5f4f42de9c05535e1c3c9a9948a4964dd3113f387b39"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_2_xcgb.png"
+target = "bgtiledata/bgtiledata_spx09_2_xcgb.png"
+sha256 = "445c92247bf6656608e3525c601f3fd5e1d212e9e60c075566d4ce640ce7a480"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_3.gbc"
+target = "bgtiledata/bgtiledata_spx09_3.gbc"
+sha256 = "aaa51494277c811772750afbaf61468ff47cf8f509fe878b7ca1f31b2a07d398"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_3_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx09_3_cgb04c.png"
+sha256 = "29530d61d8f61aaf060aa96ee249a616a9a28ba78bb5dab363ec5a4a3c070a84"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_3_dmg08.png"
+target = "bgtiledata/bgtiledata_spx09_3_dmg08.png"
+sha256 = "725fe560ece7dad02c170ed753c3824b40006a639321951c6caa5639e3ccc505"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_4.gbc"
+target = "bgtiledata/bgtiledata_spx09_4.gbc"
+sha256 = "f085baf4d8a741c7c3028dc87e411158405885a39946330830a21966c44b80c5"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_4_dmg08.png"
+target = "bgtiledata/bgtiledata_spx09_4_dmg08.png"
+sha256 = "60369978d4b50d2919001986befe599d8713246011d7d2ebec8995bbce6c333b"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_4_xcgb.png"
+target = "bgtiledata/bgtiledata_spx09_4_xcgb.png"
+sha256 = "32cae0f4f8cf180243ffe3e100ccf8985a8d88f53444c874b8b09464feea866f"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_ds_1.gbc"
+target = "bgtiledata/bgtiledata_spx09_ds_1.gbc"
+sha256 = "a71d91630f642eb11fd046582418468dcae6cf4f442aab3ecc97705779bc18d0"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_ds_1_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx09_ds_1_cgb04c.png"
+sha256 = "61ee412dcd8bd43383b339363c52cc9dddc5bc53be8efbc8e026fb35eaf4e628"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_ds_2.gbc"
+target = "bgtiledata/bgtiledata_spx09_ds_2.gbc"
+sha256 = "5c73ee6bdba201cf1df315829f92a21f4ad53b64ac8a6b59088eab33db0c2a43"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_ds_2_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx09_ds_2_cgb04c.png"
+sha256 = "ffbb1c461ee6f85b66603d376aeb024b5bf6857cb661e981abe4b18ece78deb7"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_ds_3.gbc"
+target = "bgtiledata/bgtiledata_spx09_ds_3.gbc"
+sha256 = "c085ea36fb0c6484b1df99c27ba5b6497e07e8c2ec74934f5966eb40a854b276"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_ds_3_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx09_ds_3_cgb04c.png"
+sha256 = "5351a729088d6b62f345390ec30c57d37d3c721363191ff4fce211568daef675"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_ds_4.gbc"
+target = "bgtiledata/bgtiledata_spx09_ds_4.gbc"
+sha256 = "9fd37ba270a260b7f70eb1074d071d3790818acbbd50b858f4df118b63883817"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx09_ds_4_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx09_ds_4_cgb04c.png"
+sha256 = "75fdf8292c9a80ee57b355d8c66f82297e1dcf27699b324b3be83fce4c1cd8c7"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_1.gbc"
+target = "bgtiledata/bgtiledata_spx0A_1.gbc"
+sha256 = "409cc68a4cea466d8f142e08aa5a6d25562a1feaf40893286d9f6ec2c5100f72"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_1_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx0A_1_cgb04c.png"
+sha256 = "de249d944629519ecf5085743a22b5544b01606d97768f35b06ce6b026a5414f"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_1_dmg08.png"
+target = "bgtiledata/bgtiledata_spx0A_1_dmg08.png"
+sha256 = "3c9cde757afe3a01cf60ff29dd10f4725b84a3c1103a3b3513b8ebbbbca9bec0"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_2.gbc"
+target = "bgtiledata/bgtiledata_spx0A_2.gbc"
+sha256 = "435ff48a7ca5fd2a577e3bb2a6bfa3fb8206bd59a40b48e25ed20f1313b7de1c"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_2_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx0A_2_cgb04c.png"
+sha256 = "cbe25c9865d9cc441daa5b704da8033d33ac47ee66d5a24029913d6f29c73908"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_2_dmg08.png"
+target = "bgtiledata/bgtiledata_spx0A_2_dmg08.png"
+sha256 = "b34c1d75425661cde04911577422404958f75177e301bfc21031025637b0d009"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_3.gbc"
+target = "bgtiledata/bgtiledata_spx0A_3.gbc"
+sha256 = "4748aabd0398cceb0b01459d73f9f467eb3f6e36c05624407552da634ad02ae6"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_3_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx0A_3_cgb04c.png"
+sha256 = "8e638e920158053e18efea56edccad3a7d3c18c0fe94f7b0557d4927fc9cf0cb"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_3_dmg08.png"
+target = "bgtiledata/bgtiledata_spx0A_3_dmg08.png"
+sha256 = "ce8298ee0338fb72feceb9369b84f7d1667b1a1cf235a9316e91a244eac2b156"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_4.gbc"
+target = "bgtiledata/bgtiledata_spx0A_4.gbc"
+sha256 = "77de892f1bac23beb44449d530714891a948a722394458e4d6d9b2487dbb5f5d"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_4_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx0A_4_cgb04c.png"
+sha256 = "0c72035bfe770d888d6d4f300b88e0a16dd1c68b34fe7f3c2889a12c9b61a772"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0A_4_dmg08.png"
+target = "bgtiledata/bgtiledata_spx0A_4_dmg08.png"
+sha256 = "ea6e4a9984bdaaf74444e84ce16c5e7695972c9c70c6a6c742ddd5651608b67e"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_1.gbc"
+target = "bgtiledata/bgtiledata_spx0B_1.gbc"
+sha256 = "da19c701b0de10329aa1cfedc59b1556bf94f5740a7286268935c662b3924a30"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_1_dmg08.png"
+target = "bgtiledata/bgtiledata_spx0B_1_dmg08.png"
+sha256 = "f9e147fd85f1df22a9a412daeb4c7533437f123543cf2a69fdc6ca939c37dea8"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_1_xcgb.png"
+target = "bgtiledata/bgtiledata_spx0B_1_xcgb.png"
+sha256 = "9da49c1cc29816516d58276024238ab807b9496cb10e2c3496d3e6342594a8c4"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_2.gbc"
+target = "bgtiledata/bgtiledata_spx0B_2.gbc"
+sha256 = "941651a6c1654413747386953e2342a20cb8703d3e37d8b58d99f70a4878dfd7"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_2_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx0B_2_cgb04c.png"
+sha256 = "8dcbe3ec943ee0579f21628a9a9dc2329408589c13ac4921ada97e0c814d63f5"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_2_dmg08.png"
+target = "bgtiledata/bgtiledata_spx0B_2_dmg08.png"
+sha256 = "4a49cc779fc23ee444b7e9e3b5d79a804e23f1569ee9212fb0ea5860af386d37"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_3.gbc"
+target = "bgtiledata/bgtiledata_spx0B_3.gbc"
+sha256 = "65557fb2d559c9aaab340ef08776e53fe95b05d06f6cfb3945647b7f48911cd9"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_3_dmg08.png"
+target = "bgtiledata/bgtiledata_spx0B_3_dmg08.png"
+sha256 = "49a87c9e919359958d3f6a8acb07fd6ea8965c0992edc187dd2ac271a7e85d06"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_3_xcgb.png"
+target = "bgtiledata/bgtiledata_spx0B_3_xcgb.png"
+sha256 = "445e191c55ae5ac51cab79bd5932c0bea2d65abef102fc323e2456bf5b5b9086"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_4.gbc"
+target = "bgtiledata/bgtiledata_spx0B_4.gbc"
+sha256 = "879e102ab44c1e6403aad356b7a9b57d4e4916daae645c51c19996546d3f38d4"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_4_cgb04c.png"
+target = "bgtiledata/bgtiledata_spx0B_4_cgb04c.png"
+sha256 = "4a77cb331f0d50e178632cf54a13b666fe017948ee485820c69f7f6f0d6cabb2"
+
+[[source.family.file]]
+path = "gambatte/bgtiledata/bgtiledata_spx0B_4_dmg08.png"
+target = "bgtiledata/bgtiledata_spx0B_4_dmg08.png"
+sha256 = "cd0c194eeb879fa98df5efd4b305ecfc4975ae20fbf2041b899b10b0cf3e0633"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_1.gbc"
+target = "bgtilemap/bgtilemap_spx08_1.gbc"
+sha256 = "bf8c729de1eb39942a87df61f3fcb7bfc7c1b45f787946b556717826cd1aaeda"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_1_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx08_1_cgb04c.png"
+sha256 = "f83e3fc10e72c4b3fb8bdd12743d79124ed5315fbbcae3d34862d7e9effee56b"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_1_dmg08.png"
+target = "bgtilemap/bgtilemap_spx08_1_dmg08.png"
+sha256 = "a050c56d2c140ff147949f7fd39d487672c0eb2cdcfc3405521f41cb7a2556cc"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_2.gbc"
+target = "bgtilemap/bgtilemap_spx08_2.gbc"
+sha256 = "9dd2f0524884509a19cd3ec469fa5459d25a212066126bac14d34036a1bdf961"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_2_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx08_2_cgb04c.png"
+sha256 = "864068c1d98c216932a189330a6e5b61f55b085ddf3905f05c28be801c4df15c"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_2_dmg08.png"
+target = "bgtilemap/bgtilemap_spx08_2_dmg08.png"
+sha256 = "36bd575768158dca51b215fe51f96dafa5b78de2b705448f4bea269181bf7f39"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_3.gbc"
+target = "bgtilemap/bgtilemap_spx08_3.gbc"
+sha256 = "0343fb397ee64381dc6fc7985296658dd8dd092afc2d357153ce8df871eb0873"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_3_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx08_3_cgb04c.png"
+sha256 = "c1c7843c596665ea56884856faa5150dba847f7068b675d0da0dbbf7290ed156"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_3_dmg08.png"
+target = "bgtilemap/bgtilemap_spx08_3_dmg08.png"
+sha256 = "388a8dcebb95f7705bfa6596375805d23d0319fa5db6ee214fac40d214269a7f"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_4.gbc"
+target = "bgtilemap/bgtilemap_spx08_4.gbc"
+sha256 = "01f96f591f963aefd43a747a299ebce4d56d0b9700bb75144b031c271688c7bc"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_4_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx08_4_cgb04c.png"
+sha256 = "3cbf7fce67894f55481021f7b9e5cd881a982a6303614b1d8f82cd30e8210a2c"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_4_dmg08.png"
+target = "bgtilemap/bgtilemap_spx08_4_dmg08.png"
+sha256 = "4ceef8bdecdcc80012ce95096301de74f8235d3570d49e9239b1e700c6f395f0"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_ds_1.gbc"
+target = "bgtilemap/bgtilemap_spx08_ds_1.gbc"
+sha256 = "866928322f3983ea3d92d012b3a1deb67f28f20bf2fbd48a6094c72651f28996"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_ds_1_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx08_ds_1_cgb04c.png"
+sha256 = "f83e3fc10e72c4b3fb8bdd12743d79124ed5315fbbcae3d34862d7e9effee56b"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_ds_2.gbc"
+target = "bgtilemap/bgtilemap_spx08_ds_2.gbc"
+sha256 = "7218c9b5fb2602f2e9f811dbc22d460a8acf92dbc297a976afb8b9bfaf53bcf8"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_ds_2_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx08_ds_2_cgb04c.png"
+sha256 = "c631bb02d99e7ac487e1a3ba40ff953732fba951866a040c915c9156a2fd99da"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_ds_3.gbc"
+target = "bgtilemap/bgtilemap_spx08_ds_3.gbc"
+sha256 = "3fb3fff6fb52b1dfc86df04a8ccf8cee2f2c16326a3ed1f647555b5c290c381a"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_ds_3_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx08_ds_3_cgb04c.png"
+sha256 = "c631bb02d99e7ac487e1a3ba40ff953732fba951866a040c915c9156a2fd99da"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_ds_4.gbc"
+target = "bgtilemap/bgtilemap_spx08_ds_4.gbc"
+sha256 = "208816cce8845461ef93c18920bd03ba24be5af700331b02fff54688e209b174"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx08_ds_4_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx08_ds_4_cgb04c.png"
+sha256 = "864068c1d98c216932a189330a6e5b61f55b085ddf3905f05c28be801c4df15c"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_1.gbc"
+target = "bgtilemap/bgtilemap_spx09_1.gbc"
+sha256 = "50f453fe74639654ee60fb7e05a3e400f11413bfddd598ed7b33f8b0f2695268"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_1_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx09_1_cgb04c.png"
+sha256 = "9fef01e8fb24288d16bfbf8fe76895885b95ededb31f615755141fdb126ca759"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_1_dmg08.png"
+target = "bgtilemap/bgtilemap_spx09_1_dmg08.png"
+sha256 = "13ed4e50987974c0408ba828e502c3e70b2fa657533e696728ef9d6aa325d4c4"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_2.gbc"
+target = "bgtilemap/bgtilemap_spx09_2.gbc"
+sha256 = "ce64a829739e94bdf2a7417eb44930467a46268e7db92575108f3eb6d849c269"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_2_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx09_2_cgb04c.png"
+sha256 = "25f9247e0dec5c7b6f028c04071fc0f15c98dc99787cf3860921ceb7e728339d"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_2_dmg08.png"
+target = "bgtilemap/bgtilemap_spx09_2_dmg08.png"
+sha256 = "be7354bd3998c88498a881bbe9cf934186fb1e211ca30d7a6ef99c3718e3f99a"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_3.gbc"
+target = "bgtilemap/bgtilemap_spx09_3.gbc"
+sha256 = "f6fcc006f74c0de9568b64316bc2012adff4533544f27f6f913a0d1b551d4a68"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_3_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx09_3_cgb04c.png"
+sha256 = "c0011b322ec4ba5214918da58c67fd43ea94d4ecb9c528d592745be2fd301002"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_3_dmg08.png"
+target = "bgtilemap/bgtilemap_spx09_3_dmg08.png"
+sha256 = "df18426bd32e5b39346c7fa08d6a93a363c2888459a9cad27b01a5496dc5f5cc"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_4.gbc"
+target = "bgtilemap/bgtilemap_spx09_4.gbc"
+sha256 = "f2787bd31db11a6a0412a3dd05909aac92bf1fd6d068293c540becc8607f7f77"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_4_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx09_4_cgb04c.png"
+sha256 = "efb335d126e8e449c00d2439deb5eb3df8dbed74c15ca1b25425bbe50e6d84ef"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_4_dmg08.png"
+target = "bgtilemap/bgtilemap_spx09_4_dmg08.png"
+sha256 = "2bb4c1647c88011db37e74508025f684346979afe82d6c237b1195ac91c6f3d5"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_ds_1.gbc"
+target = "bgtilemap/bgtilemap_spx09_ds_1.gbc"
+sha256 = "7a6dc6cb9c48d353309b6e9d0272f2a54fc3d1bf14efd888863a702f2b546825"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_ds_1_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx09_ds_1_cgb04c.png"
+sha256 = "06a10c680573fbf9ad014d13a9cf02137c7e41e69a355da18b5facec7583ca65"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_ds_2.gbc"
+target = "bgtilemap/bgtilemap_spx09_ds_2.gbc"
+sha256 = "b1cf1e2e4bb50cfe5681951f27d53e394dd16dddb0ac6b224fbd6af65566f11b"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_ds_2_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx09_ds_2_cgb04c.png"
+sha256 = "ca12676f5866571908a3925cfd697cfb6496b2caeb6ce270b93391c5ce86ed98"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_ds_3.gbc"
+target = "bgtilemap/bgtilemap_spx09_ds_3.gbc"
+sha256 = "34c1b92cfb00666712bb44aa7f2fada8f62a194c9840c3275ddaadbceb3b7b8f"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_ds_3_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx09_ds_3_cgb04c.png"
+sha256 = "ca12676f5866571908a3925cfd697cfb6496b2caeb6ce270b93391c5ce86ed98"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_ds_4.gbc"
+target = "bgtilemap/bgtilemap_spx09_ds_4.gbc"
+sha256 = "59455cf857ad690a8138e414bb0c43afaab1b5557d5156cbd5496e35088b1c07"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx09_ds_4_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx09_ds_4_cgb04c.png"
+sha256 = "02f33cc7d152fff674c30133944396fe0cf1991d6c907cf62b1526b65885a711"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_1.gbc"
+target = "bgtilemap/bgtilemap_spx0A_1.gbc"
+sha256 = "a4c948b91fe39330a678631e6e149c8d0a637c33a85aa740a995d5d17123dc1b"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_1_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx0A_1_cgb04c.png"
+sha256 = "9658b1617c300eef57f650e6a51e2bc4418f4349316f92d9294777815bbfe285"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_1_dmg08.png"
+target = "bgtilemap/bgtilemap_spx0A_1_dmg08.png"
+sha256 = "6b468aaa3de065a6cdd2183423acee2a607e5491e94e00646602d6b41a3794b1"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_2.gbc"
+target = "bgtilemap/bgtilemap_spx0A_2.gbc"
+sha256 = "5b2c85db06c0ba3af1a067bc9492ba25ff16f1f231888c5fa31562100d0e0b68"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_2_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx0A_2_cgb04c.png"
+sha256 = "d42aaa717e25c7754f48985f8d55418aa7b180c3f03247dbe8d0ef6260f45576"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_2_dmg08.png"
+target = "bgtilemap/bgtilemap_spx0A_2_dmg08.png"
+sha256 = "f7ffae7d2b36c7dad3834324435be350d853d2dbfd0a63cd36c188dec0dcfe52"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_3.gbc"
+target = "bgtilemap/bgtilemap_spx0A_3.gbc"
+sha256 = "8dc4953e403dcb7b4d5dc8caf15a92357aacc1354375c29f3156bf47b0657810"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_3_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx0A_3_cgb04c.png"
+sha256 = "6264335ca625850b116c4f44e76ceb3368c0973ec869e29b850d25e630b16363"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_3_dmg08.png"
+target = "bgtilemap/bgtilemap_spx0A_3_dmg08.png"
+sha256 = "b780a509e1f9aa06afa8ebd9f71d279b1ce1a8390af805f86c50961db6327b91"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_4.gbc"
+target = "bgtilemap/bgtilemap_spx0A_4.gbc"
+sha256 = "43bb10715b34b06ca86168cab7ce065d9208a13eebd4bba66f8feec07d7e9d47"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_4_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx0A_4_cgb04c.png"
+sha256 = "034eb81ec1c4881053ee118434d2723f610c98274ba90bfb42382a984abf6018"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0A_4_dmg08.png"
+target = "bgtilemap/bgtilemap_spx0A_4_dmg08.png"
+sha256 = "b695e3289f6ec810a0e7d9bee39c8d6210e1308347f89679223188ad5b937701"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_1.gbc"
+target = "bgtilemap/bgtilemap_spx0B_1.gbc"
+sha256 = "44a6af66cf1666de1fe1ea2d871cfd36090cee20d63c5f4da038ba5a009a7000"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_1_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx0B_1_cgb04c.png"
+sha256 = "2dabaefd78b0cb0262c204c5feffa040a082dd1db13071cc11b7cd97745a7469"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_1_dmg08.png"
+target = "bgtilemap/bgtilemap_spx0B_1_dmg08.png"
+sha256 = "ed7d8fb0f428a219c6ab7fed5b95d2d06386c2fb793f72204da02009b65a0b2b"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_2.gbc"
+target = "bgtilemap/bgtilemap_spx0B_2.gbc"
+sha256 = "3d406273d2215530959e005427ab86138bdd78f128081528a3f1d523fc768d03"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_2_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx0B_2_cgb04c.png"
+sha256 = "5b425fd27096cf279a57f90dbd2c51768b25938c1ef3784202ea6af2a8c0099d"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_2_dmg08.png"
+target = "bgtilemap/bgtilemap_spx0B_2_dmg08.png"
+sha256 = "59843b7788d297ed16221ac4bb78d870a76978b74f68d71383b047813efa65b1"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_3.gbc"
+target = "bgtilemap/bgtilemap_spx0B_3.gbc"
+sha256 = "a57c61e1c842ce84f1c28712c96cb850dafe5bfe54fe58031e49616909d75a35"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_3_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx0B_3_cgb04c.png"
+sha256 = "7103e4bf0e1dae9d825de1db6574ad23241415b6a199311add2393764c242343"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_3_dmg08.png"
+target = "bgtilemap/bgtilemap_spx0B_3_dmg08.png"
+sha256 = "bd181735f358e6859f3de6f9e9a5475a43ecadbe21ceb5919b3826838b82f81b"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_4.gbc"
+target = "bgtilemap/bgtilemap_spx0B_4.gbc"
+sha256 = "cc4f4a41f9d86acb69a440d6a06b84bcfb534a2e18718bd2d0958e378d87e2b1"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_4_cgb04c.png"
+target = "bgtilemap/bgtilemap_spx0B_4_cgb04c.png"
+sha256 = "3d9d8a79b18d8b131ed9575e61fec94fd5b626168dd7caf5fe81fde59fa3881e"
+
+[[source.family.file]]
+path = "gambatte/bgtilemap/bgtilemap_spx0B_4_dmg08.png"
+target = "bgtilemap/bgtilemap_spx0B_4_dmg08.png"
+sha256 = "4df8869f007c90e7c6344373c880b8d84488ecda96f7c61510830c8292474857"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_1.gb"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_1.gb"
+sha256 = "c9880b40fbcfbb3ff9452b5d50c360b1c7157554966170a129d0408f8dc3c15b"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_1.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_1.png"
+sha256 = "fd79debaed0eb70aac4de2ffb41af12bf01e7d5db53e97aa1b6534669ad4b50c"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_1_dmg08.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_1_dmg08.png"
+sha256 = "f10faaa3e4f260a5dbae9af31c4507eb048a60a07c09b49bedccdfcb521e04d4"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_2.gb"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_2.gb"
+sha256 = "e01fe8e9d343da0b5325dc661a0815e4b59ea5510ef6dbdc84f152192464b6ad"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_2.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_2.png"
+sha256 = "a83814408d38cd74d8579fa09aa61802da6616d05961bb47be5a06be397ff783"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_2_dmg08.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_2_dmg08.png"
+sha256 = "7fbb4328d9f150506eda48707bb73f89eb843f3f4d9d1fd366441dc13441fd9a"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_2_gba.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_2_gba.png"
+sha256 = "1324ee4b6a1ee8a284bdaed73dacb320ed53f02afc4ee5211ac847d53928e4e6"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_3.gb"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_3.gb"
+sha256 = "2be6a7ea5337f1b4d2a3052d8cb8b3ceebc92c04286957ef6c2886498e987163"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_3.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_3.png"
+sha256 = "54090ba0289d4ceedd26c61d40d6d79b8b25ea55e009b0c5a0c7f6384754a2a7"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_3_dmg08.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_3_dmg08.png"
+sha256 = "f3a84e3be2fc993948cd9eb21e98d56f9936b535c88573200c1c676a8db8d2e7"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_3_gba.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_3_gba.png"
+sha256 = "2ba3649d1c3c02ca79b34db78b57be3972964ba4028ca40860238ced2d33d756"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_4.gb"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_4.gb"
+sha256 = "d10b1bfc9becf49ab9bc66e64004e8bfc59533e44e72a6bafa038c71ead4c27a"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_4.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_4.png"
+sha256 = "d6de08439e5b475dd4a48d881f869a85f8bf732094c16f0cdc746f933f1adc67"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_4_dmg08.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_4_dmg08.png"
+sha256 = "fc3907c1e33c119c7a6c0cdb342a4e2a5bccfd76940c5b05a775af03685f630a"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_4_gba.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_4_gba.png"
+sha256 = "a6ce3ae62674b144ac94abcacaa1610971b4bf84ee6105566a61ae2139a4b050"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_5.gb"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_5.gb"
+sha256 = "14f291e36fa80e414b7d08a860bb7fecd2c646c44b636c0ce2e8bd221be339df"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_5.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_5.png"
+sha256 = "6e0c877484557b8d5ad10a4b3f93db252eeb7d8af228c91e0d13efb91dd59b4e"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_5_dmg08.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_5_dmg08.png"
+sha256 = "f4e40ff26784e3e0280f45632ae81870be0eb5cab725134b26b0a03f06f8f4ca"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_5_gba.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_5_gba.png"
+sha256 = "185525a756dd11cb7e91b5cbec8dcde93ee3587096b050ccffa3dd0d5f91f20f"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_scx1_1.gb"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_scx1_1.gb"
+sha256 = "bc59d5ca9053a454be94bd335c85ea9d077e05424a47eac0ed5ae2782a6711f4"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_scx1_1_dmg08.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_scx1_1_dmg08.png"
+sha256 = "f10faaa3e4f260a5dbae9af31c4507eb048a60a07c09b49bedccdfcb521e04d4"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_scx1_4.gb"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_scx1_4.gb"
+sha256 = "d146eeb1ec3d8110f2f35866e0dd96787c6061d64dfe105e1bfcc2f61eb5ca66"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_scx1_4_dmg08.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_scx1_4_dmg08.png"
+sha256 = "092cf31bafb9d6fba903d7ceccede95425b0d615a258f29582c698da231a067e"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_scx2_1.gb"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_scx2_1.gb"
+sha256 = "60709080c525850985966e8e54ee2ac13796bf15d35e07c6860fe2a5c4734c25"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/dmgpalette_during_m3_scx2_1_dmg08.png"
+target = "dmgpalette_during_m3/dmgpalette_during_m3_scx2_1_dmg08.png"
+sha256 = "459f31a05cb481cf807acaa4577d2f74ce6eec6fbda5f3d442f053acbe8639f7"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_1.gb"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_1.gb"
+sha256 = "f575ad4d81a0a88a56ba5a659491289148b3a7dfa03816c0ab99b1b8e37d1a4a"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_1.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_1.png"
+sha256 = "e649bb1ec380755d9d4093bb2b0fe36d624576cc734d7bdf77677223ed04bb96"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_1_dmg08.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_1_dmg08.png"
+sha256 = "f6cee8f27abd28a466248c8871e6cc726b70984621a5de81d88d90239a0ded59"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_1_gba.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_1_gba.png"
+sha256 = "0d04518ed24e84ce55f064c9bf4b9a99201ba9bfeba037db8099d84a0fd9ec41"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_2.gb"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_2.gb"
+sha256 = "fc4c4a82bf975527367b3efa924b844ba0301a781a2de503e1b4670c5ae040ee"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_2.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_2.png"
+sha256 = "1f62e2dbb3a88bb0b9ae28fdceb7565465d41ead07a01bc5fa4c2e92880f4de4"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_2_dmg08.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_2_dmg08.png"
+sha256 = "6c39a52168431a7a5f62c9d98d1ffca86b3e9f13ac625adbcc46f4d488eb5c9d"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_2_gba.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_2_gba.png"
+sha256 = "10aa53c0eb863842e6dd77774749d15fb3b9545d06e86a8fb1a6d74a284ade00"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_3.gb"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_3.gb"
+sha256 = "cbb73b5b4c1b8335b2a7b5f092814d51119c758aee3cf45626902f0253fd4783"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_3.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_3.png"
+sha256 = "06501b4d7ccdb32f6255f4010012eda0e1b69de1caa7cd75d5672937f43d3b1c"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_3_dmg08.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_3_dmg08.png"
+sha256 = "59d3de062ffdf5588a49ed98ae1fbffbfd9326ee082e1a13f9534c8229e3137c"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_3_gba.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_3_gba.png"
+sha256 = "78999eadf07c9cb8ae01c487db7f839d68acf917e47fc3aef2b6af2c3776b47e"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_4.gb"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_4.gb"
+sha256 = "fca0ac654824f3ebda5f28b7345bc98012ea852072cd19e27cd00cb335feeaab"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_4.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_4.png"
+sha256 = "53df841ab4d037994388a93938cb69226e417e71179fb5396e148a8b1f476fd2"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_4_dmg08.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_4_dmg08.png"
+sha256 = "d718658d0a66d630ffd742b5c9b32f6e4af1086a382f9eb9c502382f5e2d777b"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/lycint_dmgpalette_during_m3_4_gba.png"
+target = "dmgpalette_during_m3/lycint_dmgpalette_during_m3_4_gba.png"
+sha256 = "b468f69228496834d7a0218b9f0724831b1feae9d02f1a294cf1332aa962df2a"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_1.gb"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_1.gb"
+sha256 = "2901090c26ca19d3e4ca9d5469e0196a6f251c526553a26d2ee1f283b984e58f"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_1.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_1.png"
+sha256 = "8b003d3a61539325c7ca87040c053a96bb6ab388cf715c3c700b17f74a48d9b0"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_1_dmg08.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_1_dmg08.png"
+sha256 = "69966d2f7ff665e3f71a743cfdd192bbf0e8fa719ae6f0f6e589b3f7fdd5f5d9"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_1_gba.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_1_gba.png"
+sha256 = "c2496e1cace1454040ac839017e4ebdb6081f080b458b948d34d4d63914ba3e1"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_2.gb"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_2.gb"
+sha256 = "a5773c180bb18b21f32b0708691595f5e72ca6c5cacaab1b722727b5b2dca759"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_2.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_2.png"
+sha256 = "fb4e90ce16b83bd678f9aa25905af14bc613643184e3096afb0462ead92194d2"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_2_dmg08.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_2_dmg08.png"
+sha256 = "439ccce68c69b6eec4b522566b7b689aeca8beb2880cd49978d2a9ad490befec"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_2_gba.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_2_gba.png"
+sha256 = "4595487710f5b5a89578a4bc8367a3df339268696cfce00f86b0e2df175f737f"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_3.gb"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_3.gb"
+sha256 = "53db4ef794996db79145aeda75e5357623b4b3529735e2da896568505ceac696"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_3.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_3.png"
+sha256 = "209c053b6f4e4d908b9edec3cc535c4132e353270b463917e644fac92bcff5b0"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_3_dmg08.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_3_dmg08.png"
+sha256 = "e0c5c2fde781fee084f27246fd8073c3c99b51c745e30c79d559ae294af00cba"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_3_gba.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_3_gba.png"
+sha256 = "6c0184c040034c22310f205ec1dc42c6b3acc96fbc8b3be4eda0c9519e5b143f"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_4.gb"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_4.gb"
+sha256 = "797ade9d5ff3491c92cc206e7029425667c608c7e7feba52db18dfe81c15cf3a"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_4.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_4.png"
+sha256 = "25d26a47482ee0a20e8522e82f6925e79499e129ac009a52357ea88112ddf928"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_4_dmg08.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_4_dmg08.png"
+sha256 = "1215bc366e883c77dd2a69623ddc4b7a6a1cbef5daa41b909ed2ef1b646ad8e8"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_4_gba.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_4_gba.png"
+sha256 = "dba3c30e590d8c9d29c6fa1c7373f9ab02a0ffac70a570afa6c3e0afea7ac59f"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_5.gb"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_5.gb"
+sha256 = "fa7f0a5c288a07eecae0b9caac1ee900bfd95f82813f50286d91f3359ca387a2"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_5.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_5.png"
+sha256 = "64433f7b66ab70883ad81a1c59f7327a1d42921bd22f8d602543111bf0a82042"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_5_dmg08.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_5_dmg08.png"
+sha256 = "9b4074c5ef793012589efbfb57a8f0d8ad5fc7173b7960c239c80dfefe5489ac"
+
+[[source.family.file]]
+path = "gambatte/dmgpalette_during_m3/scx3/dmgpalette_during_m3_5_gba.png"
+target = "dmgpalette_during_m3/scx3/dmgpalette_during_m3_5_gba.png"
+sha256 = "0884e5671c18f316cbbde507fddfd1bff8f773d7b6bd115e0073efcad44ec02c"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_1.gb"
+target = "halt/lycint_dmgpalette_during_m3_1.gb"
+sha256 = "52de1f898b63bf02b4140c732eeec3e886564851bbd672b2886247d1d31c6cfc"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_1.png"
+target = "halt/lycint_dmgpalette_during_m3_1.png"
+sha256 = "e649bb1ec380755d9d4093bb2b0fe36d624576cc734d7bdf77677223ed04bb96"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_1_gba.png"
+target = "halt/lycint_dmgpalette_during_m3_1_gba.png"
+sha256 = "0d04518ed24e84ce55f064c9bf4b9a99201ba9bfeba037db8099d84a0fd9ec41"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_2.gb"
+target = "halt/lycint_dmgpalette_during_m3_2.gb"
+sha256 = "7833644f6c6b4137cd19f78470697a6bc4be75e6ea9024c8957e502d70090621"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_2.png"
+target = "halt/lycint_dmgpalette_during_m3_2.png"
+sha256 = "1f62e2dbb3a88bb0b9ae28fdceb7565465d41ead07a01bc5fa4c2e92880f4de4"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_2_gba.png"
+target = "halt/lycint_dmgpalette_during_m3_2_gba.png"
+sha256 = "10aa53c0eb863842e6dd77774749d15fb3b9545d06e86a8fb1a6d74a284ade00"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_3.gb"
+target = "halt/lycint_dmgpalette_during_m3_3.gb"
+sha256 = "1648b828baa40fc62a4a53f9a759c689b7ef6818b39f14a0ca9aa8bb36064c83"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_3.png"
+target = "halt/lycint_dmgpalette_during_m3_3.png"
+sha256 = "06501b4d7ccdb32f6255f4010012eda0e1b69de1caa7cd75d5672937f43d3b1c"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_3_gba.png"
+target = "halt/lycint_dmgpalette_during_m3_3_gba.png"
+sha256 = "78999eadf07c9cb8ae01c487db7f839d68acf917e47fc3aef2b6af2c3776b47e"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_4.gb"
+target = "halt/lycint_dmgpalette_during_m3_4.gb"
+sha256 = "a9541b9dda74ca4b3ad797b7c666e46a41864847679239811af86c6b8a9e439d"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_4.png"
+target = "halt/lycint_dmgpalette_during_m3_4.png"
+sha256 = "53df841ab4d037994388a93938cb69226e417e71179fb5396e148a8b1f476fd2"
+
+[[source.family.file]]
+path = "gambatte/halt/lycint_dmgpalette_during_m3_4_gba.png"
+target = "halt/lycint_dmgpalette_during_m3_4_gba.png"
+sha256 = "b468f69228496834d7a0218b9f0724831b1feae9d02f1a294cf1332aa962df2a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_1.gb"
+target = "scx_during_m3/old/offset_3/scx_during_m3_1.gb"
+sha256 = "6e96d722aa23244cacfa5f3580ad4dc5ecf8f286b9779abda1651f09ccec56f0"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_1.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_1.png"
+sha256 = "0a2817119f4336bca422ecce920612512e1caa345311e2809ca0c8bef2f27969"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_2.gb"
+target = "scx_during_m3/old/offset_3/scx_during_m3_2.gb"
+sha256 = "a39f9b80cfd1c43c2ab24228548605834952b94cd4fb091e43c3cfa643bad034"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_2.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_2.png"
+sha256 = "08a45c16446a60a6e97cc8693a45f673451e173f9ba476e3981a0128821d73e2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_3.gb"
+target = "scx_during_m3/old/offset_3/scx_during_m3_3.gb"
+sha256 = "e7e58c7fff6d1ece020dc4327a41f3bd728b88426ffe6396629c508f3720bc8f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_3.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_3.png"
+sha256 = "4ade3c28a844c8f57aca54cee0b4cac4bd1e94f219bc86c234d5fbe78146ef41"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_4.gb"
+target = "scx_during_m3/old/offset_3/scx_during_m3_4.gb"
+sha256 = "e61ef4d12d8cfc2c1017920576b9b2337f43d68f7248ac6c6fbc2cadbec64544"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_4.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_4.png"
+sha256 = "d7700488f3ea17edabcad06ede5a8fbb5f9971372dd00be71a4bb9d18d1c40cd"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_5.gb"
+target = "scx_during_m3/old/offset_3/scx_during_m3_5.gb"
+sha256 = "8c3b185099cf87007b809e3e2ee13bff36cf5f024ec9be3556b62ee47b8ce466"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_5.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_5.png"
+sha256 = "359cc3fd0769bdc49cc7f323e6a864ddad6c7a0ff999914740fcb95c63d584f9"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_1.gbc"
+sha256 = "0261a8553bc2bd66f6eea91c5f05b0af8ce28e39654c97bb5d3650e238fe0a7c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_1.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_1.png"
+sha256 = "0a2817119f4336bca422ecce920612512e1caa345311e2809ca0c8bef2f27969"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_2.gbc"
+sha256 = "0713da57410a86bbbe35871d812a58ca06f619ac36399bad11032c4f3a3b436e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_2.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_2.png"
+sha256 = "91951f88a3af29e13e2868cd133d18f3fec4cb5cf551c895bc0ca924e335be02"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_3.gbc"
+sha256 = "8005c84978d806693c089cb5daf62f5a6d81b5416d5f93c173ab4af705d74ab5"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_3.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_3.png"
+sha256 = "dfb51b22ed1edbef9f44cdf588f8ed138c9ff431930db5c843d030b88def518a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_4.gbc"
+sha256 = "ab99fd667859772a277f61d2bb99ccdc9e2351bce3b0c8795dc5c9f157ab1033"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_4.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_4.png"
+sha256 = "6ea581d28aa581d08d7d3a24c7660e6a7155a57b5f07624c40b643c3bde809c1"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_5.gbc"
+sha256 = "f661b9f05f20ea2b4a3e598524c5a62649c17759bee7df9cfce4f6922dbcab12"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_5.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_5.png"
+sha256 = "6ea581d28aa581d08d7d3a24c7660e6a7155a57b5f07624c40b643c3bde809c1"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_6.gbc"
+sha256 = "09e887c645cce966c92d18dc4e795df5e0a133a578c0a6984f49bbf4ae545985"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_6.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_6.png"
+sha256 = "19b49925da6a29467314fba795c5b4022d7097227056bc92182a669148fc33e9"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_7.gbc"
+sha256 = "50225aa469d47b0478a8b4cc4a1321b4ed126483eaaa4ad35a7a3bc92c57ff5a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/offset_3/scx_during_m3_ds_7.png"
+target = "scx_during_m3/old/offset_3/scx_during_m3_ds_7.png"
+sha256 = "d97451166ef7722b8eaa934994ddcb76221d93c9038ed5a24ce562cf4033c0ac"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_1.gb"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_1.gb"
+sha256 = "849dafabd2482e845bbcbe71f580d5902c1beee4eae7005df2364560dfbd7a07"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_1.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_1.png"
+sha256 = "c1b35b8e4e3406ed094edf6fa392da6420408cac648065c73d373672bb52ba6b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_2.gb"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_2.gb"
+sha256 = "42dfb306b048e7bbdc8bae21fa06cf8254243f706bb2958950d9c2e96febbb93"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_2.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_2.png"
+sha256 = "fa4cf4d6e5c195cc31935b2edd4692a18edbd51116dd6d56f4836b7efed983d8"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_3.gb"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_3.gb"
+sha256 = "d394ba24a935ee65b643a5f34b96f15d7e584df7ef73b75e887170f42a5638d7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_3.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_3.png"
+sha256 = "763770df7dff2a359c0d875370fb654d666fe31fbfad1f3886cc209ab91f7778"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_4.gb"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_4.gb"
+sha256 = "57e2d6d91956c6b6cf52f319253598ef4ba1317988972a1b01898b82e1025cd0"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_4.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_4.png"
+sha256 = "cfc71e0b03bf66c65511ffdf494e9c0bab877f215167382e745b15c2aedbc553"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_5.gb"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_5.gb"
+sha256 = "eed6d9483762641deb8534c43bd3cdbdfeea40214aba1cbca617d1c15594efbd"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_5.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_5.png"
+sha256 = "f8dad14bf74b7dd3fbf6fa4458cb2210593e7c8d316dfde049945241aba7cffe"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_1.gbc"
+sha256 = "72e84e85eaa02766093c52f3428dc122c56f0afef70b56093bb4d3ba01297cb1"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_1.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_1.png"
+sha256 = "f847043510000353ae8c36c337579068c30d5c2bc81201257cfc8857dcc52a35"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_2.gbc"
+sha256 = "5ad0ebe8a2ec05e752a57898d6d39040cf54d7cd368a631744a4b9c8bc96a72d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_2.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_2.png"
+sha256 = "fd7e2d054f74f519dc6fcfddf5bfdb4a578c2ee054aee8ba2a42d5de143ed63f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_3.gbc"
+sha256 = "523adb15629d42c518e3e6796cf5bf185827aca9122f8703747e114c1b7ff9fb"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_3.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_3.png"
+sha256 = "036d9ad4485546f9462fdd5a98ab354626524ae04235d3e01b713a42b16f57df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_4.gbc"
+sha256 = "331b2dbc44538b48047eba340df15540402dd97a2990f41731724fe4f9621cfb"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_4.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_4.png"
+sha256 = "036d9ad4485546f9462fdd5a98ab354626524ae04235d3e01b713a42b16f57df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_5.gbc"
+sha256 = "5725dd6c3cc95a66ec05f04a7bd543a4bb931c9391e64c977dc7b261f8db9961"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_5.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_5.png"
+sha256 = "036d9ad4485546f9462fdd5a98ab354626524ae04235d3e01b713a42b16f57df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_6.gbc"
+sha256 = "44660c02fa71eda827239c9d786703ecd615c47a027575bd40fe881bbe1691a9"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_6.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_6.png"
+sha256 = "292e4124d444b7f946a029d6934b19f6b901f1857c55799e057f0e3cac188caa"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_7.gbc"
+sha256 = "01c2ab28724a76aadfeddc49859d757b02bf6624af4863023a6eb1fc39043fe0"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/revoffset_3/scx_during_m3_ds_7.png"
+target = "scx_during_m3/old/revoffset_3/scx_during_m3_ds_7.png"
+sha256 = "28fd18d10fd3df3c77af1818a50cb43ed15a2cd5e9747090346c65957453b5fa"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_1.gb"
+target = "scx_during_m3/old/scx_during_m3_1.gb"
+sha256 = "acddbe20284cffe009342b0397f03d9ad0338d962457c7662f4fda0dd02dfa92"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_1.png"
+target = "scx_during_m3/old/scx_during_m3_1.png"
+sha256 = "0a2817119f4336bca422ecce920612512e1caa345311e2809ca0c8bef2f27969"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_2.gb"
+target = "scx_during_m3/old/scx_during_m3_2.gb"
+sha256 = "dfb3b1a2adf93d67421ebf1852dc82fad7723953cc0ce241370642d68c1475b7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_2.png"
+target = "scx_during_m3/old/scx_during_m3_2.png"
+sha256 = "561033880f517cfafef7d98169a5a548a790c011805ec172acf7ab52b873d5a7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_3.gb"
+target = "scx_during_m3/old/scx_during_m3_3.gb"
+sha256 = "cfb5698c0a3e91a8c6804fb1ce53d784b05248b8822a298d47429063ce756bc5"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_3.png"
+target = "scx_during_m3/old/scx_during_m3_3.png"
+sha256 = "2ee09e838ba9980deda189354d2e679e215b5ed39083304d79d3f43924cfa528"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_4.gb"
+target = "scx_during_m3/old/scx_during_m3_4.gb"
+sha256 = "f0efbce0d2316d107627b5a058762ed0dd715e2bec9f5c0790adb4af1c6eb771"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_4.png"
+target = "scx_during_m3/old/scx_during_m3_4.png"
+sha256 = "cfc71e0b03bf66c65511ffdf494e9c0bab877f215167382e745b15c2aedbc553"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/old/scx_during_m3_ds_1.gbc"
+sha256 = "5f8988f8b9dd33774e89f7ee91d280239d17b6141df70be0e0bdfb6ece81eac4"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_1.png"
+target = "scx_during_m3/old/scx_during_m3_ds_1.png"
+sha256 = "0a2817119f4336bca422ecce920612512e1caa345311e2809ca0c8bef2f27969"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/old/scx_during_m3_ds_2.gbc"
+sha256 = "4e8336c6817d30ec28a0bc5f703a13b1f9248df329dce0a48b9107fdca2a2bcf"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_2.png"
+target = "scx_during_m3/old/scx_during_m3_ds_2.png"
+sha256 = "952a0a5bf335020c1ea69f2f80acdd5d164dfe230d0e64bd7d73115b0935fc3d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/old/scx_during_m3_ds_3.gbc"
+sha256 = "97569fdaea310c80b25a87834b92151cc4622d8f05d0cf2b0fc274a82cb31827"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_3.png"
+target = "scx_during_m3/old/scx_during_m3_ds_3.png"
+sha256 = "16ba86acacfe34c011d248ae4354f9bda2288821f85a023a9705195dd445fc6d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/old/scx_during_m3_ds_4.gbc"
+sha256 = "dcafb23c5919eaeb47cfea6d2cf3d66e423c022467db63cb6eb19dea132f517b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_4.png"
+target = "scx_during_m3/old/scx_during_m3_ds_4.png"
+sha256 = "036d9ad4485546f9462fdd5a98ab354626524ae04235d3e01b713a42b16f57df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/old/scx_during_m3_ds_5.gbc"
+sha256 = "015a2ab5f4e6dc6f0e52a25d61ada19fb143a941fc43f03bf27352a98a9c1cf1"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_5.png"
+target = "scx_during_m3/old/scx_during_m3_ds_5.png"
+sha256 = "036d9ad4485546f9462fdd5a98ab354626524ae04235d3e01b713a42b16f57df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/old/scx_during_m3_ds_6.gbc"
+sha256 = "2aade23a16b6a1b9c849fa8164f1a727c36b8f1fd48a28b2fe18d1691b91243b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_6.png"
+target = "scx_during_m3/old/scx_during_m3_ds_6.png"
+sha256 = "ce6065e83ff3da07f454fbe3f0ff505b30b5b687e23289f021a53aa67fc12f4c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/old/scx_during_m3_ds_7.gbc"
+sha256 = "771c966da4e55de5f47e1715b97925534be41a7e705b706d8f62b6fd2e70d25d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/old/scx_during_m3_ds_7.png"
+target = "scx_during_m3/old/scx_during_m3_ds_7.png"
+sha256 = "e7548d601d48e55dd3a2a004c6ad8fd4b98c2557e8dda4e2dd9225bf8b3295cc"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx1_scx0_during_m3_1.gbc"
+target = "scx_during_m3/scx1_scx0_during_m3_1.gbc"
+sha256 = "01c553c04ad4b26bb424dfed9117d95774c34ac4fb25e7236b1100d33a7fabf9"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx1_scx0_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx1_scx0_during_m3_1_cgb04c.png"
+sha256 = "9ed0de5649ae47b4ed3b52059c2e344747ef2a832fb378be0f9fdc3a5fb74b6f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx1_scx0_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx1_scx0_during_m3_1_dmg08.png"
+sha256 = "e516911da10d3cf3b6b99dc42d1850b268af80f3dedecd445ff15b69875fd8ee"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx2_scx0_during_m3_1.gbc"
+target = "scx_during_m3/scx2_scx0_during_m3_1.gbc"
+sha256 = "3754eae680f3a806688642f3f8fc8b963e327d0e649e655dbc9896f4b11b8b6c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx2_scx0_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx2_scx0_during_m3_1_cgb04c.png"
+sha256 = "f55e0c27df38be1ece7f969cb9ff464852c0f987cbf7add8c8e38378ad40b321"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx2_scx0_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx2_scx0_during_m3_1_dmg08.png"
+sha256 = "994de09c4f402007b0aa3a43f1c2fa7e23920c9ac04cce0b57833cdd7bd9f4ef"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx2_scx1_during_m3_1.gbc"
+target = "scx_during_m3/scx2_scx1_during_m3_1.gbc"
+sha256 = "e250e497193dcc3639e215e89ea2b74ec2079ab16bad4a45cf622c7f12d51ee6"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx2_scx1_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx2_scx1_during_m3_1_cgb04c.png"
+sha256 = "f55e0c27df38be1ece7f969cb9ff464852c0f987cbf7add8c8e38378ad40b321"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx2_scx1_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx2_scx1_during_m3_1_dmg08.png"
+sha256 = "b277d513c7bcb0f1f98a617f12bdbcf4d74661a6249105f0ca0a3021c825bed6"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_1.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_1.gbc"
+sha256 = "692f2f758b4936aa7d3041577a290b4b962688f63272c2173f076c1628440615"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_1_cgb04c.png"
+sha256 = "130f80a0f339d7f8f55502c19db1dbf85542bab7580733c4d93514f01dd5faff"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_1_dmg08.png"
+sha256 = "a842194d1d86966ce0a8eed61a0fed85b4eb73cd079f1f78cc72f858b04633cf"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_2.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_2.gbc"
+sha256 = "4cfcafb4f4985f2d228027dce59021ce98898c3cbd85bafb7ff89a2be0abef98"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_2_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_2_cgb04c.png"
+sha256 = "a3a0f174ab41ecff2e59cd8d039467e5ab198059c210bcc271c3ac8eb9c43698"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_2_dmg08.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_2_dmg08.png"
+sha256 = "e48fd7649fd413208c7e7556e01eba105c114a6589f10760a2036721e8528fa4"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_3.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_3.gbc"
+sha256 = "40a5b6758c401de8d7575f2a311c4381e524a8ed0e4c9e1ad0b46bb92d9c047d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_3_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_3_cgb04c.png"
+sha256 = "27f5360edc7cfe5afde6fa7e91cc08424ee182d66b8ac5963bde2d98f7cdc01e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_3_dmg08.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_3_dmg08.png"
+sha256 = "d2600f26a90237423b272316db31bdeb36ef68e79a97b9b6a244bbf5f7cc225f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_4.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_4.gbc"
+sha256 = "298afa63c4ba83e90834901c1f99b3bef05b43960134abf13e6615c5a8ccd8af"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_4_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_4_cgb04c.png"
+sha256 = "f08868cae4750e8fe152748f6fcdbf3e490c5f766d2920475d8d19603ba2a021"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_4_dmg08.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_4_dmg08.png"
+sha256 = "630cba40353e1c5e887bc7d64bf670224a40919d60f3a861919db0a65da1fdfa"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_5.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_5.gbc"
+sha256 = "d59ab314a310bbc289fb6a8b1625244584fe6c6d756340cf6ff437c285e42ec3"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_5_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_5_cgb04c.png"
+sha256 = "227496cd846dc35513ce789b335582db64eca00b47d103e11f406186978ce4d2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_5_dmg08.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_5_dmg08.png"
+sha256 = "4d98f0fd75f305c523a90678cee7343874662d751736366790a349500f6b7d4b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_6.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_6.gbc"
+sha256 = "7484946edfb39270d4bd6bc6fc4392310986f69124e10517e5fc6ae66bcc3dd3"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_6_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_6_cgb04c.png"
+sha256 = "7e12702cff7a984644ce8e9536e4e169abec6a8aa455153ec590972d3e85b07b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_6_dmg08.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_6_dmg08.png"
+sha256 = "0e725855e4cf1c2efb329a72c1b77385590a175d7fb4503d1c1d918e30f2a29f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_1.gbc"
+sha256 = "50c6d22ad5a76ba69717ae529265a36963f6bbad0218e211f593860de1217679"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_1_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_1_cgb04c.png"
+sha256 = "130f80a0f339d7f8f55502c19db1dbf85542bab7580733c4d93514f01dd5faff"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_2.gbc"
+sha256 = "a83a3d27d742a28eff8ea21a29b6db103e47ec7b09b2d85b6d76e3ba12fc80c6"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_2_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_2_cgb04c.png"
+sha256 = "57cf7cf7c2c859f3bf91e1bdc6db37af498d59c1a2d4791af7ea02685f2b8ef9"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_3.gbc"
+sha256 = "e0e30e6e9e0a8dbaed45bc3f4492dc90bad00c0e54c752371976edbdb2d52289"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_3_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_3_cgb04c.png"
+sha256 = "f80aea0836e580ad922b3926efcdec407bfd935771cac63049e7d2e3dddd2bb4"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_4.gbc"
+sha256 = "cb98a15bd9aa931fcf2325f1752d69fb12848b0e5ffdaa1b1125b30829f309e7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_4_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_4_cgb04c.png"
+sha256 = "27f5360edc7cfe5afde6fa7e91cc08424ee182d66b8ac5963bde2d98f7cdc01e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_5.gbc"
+sha256 = "0d0a1d042fbcb81083a2432fe9ac5abadde5f13de23e536f456afb5c5bd879b8"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_5_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_5_cgb04c.png"
+sha256 = "27f5360edc7cfe5afde6fa7e91cc08424ee182d66b8ac5963bde2d98f7cdc01e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_6.gbc"
+sha256 = "5a1cd4fc533afec3c2ac2140b5d7a4d807ddf5250629088fb02947811538dcdf"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_6_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_6_cgb04c.png"
+sha256 = "64b0bcadc54919c0c53d0d1d249d623772052ec72339b77a6ece49f6a2f1d13f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_7.gbc"
+sha256 = "df42cc71df123f15a091df577aa4c95db6ae0d22e22a7350c0dd4711c35290db"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_7_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_7_cgb04c.png"
+sha256 = "ec9e6130bf5dbc1538673752c6cba45897af5479ecd7a0dda0d9c710753dafe7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_8.gbc"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_8.gbc"
+sha256 = "6620e15a23b246d28b98477e00272866d265b4c9e95dd7f5a2477965bca8c08c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0060c0/scx_during_m3_ds_8_cgb04c.png"
+target = "scx_during_m3/scx_0060c0/scx_during_m3_ds_8_cgb04c.png"
+sha256 = "227496cd846dc35513ce789b335582db64eca00b47d103e11f406186978ce4d2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_1.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_1.gbc"
+sha256 = "61c596fca1e89194e3ccb7ab3a8ea1173a5a1f8e037bd497b538f6beba33f874"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_1_cgb04c.png"
+sha256 = "aece8a0180e28fa54237e4dafa5a431eb41c6481ddbdd06e577887801c3c8380"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_1_dmg08.png"
+sha256 = "23bc39df8827080822397dc72f0ac5d88b3df9e85362b2de9170ab43fa659b99"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_2.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_2.gbc"
+sha256 = "9bbf800f57e1748960aede1efc8ba5ceb42504eb40657386223b3e4aacd3f648"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_2_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_2_cgb04c.png"
+sha256 = "8cfca74fb5c7389ff8a4915ee47534d8966e8d5a55e21bf853a318ebbe072bd6"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_2_dmg08.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_2_dmg08.png"
+sha256 = "25a88d8c3402a88d2da396e80a5e447da14b7a6e2f94544e308b9d2ca3bdd9c9"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_3.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_3.gbc"
+sha256 = "791c093cd7bf6e9c71d70a079bc7fc375b2d7f6ddd8cea7a709aa64eedd44c7d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_3_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_3_cgb04c.png"
+sha256 = "27f5360edc7cfe5afde6fa7e91cc08424ee182d66b8ac5963bde2d98f7cdc01e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_3_dmg08.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_3_dmg08.png"
+sha256 = "d2600f26a90237423b272316db31bdeb36ef68e79a97b9b6a244bbf5f7cc225f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_4.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_4.gbc"
+sha256 = "123733e7283147d85f9d0c72dd7d93c44699fb52597d0539e77e464a12719865"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_4_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_4_cgb04c.png"
+sha256 = "f08868cae4750e8fe152748f6fcdbf3e490c5f766d2920475d8d19603ba2a021"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_4_dmg08.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_4_dmg08.png"
+sha256 = "630cba40353e1c5e887bc7d64bf670224a40919d60f3a861919db0a65da1fdfa"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_5.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_5.gbc"
+sha256 = "0813ea9457c5bf27174d718c7991c3a80fba0e3c112bfd7967a5b08b95ef85f2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_5_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_5_cgb04c.png"
+sha256 = "227496cd846dc35513ce789b335582db64eca00b47d103e11f406186978ce4d2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_5_dmg08.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_5_dmg08.png"
+sha256 = "4d98f0fd75f305c523a90678cee7343874662d751736366790a349500f6b7d4b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_6.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_6.gbc"
+sha256 = "3b39952bc0ae87c524e1d6c79412de53fc7ab73113645cda18617c9671f61d09"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_6_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_6_cgb04c.png"
+sha256 = "7e12702cff7a984644ce8e9536e4e169abec6a8aa455153ec590972d3e85b07b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_6_dmg08.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_6_dmg08.png"
+sha256 = "0e725855e4cf1c2efb329a72c1b77385590a175d7fb4503d1c1d918e30f2a29f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_1.gbc"
+sha256 = "800a99b7ec4f2eeeb01211c0e8e22a78893c0229f35102ffb8b217f4a84a2fe4"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_1_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_1_cgb04c.png"
+sha256 = "aece8a0180e28fa54237e4dafa5a431eb41c6481ddbdd06e577887801c3c8380"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_2.gbc"
+sha256 = "d22fb3b61c466ddc4462a801cb15c1a14e96265dca153d0ae6def8e57c14cabe"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_2_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_2_cgb04c.png"
+sha256 = "3da245fcea3230749d47cfbb3b8929bc5ae761a9b604dc4d2354c82aca06e894"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_3.gbc"
+sha256 = "31e4debe1eeb39dee9a8d11a3c11730698f2e3c94e76c302780b9ea2799348ec"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_3_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_3_cgb04c.png"
+sha256 = "f80aea0836e580ad922b3926efcdec407bfd935771cac63049e7d2e3dddd2bb4"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_4.gbc"
+sha256 = "170f2e5329682b8b855a17724a8c546b9e5237670af0753945b93ea10c0f3e13"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_4_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_4_cgb04c.png"
+sha256 = "27f5360edc7cfe5afde6fa7e91cc08424ee182d66b8ac5963bde2d98f7cdc01e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_5.gbc"
+sha256 = "d3ceb05a9f024cc2db0a563dc5460210b6e98bb29a322dfe5ac5a6491348404a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_5_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_5_cgb04c.png"
+sha256 = "27f5360edc7cfe5afde6fa7e91cc08424ee182d66b8ac5963bde2d98f7cdc01e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_6.gbc"
+sha256 = "f2e5848d64a799170a1c4df13ddf06c859d157137daa034ac9ffa56af8f92758"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_6_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_6_cgb04c.png"
+sha256 = "64b0bcadc54919c0c53d0d1d249d623772052ec72339b77a6ece49f6a2f1d13f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_7.gbc"
+sha256 = "a1c97e2e01ebad600db3b51b3c7ca3a502884167d53c0f9d30baa065afe34749"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_7_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_7_cgb04c.png"
+sha256 = "ec9e6130bf5dbc1538673752c6cba45897af5479ecd7a0dda0d9c710753dafe7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_8.gbc"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_8.gbc"
+sha256 = "cac89d78a44a3d6a40eb7b7e68cb3d8af20c541eafc0c361235cd87949339c75"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0063c0/scx_during_m3_ds_8_cgb04c.png"
+target = "scx_during_m3/scx_0063c0/scx_during_m3_ds_8_cgb04c.png"
+sha256 = "227496cd846dc35513ce789b335582db64eca00b47d103e11f406186978ce4d2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_1.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_1.gbc"
+sha256 = "b973fd5219a25db4d5cf3c34bd2737d7ccd94d8f52976404b649217101be82e6"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_1_cgb04c.png"
+sha256 = "130f80a0f339d7f8f55502c19db1dbf85542bab7580733c4d93514f01dd5faff"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_1_dmg08.png"
+sha256 = "a842194d1d86966ce0a8eed61a0fed85b4eb73cd079f1f78cc72f858b04633cf"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_2.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_2.gbc"
+sha256 = "4aec3fbd1d4c14505d89ca64077a3f9f3ede286b67d72a834b14ed05dfafc987"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_2_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_2_cgb04c.png"
+sha256 = "98d0ca652180bf9aad327b1c8c5abfca518b760e0ddbb923c083244d2bcf3747"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_2_dmg08.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_2_dmg08.png"
+sha256 = "6de5fbd34dffa39b42f1c43fc9075ace34b8530e2444a00953c99d16abd37a16"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_3.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_3.gbc"
+sha256 = "b328026524bc666504120392d7a38cd88fad78a7543158e775a545e449e6b6ec"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_3_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_3_cgb04c.png"
+sha256 = "ab30b3b12d594bf71587e65a981582a5253814000d40c851067ba7eab5dd9531"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_3_dmg08.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_3_dmg08.png"
+sha256 = "27da784a18fc4754a2e6f05b64448af54bccd27e36e14ae330a68e38b15590bc"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_4.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_4.gbc"
+sha256 = "008ab5d69754f6c06c092fd45abf4d5d1b13384fbab06e583c01a995d997685f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_4_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_4_cgb04c.png"
+sha256 = "ad19d856db3a97f6e706e8edf2b79152f7d1749faa21f6e116c9ef03e3ba9973"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_4_dmg08.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_4_dmg08.png"
+sha256 = "7382c020ab1405250be4a0cefb3a9508769578fcb3c612b2f2614983fbf44171"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_5.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_5.gbc"
+sha256 = "b0ecb8d7f6089cf02e456ef4babce3739596d1101251c4cfa3b24cdfcd9e4934"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_5_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_5_cgb04c.png"
+sha256 = "8aef483a3beda128eadca6d49d55c0f99553fd2fafeb17894f6f9e25746f28f6"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_5_dmg08.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_5_dmg08.png"
+sha256 = "cecab125c6af20b5edf3afba62fae1c20cdccd83a1867c5acbdf787c665c293a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_6.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_6.gbc"
+sha256 = "c2b6ba14cca93492c26cc332b401caea308cff8dc974c0ce238eb30fb4c7d67c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_6_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_6_cgb04c.png"
+sha256 = "1828a8fd5fadcf763b23a8d417eebb4c1a53ac974c3d2f2e6bd3d6924dac5278"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_6_dmg08.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_6_dmg08.png"
+sha256 = "2456f1a5cc20c2e779a7307d63368dc7e3b02147b1240cde2a75ac1f45d45438"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_1.gbc"
+sha256 = "6028b2989ccadc062ad5ec2dcd0a97e55b94197e857c4cb3df3e20ec2c318918"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_1_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_1_cgb04c.png"
+sha256 = "130f80a0f339d7f8f55502c19db1dbf85542bab7580733c4d93514f01dd5faff"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_2.gbc"
+sha256 = "b8c1a9073d989d1be6e8a9a6f4f56fe48468ea17ebe3384951b04e0ce19cdcd5"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_2_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_2_cgb04c.png"
+sha256 = "172368afe8b0e34cdb631598cd157a037b18aaf7e76770ae1d854b3fad3176b4"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_3.gbc"
+sha256 = "10fcf7894a8502ade0c04971ed837d54b2434de02db30de806bc1091c33cec03"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_3_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_3_cgb04c.png"
+sha256 = "0596941019503fd269ac6d0ef43d256068ae3e1a77b232f06e8c7faca2fc9114"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_4.gbc"
+sha256 = "0c375ac1b31c7d9c0ba64433e56f4e5f6d876e0d0abaf447f0b4ba7954f48375"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_4_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_4_cgb04c.png"
+sha256 = "8f44b4a8d04a50dc9ba3fdb05d126556d15057963f393853824be38979d942ce"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_5.gbc"
+sha256 = "90c56cf238d704b7ac988a29cb692780b334388d08063636961d1d8205627d2e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_5_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_5_cgb04c.png"
+sha256 = "8f44b4a8d04a50dc9ba3fdb05d126556d15057963f393853824be38979d942ce"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_6.gbc"
+sha256 = "de1eca29d1188323880143e003317e6fdfeb76681f59e4e60e904ce9535853d8"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_6_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_6_cgb04c.png"
+sha256 = "cd2a1ef885565f0dcd3b91ba988b47ee2632c447b233d199c69d4f4b2f339ffe"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_7.gbc"
+sha256 = "3c30106bb0d987808bd26994d6c2882ca1b709c6ae5b9753250173c1fc628a08"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_7_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_7_cgb04c.png"
+sha256 = "09c3b28fb99d1bb85d522d05a1b1cace83a7eecab9d7ac91d6441cb23ae94ec1"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_8.gbc"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_8.gbc"
+sha256 = "2be0c5c238b25002755be0e494d3b6cc0adf96fbc120f5810e6cafd498cec281"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0360c0/scx_during_m3_ds_8_cgb04c.png"
+target = "scx_during_m3/scx_0360c0/scx_during_m3_ds_8_cgb04c.png"
+sha256 = "8aef483a3beda128eadca6d49d55c0f99553fd2fafeb17894f6f9e25746f28f6"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_1.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_1.gbc"
+sha256 = "12742bf6e3b7fc6eca507209b7796584a594d0d7e00472ee0b26e5db444f1f75"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_1_cgb04c.png"
+sha256 = "aece8a0180e28fa54237e4dafa5a431eb41c6481ddbdd06e577887801c3c8380"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_1_dmg08.png"
+sha256 = "23bc39df8827080822397dc72f0ac5d88b3df9e85362b2de9170ab43fa659b99"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_2.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_2.gbc"
+sha256 = "2ef659aea7bc45b213040d3cc1e5a7791e47731a8607a3d13ab1a157d78958bf"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_2_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_2_cgb04c.png"
+sha256 = "ac1e3a17f31997f1d255cc775bcee6b1a3daa3f7831c2ec57c2b8aec267ee6c2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_2_dmg08.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_2_dmg08.png"
+sha256 = "63326c17c24f36b8cd057a6f08a1c076e36dd91bf5d649572ff4e814a1e5ac35"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_3.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_3.gbc"
+sha256 = "29767262b0c2ec7dbbbdf5137c9073f0e784fb6e55fbb1381c4e67c8f58ee520"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_3_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_3_cgb04c.png"
+sha256 = "f2dc49e544cd8eb00eaaab86d928f17abadec2c804a3150a504c88403e9f18df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_3_dmg08.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_3_dmg08.png"
+sha256 = "4b55152941cf8211aa8d10ab94f9fd64a497e5f7fba509b5d8aff8a99f8371f5"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_4.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_4.gbc"
+sha256 = "c8e09b136b77b0726310ff93f0cb3cff6607b885510bbe13c3241dd0856dc308"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_4_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_4_cgb04c.png"
+sha256 = "23a6380e1c2e5f218d58b5f7fbc2a91469b031cef9383c19a2876e14068bfbb1"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_4_dmg08.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_4_dmg08.png"
+sha256 = "e449c988ac0d253f4c13a99f130494e3cd131fe17cef1acccd79f000dfd21618"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_5.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_5.gbc"
+sha256 = "48097a00b042b80a65b775aed9b71e12a1a41bb09742b0f538fd9323a11c41c4"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_5_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_5_cgb04c.png"
+sha256 = "2a69c7964b97a345d8edaa527b4deb5fae4683d7db19b2a7948496365ead9646"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_5_dmg08.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_5_dmg08.png"
+sha256 = "d5e92001bd0608759944fc3a82d2e91e68f8b4cb1bac193a6ef502ac7369984c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_6.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_6.gbc"
+sha256 = "809eca352745dd9906d7b36db910a21dcd0e45ff31ed1acbcebd7be42cb4b42e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_6_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_6_cgb04c.png"
+sha256 = "14b1e361318e4b04202038ff1e2af7d2f32f93ce6f9ceb67cd2899bdd0f98899"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_6_dmg08.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_6_dmg08.png"
+sha256 = "8687a8d6e829ba568d41aaac9de97c7fd855b85e155e811514340c10550495ed"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_1.gbc"
+sha256 = "0161b7082dc5397351427a04df6167773078fb75c014190942aabf1208c6e5b5"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_1_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_1_cgb04c.png"
+sha256 = "aece8a0180e28fa54237e4dafa5a431eb41c6481ddbdd06e577887801c3c8380"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_2.gbc"
+sha256 = "6f2a9066bc396e5ec780f7eb440795bf7c8ce16e7d47d55f9ef7235c988c925d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_2_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_2_cgb04c.png"
+sha256 = "ec762016ba5e890bd55a86e6c222bb3ea9d419471578ac70f61dd5108a50579c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_3.gbc"
+sha256 = "04d140be7287f6c06196375e39a8f3337bc2afc8a7dd811aca6906f10edb9153"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_3_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_3_cgb04c.png"
+sha256 = "5f5c6be17a135de9aba70defcf0be9b04e7f66ce055319ede73b1256856d1945"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_4.gbc"
+sha256 = "37bb735fcdd8727bd83eee3b2ef318bb5e0a722b4f1d76d5dcbec1372b6505ec"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_4_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_4_cgb04c.png"
+sha256 = "f2dc49e544cd8eb00eaaab86d928f17abadec2c804a3150a504c88403e9f18df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_5.gbc"
+sha256 = "800ab8b92e3ce0e202a834ffa06b06a60cac24f75ca1233bb9e06ce098610e79"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_5_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_5_cgb04c.png"
+sha256 = "f2dc49e544cd8eb00eaaab86d928f17abadec2c804a3150a504c88403e9f18df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_6.gbc"
+sha256 = "05d06071ac85a29cc0f97c12813164c688502e019d44453af950ebc2fb54e92d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_6_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_6_cgb04c.png"
+sha256 = "5fe033a44b43dae92c11d45a26733b4dd5dc3bdc956729371b579cedac06234a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_7.gbc"
+sha256 = "068db05160d730b09281af8a917ad6538ab26928398b2329c5ad93dda8f87f9b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_7_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_7_cgb04c.png"
+sha256 = "6de63d2ee2d15e3df9834842f889ea8d268799028bac42cf6ef0f6dcaa44aa44"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_8.gbc"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_8.gbc"
+sha256 = "f5009e91a91fafee5dfbac29ca4dce7a7b264015a946bf45cbe76e963be83534"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0363c0/scx_during_m3_ds_8_cgb04c.png"
+target = "scx_during_m3/scx_0363c0/scx_during_m3_ds_8_cgb04c.png"
+sha256 = "2a69c7964b97a345d8edaa527b4deb5fae4683d7db19b2a7948496365ead9646"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_1.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_1.gbc"
+sha256 = "fa4d79dd3b99320686d231ea125b4199cdf426e633c4aac3f95fa6bce69428df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_1_cgb04c.png"
+sha256 = "f65ae360c086314df9a6f0ef146443e013d4006958ddcf853d55b87c4628a71c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_1_dmg08.png"
+sha256 = "332059d5e27c669e40bd0957990eabb423d9d155378c221fea263edb1e2e8c24"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_2.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_2.gbc"
+sha256 = "98c0f023ba3dc26ba9af7709bad11f37e634f27d785c26e9069a14cf1255eb9c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_2_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_2_cgb04c.png"
+sha256 = "1e6c3b6dabd5db306313c31e073fad02ec5a57dec8dc7958f45598dbc4f06a98"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_2_dmg08.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_2_dmg08.png"
+sha256 = "c79de2b435f5149d88d9cafa7b4b7d5442509113c2bd710482a2257f0ab584c7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_3.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_3.gbc"
+sha256 = "e9d457862d21257fc3d6f79c5e050b5f8eb357e1a500815c693cb905bcddb589"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_3_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_3_cgb04c.png"
+sha256 = "bcfb82a5e52bdf0955fd041c7f3c44db62463de60dac51bd84159d8150555473"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_3_dmg08.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_3_dmg08.png"
+sha256 = "2b94e565d760ab852342217a9d4828cc4899a6c30d317ce57c373083353424a2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_4.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_4.gbc"
+sha256 = "1687925c0e3f8ca8b967e28ae718a87dd0f9a65f0e19db2b670236fc376ad073"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_4_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_4_cgb04c.png"
+sha256 = "23a6380e1c2e5f218d58b5f7fbc2a91469b031cef9383c19a2876e14068bfbb1"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_4_dmg08.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_4_dmg08.png"
+sha256 = "e449c988ac0d253f4c13a99f130494e3cd131fe17cef1acccd79f000dfd21618"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_5.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_5.gbc"
+sha256 = "eaca25da53620fd2bd0dd2f6ed8886ac0cc2d82f8d46168e2d3a52e899564d15"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_5_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_5_cgb04c.png"
+sha256 = "2a69c7964b97a345d8edaa527b4deb5fae4683d7db19b2a7948496365ead9646"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_5_dmg08.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_5_dmg08.png"
+sha256 = "d5e92001bd0608759944fc3a82d2e91e68f8b4cb1bac193a6ef502ac7369984c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_6.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_6.gbc"
+sha256 = "51032ea89411076e72e3427347619e196a441182c88dff5837e9fa5aa0203bf2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_6_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_6_cgb04c.png"
+sha256 = "14b1e361318e4b04202038ff1e2af7d2f32f93ce6f9ceb67cd2899bdd0f98899"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_6_dmg08.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_6_dmg08.png"
+sha256 = "8687a8d6e829ba568d41aaac9de97c7fd855b85e155e811514340c10550495ed"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_1.gbc"
+sha256 = "6cd4f7d533675817aed099f1c1a571a59c538387cfd34c1cea3b250a44994e64"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_1_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_1_cgb04c.png"
+sha256 = "f65ae360c086314df9a6f0ef146443e013d4006958ddcf853d55b87c4628a71c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_2.gbc"
+sha256 = "54a937c2b87195c7d01726349ba0e7f99081cb8286beeea1e158efb3745e3214"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_2_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_2_cgb04c.png"
+sha256 = "98fa1480746f686da6f84b758589825f99cc1a1911997b6aee7d33852b7c456a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_3.gbc"
+sha256 = "5e525053c890c0d44ceca68363d49b02c5b094ef0583994bf78eb5e0309449be"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_3_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_3_cgb04c.png"
+sha256 = "a8c51ddd76e66df46e4c4524aef30071db412828b3dbca14f590d16b909c00f7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_4.gbc"
+sha256 = "2720e1fcc53461ec5a813c5b24415ab64add7317ecb101efa3248b3a86edcb42"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_4_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_4_cgb04c.png"
+sha256 = "f2dc49e544cd8eb00eaaab86d928f17abadec2c804a3150a504c88403e9f18df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_5.gbc"
+sha256 = "c2154631a53c7bb165273881523a550bd773d85d35b62563d192b69926012d20"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_5_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_5_cgb04c.png"
+sha256 = "f2dc49e544cd8eb00eaaab86d928f17abadec2c804a3150a504c88403e9f18df"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_6.gbc"
+sha256 = "2694629138d6621cab9af70b4c692b312cf0556e543261fb351636e256e5c87a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_6_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_6_cgb04c.png"
+sha256 = "5fe033a44b43dae92c11d45a26733b4dd5dc3bdc956729371b579cedac06234a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_7.gbc"
+sha256 = "0f389ac24416f2492d840c3571a9c58b5ab22432ee5dcbf7c0716b74b673d281"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_7_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_7_cgb04c.png"
+sha256 = "6de63d2ee2d15e3df9834842f889ea8d268799028bac42cf6ef0f6dcaa44aa44"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_8.gbc"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_8.gbc"
+sha256 = "b6bf2fddfa4d6beccbd3ac6a140e872c0ff19f8aaf0f9337525c878e8e64fafe"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0367c0/scx_during_m3_ds_8_cgb04c.png"
+target = "scx_during_m3/scx_0367c0/scx_during_m3_ds_8_cgb04c.png"
+sha256 = "2a69c7964b97a345d8edaa527b4deb5fae4683d7db19b2a7948496365ead9646"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_1.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_1.gbc"
+sha256 = "c9e39e72876a03c62b99d4d63ab011777ac771aea4306dec1c0d6d406a8c70b7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_1_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_1_cgb04c.png"
+sha256 = "ffaae88cfe15cf981157ecf068d79f292aea973c27034c352d39d6a8daf39dd7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_1_dmg08.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_1_dmg08.png"
+sha256 = "7a038cea61173b7f8d708f0ec6d676cfc515762fcf0da2c16fd6186b9e7b9ee5"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_2.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_2.gbc"
+sha256 = "cc3665fae861d84f6c0be9022dfb8f51b935af84aaa26fea5c6abc372b04d666"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_2_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_2_cgb04c.png"
+sha256 = "61661bc76b0359d7b2ad22801c1738d1d187776cb542d8f47de91d68e4146553"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_2_dmg08.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_2_dmg08.png"
+sha256 = "13cfd4c9034a802c275de80a8f0117a02cf7655a65d8d04747d0fdd432886612"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_3.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_3.gbc"
+sha256 = "b90d86bf648ae7efbbc1ea9377a087f2bc9bf8978e09aecd3cb44b8b7549d059"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_3_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_3_cgb04c.png"
+sha256 = "a750afef18fa609b50e024e71b316327241e035cb9b9fe3965be2b339410b275"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_3_dmg08.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_3_dmg08.png"
+sha256 = "4763dbe69c356535b0205bf553803dbbc3ab5c93af6230b60d7eb16af08ccbf6"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_4.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_4.gbc"
+sha256 = "126b25ab71ea6074031d4aeef56eaa8c3d94391e1e47d7b40c6b791bd2af0f24"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_4_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_4_cgb04c.png"
+sha256 = "31204e78693766da0e218ec45f47dc5f88f8e2a97bc7ce710523dc7fec4b8ce3"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_4_dmg08.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_4_dmg08.png"
+sha256 = "97f5adc9dc19c1aa98a3322430e359cc31dd199af749b56f2bd6e9807dc76122"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_5.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_5.gbc"
+sha256 = "891eee43c938774b4a4994e6f9f90f5b7498ccb5bd832fa7eb37eca623ee76cb"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_5_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_5_cgb04c.png"
+sha256 = "9417898b19b6a96d0586788ade065d0ea6a17a3665c830a9699d222ddbf7fb87"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_5_dmg08.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_5_dmg08.png"
+sha256 = "69f9c19121a2db3366a20cf14453d1997c1785ebba3777852adc8ffe54e7b88e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_6.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_6.gbc"
+sha256 = "e9e03d0fcb8d5071c0206e3bdc3563928957ebb2fd2885df0edabf7df2079623"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_6_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_6_cgb04c.png"
+sha256 = "68c6f52bbc57e751d191b8a566a49cb8797a555f20122a1c344f3362a797f2a2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_6_dmg08.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_6_dmg08.png"
+sha256 = "cd2ade69d523d6b98853e3c2c579ce66a1f987f036997e4234032d32a16e555c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_1.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_1.gbc"
+sha256 = "9c44db1b0a66f2c5cd0ef8936a6adfed2ae46842947b5777be19769c43bd8d67"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_1_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_1_cgb04c.png"
+sha256 = "ffaae88cfe15cf981157ecf068d79f292aea973c27034c352d39d6a8daf39dd7"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_2.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_2.gbc"
+sha256 = "c8b18bc99594bbc7f63181ea3f4ee8a4ca4dd985efd19003b269bc30e741236e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_2_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_2_cgb04c.png"
+sha256 = "8ed0858c0bcd49bf0cc05b37d4746ae07733b348a0d3ef91064205320ffbf2fc"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_3.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_3.gbc"
+sha256 = "a735d0b7ce1d248e8ab591af8133278a4eda739ab405a008338dc2b6bdf9a3f9"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_3_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_3_cgb04c.png"
+sha256 = "63e82b276a8fe1847eaa30f27fb72a07f150db439f877a78071db5639d7adf9f"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_4.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_4.gbc"
+sha256 = "78199ba590e3652e7982dc51ca1f144c78a47843ee7ffd80581683459d6719f8"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_4_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_4_cgb04c.png"
+sha256 = "a750afef18fa609b50e024e71b316327241e035cb9b9fe3965be2b339410b275"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_5.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_5.gbc"
+sha256 = "2a57ac98ea5ed75df0cafc5617919471a6943a6653b5646dcb38efffd6ae9d1d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_5_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_5_cgb04c.png"
+sha256 = "185d7f48ab443fa0aecaa66f39a71b9ad4e87ff230892d9520e6ad30e990f697"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_6.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_6.gbc"
+sha256 = "5e5e0b96c4c9e2d727031170a1d421c7a6e239c04799d59e140ff144991934d4"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_6_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_6_cgb04c.png"
+sha256 = "b3f12ecb96591a2d7afa9cd3777fd8704eddee7bb4a2b59e4c8e8892e3375495"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_7.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_7.gbc"
+sha256 = "6c7d5bee127571f50e06d5626ee1b435e15d343eaa997a4d61b4675a5e227a5a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_7_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_7_cgb04c.png"
+sha256 = "9926eb5bac1afb7333313ec836f4dd047aaaa648644f59f2563a6113634b952d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_8.gbc"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_8.gbc"
+sha256 = "e288c64c14122d6d1e2ac534363e36adde49c18006a8f20baf81da41df64e494"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_0761c0/scx_during_m3_ds_8_cgb04c.png"
+target = "scx_during_m3/scx_0761c0/scx_during_m3_ds_8_cgb04c.png"
+sha256 = "9417898b19b6a96d0586788ade065d0ea6a17a3665c830a9699d222ddbf7fb87"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_attrib_during_m3_spx0.gbc"
+target = "scx_during_m3/scx_attrib_during_m3_spx0.gbc"
+sha256 = "f9879b2914ea27c8b9e01c86e63f42cbb5c0d493f59b45ed30223d2e56e788f2"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_attrib_during_m3_spx0.png"
+target = "scx_during_m3/scx_attrib_during_m3_spx0.png"
+sha256 = "310f145018fe185d9501e140f80fade7478c2b589235759a43a4f8b4d550a870"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_attrib_during_m3_spx1.gbc"
+target = "scx_during_m3/scx_attrib_during_m3_spx1.gbc"
+sha256 = "be91f6948dca2c33ac3eb8042be9a281d7c754eee69389da2551a1ddbd820894"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_attrib_during_m3_spx1.png"
+target = "scx_during_m3/scx_attrib_during_m3_spx1.png"
+sha256 = "fd7ceec14bdcfb28bdabe6ef76aed3cbb7b1172b8bfce6800f48fa3c32a0a2d1"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_attrib_during_m3_spx1_ds.gbc"
+target = "scx_during_m3/scx_attrib_during_m3_spx1_ds.gbc"
+sha256 = "a3c4fe010bc64f14d93f582b3a7f41793098ef4537a1035801e7c23933cfff9e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_attrib_during_m3_spx1_ds_cgb04c.png"
+target = "scx_during_m3/scx_attrib_during_m3_spx1_ds_cgb04c.png"
+sha256 = "5156da2b97a18ba678e37bd00e5c11005d5770913de99c27c4470bd45ba1dd83"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_attrib_during_m3_spx2_ds.gbc"
+target = "scx_during_m3/scx_attrib_during_m3_spx2_ds.gbc"
+sha256 = "b723b2c3b2b867c1f9bdbe693bdc074a7db659d1a3a004e655fe6e9937b7897e"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_attrib_during_m3_spx2_ds_cgb04c.png"
+target = "scx_during_m3/scx_attrib_during_m3_spx2_ds_cgb04c.png"
+sha256 = "5af87f0533d21674d472071d82478842c211c898222c1629a57ad970be94069a"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx0.gbc"
+target = "scx_during_m3/scx_during_m3_spx0.gbc"
+sha256 = "d6596d96d600d226b04fb252afe427fa1c72d736e9b9e0bb1f8b4197230ca55c"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx0_cgb04c.png"
+target = "scx_during_m3/scx_during_m3_spx0_cgb04c.png"
+sha256 = "864e7a07971d37a5b635dc0d46f092a4a7f3ad5d26daf481cec403b49e985f54"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx0_dmg08.png"
+target = "scx_during_m3/scx_during_m3_spx0_dmg08.png"
+sha256 = "2e27af159ffe1d0417831559f93473b41d9ac1b33458d412fb55096e97e04bab"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx1.gbc"
+target = "scx_during_m3/scx_during_m3_spx1.gbc"
+sha256 = "64384c3098c3ae2ae5b7fce8ad3dd6df6491acb655b63f58bcb3b683698ef445"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx1_cgb04c.png"
+target = "scx_during_m3/scx_during_m3_spx1_cgb04c.png"
+sha256 = "26b6222af9bac5e9f8cf9e7011d15143e7139a3b34e96023b3208a277ec6172b"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx1_dmg08.png"
+target = "scx_during_m3/scx_during_m3_spx1_dmg08.png"
+sha256 = "2e27af159ffe1d0417831559f93473b41d9ac1b33458d412fb55096e97e04bab"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx2.gbc"
+target = "scx_during_m3/scx_during_m3_spx2.gbc"
+sha256 = "76c5ec12112b540692613a64ffe269b0897af180e45959e995dba292848f78ae"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx2_cgb04c.png"
+target = "scx_during_m3/scx_during_m3_spx2_cgb04c.png"
+sha256 = "3547243ff1b6bc3323f3f8881b5de7d385a37a3a2cc17efac514ae694ff21b28"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx2_dmg08.png"
+target = "scx_during_m3/scx_during_m3_spx2_dmg08.png"
+sha256 = "99208a4da494163fb8ea46fd9895d08120997e0f5853e653d205918b1d4cb96d"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx2_ds.gbc"
+target = "scx_during_m3/scx_during_m3_spx2_ds.gbc"
+sha256 = "0dec4a5022e247a9b99870ba0e7cbead8008ad0cd7e4a8a292d4db0c4f3296bf"
+
+[[source.family.file]]
+path = "gambatte/scx_during_m3/scx_during_m3_spx2_ds_cgb04c.png"
+target = "scx_during_m3/scx_during_m3_spx2_ds_cgb04c.png"
+sha256 = "0796431921879c0e26e8323f7220ff9d951925564909ed77252691da85b88378"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_1.gbc"
+target = "scy/scx3/scy_during_m3_1.gbc"
+sha256 = "702496891666c46e538fd1a17b2d817a1f3c1af119d072ef8e29e47337cfbf25"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_1_cgb04c.png"
+target = "scy/scx3/scy_during_m3_1_cgb04c.png"
+sha256 = "1b552dd41bb2860eb53a4401bd0ccbf31fffc8666ba3b75afd5f057f7996b822"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_1_dmg08.png"
+target = "scy/scx3/scy_during_m3_1_dmg08.png"
+sha256 = "08fd3482a2ecd62b2dc07d518e07faf7ebd4c0f4a77c44cacb8702e3c4d09128"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_2.gbc"
+target = "scy/scx3/scy_during_m3_2.gbc"
+sha256 = "0fa4e13e4ac3f34e335f6d44ef6a0d58a2bb3506cbb9524a1c9dedeb0be2c6b2"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_2_cgb04c.png"
+target = "scy/scx3/scy_during_m3_2_cgb04c.png"
+sha256 = "a6863965fe91703a0841d4cd4278bac4d03b6112592257a5ef96c6562aee4683"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_2_dmg08.png"
+target = "scy/scx3/scy_during_m3_2_dmg08.png"
+sha256 = "222657337e4451917a0f8d366af45bd572508b630c5b47e5e1002a53ab7b3810"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_3.gbc"
+target = "scy/scx3/scy_during_m3_3.gbc"
+sha256 = "496e5f7b1788d504878a499e6f7e42c90b6ca45e2a1f83e162ee55de3db670ba"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_3_cgb04c.png"
+target = "scy/scx3/scy_during_m3_3_cgb04c.png"
+sha256 = "2538439c83071c97bd483e3f0fc38750d07676b0f1830093752f27a54c316b09"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_3_dmg08.png"
+target = "scy/scx3/scy_during_m3_3_dmg08.png"
+sha256 = "0ef930cfafa027ce69444eb888d3951a13f1072c1e2ee6639e6fca11db8f9ab6"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_4.gbc"
+target = "scy/scx3/scy_during_m3_4.gbc"
+sha256 = "116ab730c24c10d9b315f18d3e502fad644d343d8f43a8a20f197f4e550833e4"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_4_cgb04c.png"
+target = "scy/scx3/scy_during_m3_4_cgb04c.png"
+sha256 = "4c143f0b2ab955e0f2d8d4ba7e0fc755059f3834eda17ad4f8c840308a6cf136"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_4_dmg08.png"
+target = "scy/scx3/scy_during_m3_4_dmg08.png"
+sha256 = "adc9d9b85426290a0a35300d0104f521de9907bda69f79194ca9bab7cbcaeb75"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_5.gbc"
+target = "scy/scx3/scy_during_m3_5.gbc"
+sha256 = "6bb2d709960b493102bc2954af48efa9a8fd8c1640e9ce68b41434f77d2e7903"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_5_cgb04c.png"
+target = "scy/scx3/scy_during_m3_5_cgb04c.png"
+sha256 = "44b14f67ac38dae4dc68b87ef5f8f52dd5ec95489d4d87fae27902ea007100dc"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_5_dmg08.png"
+target = "scy/scx3/scy_during_m3_5_dmg08.png"
+sha256 = "8ac17ba094a354cebc10294884c729680d6080541c1135cdeb4e40340e81778f"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_6.gbc"
+target = "scy/scx3/scy_during_m3_6.gbc"
+sha256 = "317589def99a6ef153189b86f858b5be1fac8f341705759ae6428fb8bba24185"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_6_cgb04c.png"
+target = "scy/scx3/scy_during_m3_6_cgb04c.png"
+sha256 = "962df26c2fb13f22322d060f02560d3483366fb056bb5a27ac83b905962986ac"
+
+[[source.family.file]]
+path = "gambatte/scy/scx3/scy_during_m3_6_dmg08.png"
+target = "scy/scx3/scy_during_m3_6_dmg08.png"
+sha256 = "1c7cf73ddf8766c6c734d3f5c767b0090d2f57bc7ce56833a5df78ee66d59ee6"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_1.gbc"
+target = "scy/scy_during_m3_1.gbc"
+sha256 = "4dea3eacd2dc3b56bc52b950a81621a0747fd6101be209b9ce0a31166fdea398"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_1_cgb04c.png"
+target = "scy/scy_during_m3_1_cgb04c.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_1_dmg08.png"
+target = "scy/scy_during_m3_1_dmg08.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_2.gbc"
+target = "scy/scy_during_m3_2.gbc"
+sha256 = "49a7968bdb2d68196c535e99499506cc9d9a7d1e160909c84ef3550c2cc49d6a"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_2_cgb04c.png"
+target = "scy/scy_during_m3_2_cgb04c.png"
+sha256 = "81efbb7d22fc20c97e5bd66b3c86e50e9f74474a55c9d1b34cf3eefcb2ad259e"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_2_dmg08.png"
+target = "scy/scy_during_m3_2_dmg08.png"
+sha256 = "ddb7375243325d29f64365d31ccc92af6ad9a68aba7692d1592ab8a68e46ebc0"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_3.gbc"
+target = "scy/scy_during_m3_3.gbc"
+sha256 = "7a9af0369a12ce3e4e23bb443f3640e2d0387a697dce033bc4d5a8ec2a76eaf7"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_3_cgb04c.png"
+target = "scy/scy_during_m3_3_cgb04c.png"
+sha256 = "d8364c60abb9175ef409bc9cc4a86681986e9b3f5aeb85e6d97545189dd60aab"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_3_dmg08.png"
+target = "scy/scy_during_m3_3_dmg08.png"
+sha256 = "10a0ba1b9831c0b419ba9484adf5443202888ff67b339bbd6d7621b8d21ac17f"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_4.gbc"
+target = "scy/scy_during_m3_4.gbc"
+sha256 = "d51d25b3cb732c430f36075569ca010d424efbc1c4436948fe0b0611979350f2"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_4_cgb04c.png"
+target = "scy/scy_during_m3_4_cgb04c.png"
+sha256 = "5ac2f3834f6446bbfe1f51a7cfb4059e7283ced0b0a2b9461b80ad5fbdfd2cde"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_4_dmg08.png"
+target = "scy/scy_during_m3_4_dmg08.png"
+sha256 = "6a59fc95da391dbacdf7cabd4362dba099a81c5d868b53ecc756fe94f24e9177"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_5.gbc"
+target = "scy/scy_during_m3_5.gbc"
+sha256 = "4cc55d4fc371d52ccfaf7045a9be5c4645dc0c0ce7f29dc93f4a50769cbee865"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_5_cgb04c.png"
+target = "scy/scy_during_m3_5_cgb04c.png"
+sha256 = "d09820e6b64f26109827740fa4b18b22e84914a3b7fc9fef2f908c0fe5dc4ccf"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_5_dmg08.png"
+target = "scy/scy_during_m3_5_dmg08.png"
+sha256 = "437cc49801ff89ed13df62d675b3c99ed7049086c5c8f3d772ba3e9ee30b2488"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_6.gbc"
+target = "scy/scy_during_m3_6.gbc"
+sha256 = "dc480f29346b0ea345fa2e84621539b57272174c3c33cadc1ec4880b8edf3728"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_6_cgb04c.png"
+target = "scy/scy_during_m3_6_cgb04c.png"
+sha256 = "44a71f7126e11ccbd75f8b9ef6cb78d5c29208a67dd49b264c42161c8330de3f"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_6_dmg08.png"
+target = "scy/scy_during_m3_6_dmg08.png"
+sha256 = "058445a3709fbc4b963b550a0afd57913f380bd2981a507ea58b40feb66c48a4"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_1.gbc"
+target = "scy/scy_during_m3_ds_1.gbc"
+sha256 = "033ca71e69e3a5209d23bb5e6e16d2d6d67ada36693af7d1199c743ad0dbde3a"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_1_cgb04c.png"
+target = "scy/scy_during_m3_ds_1_cgb04c.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_2.gbc"
+target = "scy/scy_during_m3_ds_2.gbc"
+sha256 = "ff8c13a86981952fa40b6f6db548c7a2407d35a24bad5cdd332f4ef6113f7a48"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_2_cgb04c.png"
+target = "scy/scy_during_m3_ds_2_cgb04c.png"
+sha256 = "b4b35baa7e9cf45d0a82012e2338c2f3803036b774401a3ccdf98981e9473e14"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_3.gbc"
+target = "scy/scy_during_m3_ds_3.gbc"
+sha256 = "3381486bfc10753b664eda6f62988e7c2b4d86a0a04c5d8b3f31aee85992ae6b"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_3_cgb04c.png"
+target = "scy/scy_during_m3_ds_3_cgb04c.png"
+sha256 = "60ca7cfdec515a206b3e2f79d5884597c2d0e9d5c954e3caf4bd8b63b21e7cbc"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_4.gbc"
+target = "scy/scy_during_m3_ds_4.gbc"
+sha256 = "e24dc5433054d05d3308829be7a71934daf5455485471c7f35fe2532c37ec36b"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_4_cgb04c.png"
+target = "scy/scy_during_m3_ds_4_cgb04c.png"
+sha256 = "28f7292e733350106ebf57d5379aead52f261edd0adec06363621308f868d870"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_5.gbc"
+target = "scy/scy_during_m3_ds_5.gbc"
+sha256 = "5f703aae3dfc166f28b9f2f4365324030a5f768e97d0a0e5b71dce76eff7dfbb"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_5_cgb04c.png"
+target = "scy/scy_during_m3_ds_5_cgb04c.png"
+sha256 = "d8364c60abb9175ef409bc9cc4a86681986e9b3f5aeb85e6d97545189dd60aab"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_6.gbc"
+target = "scy/scy_during_m3_ds_6.gbc"
+sha256 = "576f27f08d3e2d4ee5ea8fe4e80e1d5289d1ec4d6347d932d31d1c67f50cc960"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_6_cgb04c.png"
+target = "scy/scy_during_m3_ds_6_cgb04c.png"
+sha256 = "598f2cfd36a320bb27970a4846d8443ddc13d8a91d3ebffb25a6f37204d1d2d8"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_7.gbc"
+target = "scy/scy_during_m3_ds_7.gbc"
+sha256 = "153cee49d70fb67d4c24372a6a947c863be736bd57acb0211617e685c271e83c"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_ds_7_cgb04c.png"
+target = "scy/scy_during_m3_ds_7_cgb04c.png"
+sha256 = "ea08f21926e26615b3ed41da8ade4122908b73edb0627755b019d6c1e1fe8915"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_1.gbc"
+target = "scy/scy_during_m3_spx08_1.gbc"
+sha256 = "71e73f0276ada7c87718f78b0b7e70eeb1a2fcf6b849a80a17b9e9097f4ba0d6"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_1_cgb04c.png"
+target = "scy/scy_during_m3_spx08_1_cgb04c.png"
+sha256 = "afaf914ed99618699ea5e69f25182da1e5f3dcd8fe804fdc0a627596c5ff23c4"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_1_dmg08.png"
+target = "scy/scy_during_m3_spx08_1_dmg08.png"
+sha256 = "5cc1d884551d487913051d1532d9dbf1496c69e309be8f17ee1b79bf0651dbc0"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_2.gbc"
+target = "scy/scy_during_m3_spx08_2.gbc"
+sha256 = "ad2c85d020ed6fe20371ada3104e4b2d7c6c9434dac8438c979f8a10d10e07ac"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_2_cgb04c.png"
+target = "scy/scy_during_m3_spx08_2_cgb04c.png"
+sha256 = "28dce907fcb5d3081add10284713c6cada72e4123b73b3f9e0c1ebc126699340"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_2_dmg08.png"
+target = "scy/scy_during_m3_spx08_2_dmg08.png"
+sha256 = "eaedee828b1217b48bfd43698d9cb21cc1210eeaa30b7ada257d61149ae54faf"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_3.gbc"
+target = "scy/scy_during_m3_spx08_3.gbc"
+sha256 = "d4d2ab002af1b6295dcd66e322832cd54c44c44968019e56a1f2b34b29b3898a"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_3_cgb04c.png"
+target = "scy/scy_during_m3_spx08_3_cgb04c.png"
+sha256 = "a4d88a0330f29baea597d492faabc2d4f756db277022a2ee338f0a45ca87d801"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_3_dmg08.png"
+target = "scy/scy_during_m3_spx08_3_dmg08.png"
+sha256 = "18114e34ba562580c1ea71099b83e0507710c05c85dde4f1d68b8ad269061919"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_4.gbc"
+target = "scy/scy_during_m3_spx08_4.gbc"
+sha256 = "66b00c08f9eb3f0bef796643ec4da8e235bc7c0bdc202e9c27c835c08b136b68"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_4_cgb04c.png"
+target = "scy/scy_during_m3_spx08_4_cgb04c.png"
+sha256 = "c27d5873610cdd37103b7a30a76c9a1eb01d5b12d317f1d9820d3b91ad1df6ed"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_ds_1.gbc"
+target = "scy/scy_during_m3_spx08_ds_1.gbc"
+sha256 = "38da1ca96d3b39870630f23c862a2f65e53fd6ba69b8fd77582908411c9fc98d"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_ds_1_cgb04c.png"
+target = "scy/scy_during_m3_spx08_ds_1_cgb04c.png"
+sha256 = "8358c49a862462b542569fb1dbf0873b9b1d0e95fd1bfb32f384d52cbade3352"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_ds_2.gbc"
+target = "scy/scy_during_m3_spx08_ds_2.gbc"
+sha256 = "739ef8179fbdf62e8708e14350bdb27dff1e3ab6ad34acf7062e6e061abfcc01"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_ds_2_cgb04c.png"
+target = "scy/scy_during_m3_spx08_ds_2_cgb04c.png"
+sha256 = "232acaa213a9ed15ecc97158651eedea7e9b020f008223a8becdd5128f872150"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_ds_3.gbc"
+target = "scy/scy_during_m3_spx08_ds_3.gbc"
+sha256 = "49e2827f9ce59eb9d3b6f042c8696c1cc88aea5761d6f5202ea4210d34ace3e1"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_ds_3_cgb04c.png"
+target = "scy/scy_during_m3_spx08_ds_3_cgb04c.png"
+sha256 = "f1c63e6df043812cc95ad1e669ce9328fa11337b39e0b9cdb6b03ed9026936b5"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_ds_4.gbc"
+target = "scy/scy_during_m3_spx08_ds_4.gbc"
+sha256 = "f2129f769f5f8ecda6120ed5714b20db9a9b7721332c098d5ee3c2a6e95d5f72"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx08_ds_4_cgb04c.png"
+target = "scy/scy_during_m3_spx08_ds_4_cgb04c.png"
+sha256 = "9c7dabe46fb12fc5c1642cec9cb12de960f7f05bcdb4013df4cc6dc671ca6321"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_1.gbc"
+target = "scy/scy_during_m3_spx09_1.gbc"
+sha256 = "4c60ec3870affe60b899c7894fb2425dc76945d438a9ec69c62afdb4ff5e5ae5"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_1_cgb04c.png"
+target = "scy/scy_during_m3_spx09_1_cgb04c.png"
+sha256 = "d896a8d79478a0ca11efbd0be226cdce4a30a03805d1e3716f831e19a1ed29c1"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_1_dmg08.png"
+target = "scy/scy_during_m3_spx09_1_dmg08.png"
+sha256 = "bfbcccb4a7c9ebb4f9645960a3fbf775a22ed8732ec0507fcf0d83b57ce51260"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_2.gbc"
+target = "scy/scy_during_m3_spx09_2.gbc"
+sha256 = "2576142dc46d396bd6fbf4c8a1fbbf233abf848dd09a150600b22cd2baf8a9f1"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_2_cgb04c.png"
+target = "scy/scy_during_m3_spx09_2_cgb04c.png"
+sha256 = "1a3dc22ecdab8388c2130afe4773fae829b4e65b19b082cf790b08a00ac4f2d1"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_2_dmg08.png"
+target = "scy/scy_during_m3_spx09_2_dmg08.png"
+sha256 = "69b7e30bba7f3e6712a5df5ab3332243cd34805cb42090c06be63c4055d90b0e"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_3.gbc"
+target = "scy/scy_during_m3_spx09_3.gbc"
+sha256 = "bd6c31ab76a1e3e9a4a254726ac3028620a713320aabda3c6f8066d49bd9d98b"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_3_cgb04c.png"
+target = "scy/scy_during_m3_spx09_3_cgb04c.png"
+sha256 = "c859f20452c07d3cf9c38d9d3cbe59f50304456ac4b5fd8c672d4d18342a50e5"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_3_dmg08.png"
+target = "scy/scy_during_m3_spx09_3_dmg08.png"
+sha256 = "f197af353bb076a3f865889b72270a53935718441bcd5423c088e33960489f3f"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_4.gbc"
+target = "scy/scy_during_m3_spx09_4.gbc"
+sha256 = "682aa09c8ec6dd05b228ae5fb90b36babe98df6579d81a42370fee439751a222"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_4_cgb04c.png"
+target = "scy/scy_during_m3_spx09_4_cgb04c.png"
+sha256 = "fbee7d857d8857b54a6c78c97692a19228f0922ad310837d30013e73cc2c0c31"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_ds_1.gbc"
+target = "scy/scy_during_m3_spx09_ds_1.gbc"
+sha256 = "fe837d4d3ed76090960d87b5057f3b2a9339ac1c528e0202b1c082e9e32fc223"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_ds_1_cgb04c.png"
+target = "scy/scy_during_m3_spx09_ds_1_cgb04c.png"
+sha256 = "a019576473ff167b154819240868f69b779afdd1af2316890e93e9ef8cdd1f52"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_ds_2.gbc"
+target = "scy/scy_during_m3_spx09_ds_2.gbc"
+sha256 = "72d1b5c7c13c00e80c4484b424510ba97a66b1f9146ab5b8cd636f797a794876"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_ds_2_cgb04c.png"
+target = "scy/scy_during_m3_spx09_ds_2_cgb04c.png"
+sha256 = "0baa115a74879698a43d62b92bb33417eb4c4637ad06e1696a11d574649e9945"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_ds_3.gbc"
+target = "scy/scy_during_m3_spx09_ds_3.gbc"
+sha256 = "e62d776519c170b49de814e41b94e1f937048268c042c136cd88bca304077129"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_ds_3_cgb04c.png"
+target = "scy/scy_during_m3_spx09_ds_3_cgb04c.png"
+sha256 = "8f50df66e71e0237ab86220782f62310e8a1fef9725e242cce4ef6621d31905a"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_ds_4.gbc"
+target = "scy/scy_during_m3_spx09_ds_4.gbc"
+sha256 = "9f8e07f38597c1ad48d90d45c0414d083f4833af22300fd59824bc1e6d7a436b"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx09_ds_4_cgb04c.png"
+target = "scy/scy_during_m3_spx09_ds_4_cgb04c.png"
+sha256 = "e9381c0297b5e890003de7c0479ed3fdf2412375b76b66df77f36fcb9031d5a9"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_1.gbc"
+target = "scy/scy_during_m3_spx0A_1.gbc"
+sha256 = "c8d69936b49bdcfd9788b7982a64500ab87656b481cb14c7a9a7312b5b7c8022"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_1_cgb04c.png"
+target = "scy/scy_during_m3_spx0A_1_cgb04c.png"
+sha256 = "b84e15fff55e0f6dac166a2a828df15d23a3266b9e0c19c637d50111f6e85944"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_1_dmg08.png"
+target = "scy/scy_during_m3_spx0A_1_dmg08.png"
+sha256 = "906c2003db3adad5a8404bb7061f211d52500a518bd585989525a58d3b3a06be"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_2.gbc"
+target = "scy/scy_during_m3_spx0A_2.gbc"
+sha256 = "4461a25cb3a6acc6057ae0ac0b895c761d1cd56d660d24edccef36d6c82fc16a"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_2_cgb04c.png"
+target = "scy/scy_during_m3_spx0A_2_cgb04c.png"
+sha256 = "c740f2eeb41df043199ca9b5b20ef76e451952641107698b294d6297404d70aa"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_2_dmg08.png"
+target = "scy/scy_during_m3_spx0A_2_dmg08.png"
+sha256 = "04962e284c12c36459ac0f0426feee993ca169186e2a31b940ed4cb3905f9ce0"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_3.gbc"
+target = "scy/scy_during_m3_spx0A_3.gbc"
+sha256 = "41b5c611ddb9a39052f4d5ade249345e2f780d72fc414b9260c9f5163fc9a120"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_3_cgb04c.png"
+target = "scy/scy_during_m3_spx0A_3_cgb04c.png"
+sha256 = "8b3ebd045c593267159986d1659e2f7558fe3dc29c6595e8685a51a013617725"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_3_dmg08.png"
+target = "scy/scy_during_m3_spx0A_3_dmg08.png"
+sha256 = "faed06d0ce427b39f5bfa8609a7805e802fa398075ef0083e3ce5c235af9939d"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_4.gbc"
+target = "scy/scy_during_m3_spx0A_4.gbc"
+sha256 = "271aa917de4b8497273c89c4b1dd5a700f5f7c2cc173a1738e5791d307fa1054"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0A_4_cgb04c.png"
+target = "scy/scy_during_m3_spx0A_4_cgb04c.png"
+sha256 = "ccdd7e93b30ecb26ed7dbb4dd174a27dffc556fd40edaee57a1f56dfaac365d1"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_1.gbc"
+target = "scy/scy_during_m3_spx0B_1.gbc"
+sha256 = "58ce0072306b1a4a00628f1078e8ecc2e3a1f3e3a346a0a07e656f4767c044dd"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_1_cgb04c.png"
+target = "scy/scy_during_m3_spx0B_1_cgb04c.png"
+sha256 = "3a6c490329f257bdb70c55a47ad4766708d15b73221a6607d68bb9a854b17cba"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_1_dmg08.png"
+target = "scy/scy_during_m3_spx0B_1_dmg08.png"
+sha256 = "309c79357c84ff5e55dd31ac69d8139d924f9e20ac670fa820f9e56aeed10bf5"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_2.gbc"
+target = "scy/scy_during_m3_spx0B_2.gbc"
+sha256 = "a208c90363f741d1620eaa4811b5711224309ac7fb83dda18e83f2f1865a2bbc"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_2_cgb04c.png"
+target = "scy/scy_during_m3_spx0B_2_cgb04c.png"
+sha256 = "4fb0414d2d58e1f6b5beca803c3d0c6ecb0b1e7184acf61655a4fb84d3c5d146"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_2_dmg08.png"
+target = "scy/scy_during_m3_spx0B_2_dmg08.png"
+sha256 = "0bf99b6690b2830b6645781a506665646ee2ee4b065e14846b5ecc4c6d9322e8"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_3.gbc"
+target = "scy/scy_during_m3_spx0B_3.gbc"
+sha256 = "438fabd219527d6a5e319e096eff22ce5044c47616680a39952cbfdbeaf67613"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_3_cgb04c.png"
+target = "scy/scy_during_m3_spx0B_3_cgb04c.png"
+sha256 = "8cbc74532c9fba3578cc9222e94990c614fc3a1d4a8e2cf48bd53417fa275b59"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_3_dmg08.png"
+target = "scy/scy_during_m3_spx0B_3_dmg08.png"
+sha256 = "042a0cca5833966dc485ce2238e8ba6ac04a947d1dd654503ebe1a80961db467"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_4.gbc"
+target = "scy/scy_during_m3_spx0B_4.gbc"
+sha256 = "125632156283a6ed633eabff235ee6ca542ef2d9a35aa570e4c81896cfab713a"
+
+[[source.family.file]]
+path = "gambatte/scy/scy_during_m3_spx0B_4_cgb04c.png"
+target = "scy/scy_during_m3_spx0B_4_cgb04c.png"
+sha256 = "7192bf4c26f139dac812d6347d44b3abe428f3ba0e79a1fe788c7975e74e4a21"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/late_wx_ds_1.gbc"
+target = "window/on_screen/late_wx_ds_1.gbc"
+sha256 = "4fafe3f70a32c542af150d40d92c30a45385ec5cad2adff7f47f69944a210f2a"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/late_wx_ds_1.png"
+target = "window/on_screen/late_wx_ds_1.png"
+sha256 = "18d3669bdec029208654fdace4a29b09c69440b068b5dfde1daea92da0a8dbcf"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/late_wx_ds_2.gbc"
+target = "window/on_screen/late_wx_ds_2.gbc"
+sha256 = "a59449e443c107a508e189e23b0dbb9adc2f814e3a128a909135a1d1aef0917e"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/late_wx_ds_2.png"
+target = "window/on_screen/late_wx_ds_2.png"
+sha256 = "db36a996eb85906acd437061ea9314358d041dd84ffa3a68e4f0fdccab29ee38"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/weon_wx18_weoff_weon_wx80.gbc"
+target = "window/on_screen/weon_wx18_weoff_weon_wx80.gbc"
+sha256 = "067064bc9c6d9419f7468be4cb01f8cc6d91fadc1a503f9fcda18dfdac258421"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/weon_wx18_weoff_weon_wx80_cgb04c.png"
+target = "window/on_screen/weon_wx18_weoff_weon_wx80_cgb04c.png"
+sha256 = "d208d89372028b739b754e73a432c78a7654d8c84d480d9ceb1016fec6b93da3"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/weon_wx18_weoff_weon_wx80_dmg08.png"
+target = "window/on_screen/weon_wx18_weoff_weon_wx80_dmg08.png"
+sha256 = "0fe33f13d66838d1c27b21feda6369ef034ab922c254d08bf22f2bf41a78fb2f"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wx17_weoff_wxA5_weon.gbc"
+target = "window/on_screen/wx17_weoff_wxA5_weon.gbc"
+sha256 = "5a6df2af5d234b61005db8627c7369453cea2d3bf28bfe77805d3674585972b3"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wx17_weoff_wxA5_weon_cgb04c.png"
+target = "window/on_screen/wx17_weoff_wxA5_weon_cgb04c.png"
+sha256 = "154a9890a0242996ae026601619cece81875ca28d5d90b98066741bb262510e8"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wx17_weoff_wxA5_weon_dmg08.png"
+target = "window/on_screen/wx17_weoff_wxA5_weon_dmg08.png"
+sha256 = "9132eca14059821e32ccf1cc83cd7134d578437504d360bf6137272526776e76"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wx17_wxA5.gbc"
+target = "window/on_screen/wx17_wxA5.gbc"
+sha256 = "b44b83227b1c6d11feb2b49e23e8938c1aac8740151c09be1455ab2766c85926"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wx17_wxA5_cgb04c.png"
+target = "window/on_screen/wx17_wxA5_cgb04c.png"
+sha256 = "b041c76fb4a3a28442b2af679f620324d7470db051e5fb7ecb932de342f0b009"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wx17_wxA5_dmg08.png"
+target = "window/on_screen/wx17_wxA5_dmg08.png"
+sha256 = "da2ef23a2c5d3a223e1b0683ea662024f97510435dddca4af8473d244f329e9c"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA5_weoff_at_xposA5.gbc"
+target = "window/on_screen/wxA5_weoff_at_xposA5.gbc"
+sha256 = "bad86f7fb48f97b2cf9df548780e5fa2c3585113f43fe4e452ccd34812c99929"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA5_weoff_at_xposA5_cgb04c.png"
+target = "window/on_screen/wxA5_weoff_at_xposA5_cgb04c.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA5_weoff_at_xposA5_dmg08.png"
+target = "window/on_screen/wxA5_weoff_at_xposA5_dmg08.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_3.gbc"
+target = "window/on_screen/wxA6_3.gbc"
+sha256 = "12025d9871fd1463e217bd7f6ddcbeb4732ab65aa4e161222ab72df53b66b3c9"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_3_cgb04c.png"
+target = "window/on_screen/wxA6_3_cgb04c.png"
+sha256 = "f4d15f85a55dba92d5707e9b8eea91b96483a79876ac7245e8630886f7646772"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_3_dmg08.png"
+target = "window/on_screen/wxA6_3_dmg08.png"
+sha256 = "d2657770db33c3a3a59259efccef8152c38319c93d83b919470253805065b365"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_1.gbc"
+target = "window/on_screen/wxA6_late_we_reenable_1.gbc"
+sha256 = "9df809dd154717e68820e9d44e563dd30462dcb3580bd398d8f0ad734a4e090a"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_1_cgb04c.png"
+target = "window/on_screen/wxA6_late_we_reenable_1_cgb04c.png"
+sha256 = "7d5e5785eaecede7dbd63696256e9d4451dda8a4aa4cba14c722450ef79edef6"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_1_dmg08.png"
+target = "window/on_screen/wxA6_late_we_reenable_1_dmg08.png"
+sha256 = "090088999799e832992be17bf890b7bb08f66a745ca18e610c946f2f995ad22e"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_2.gbc"
+target = "window/on_screen/wxA6_late_we_reenable_2.gbc"
+sha256 = "5d7349870e3daec3747a798dcfa75f2df124e57f46f3074709e986986c411d1a"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_2_cgb04c.png"
+target = "window/on_screen/wxA6_late_we_reenable_2_cgb04c.png"
+sha256 = "7d5e5785eaecede7dbd63696256e9d4451dda8a4aa4cba14c722450ef79edef6"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_2_dmg08.png"
+target = "window/on_screen/wxA6_late_we_reenable_2_dmg08.png"
+sha256 = "090088999799e832992be17bf890b7bb08f66a745ca18e610c946f2f995ad22e"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_3.gbc"
+target = "window/on_screen/wxA6_late_we_reenable_3.gbc"
+sha256 = "116f930cfde73f047f959e569ebc11a71ada5c5548338e1620ad08a2681a6656"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_3_cgb04c.png"
+target = "window/on_screen/wxA6_late_we_reenable_3_cgb04c.png"
+sha256 = "7d5e5785eaecede7dbd63696256e9d4451dda8a4aa4cba14c722450ef79edef6"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_3_dmg08.png"
+target = "window/on_screen/wxA6_late_we_reenable_3_dmg08.png"
+sha256 = "4472b68842b1601e047295dea55abebe291152932d6692df8f4a77df074abe9f"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_4.gbc"
+target = "window/on_screen/wxA6_late_we_reenable_4.gbc"
+sha256 = "645b69d9eae59ac483de3530f850db427d4e2ba3f4855fe786e2ff8bd891e473"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_4_cgb04c.png"
+target = "window/on_screen/wxA6_late_we_reenable_4_cgb04c.png"
+sha256 = "7d5e5785eaecede7dbd63696256e9d4451dda8a4aa4cba14c722450ef79edef6"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_late_we_reenable_4_dmg08.png"
+target = "window/on_screen/wxA6_late_we_reenable_4_dmg08.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_scx7.gbc"
+target = "window/on_screen/wxA6_scx7.gbc"
+sha256 = "326ff1bef3bfc0824127567df490da8a8d3c271aad44c5b861b8c4f708e01e40"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_scx7_cgb04c.png"
+target = "window/on_screen/wxA6_scx7_cgb04c.png"
+sha256 = "f4d15f85a55dba92d5707e9b8eea91b96483a79876ac7245e8630886f7646772"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_scx7_dmg08.png"
+target = "window/on_screen/wxA6_scx7_dmg08.png"
+sha256 = "627986f11b0e761c8f4782a31fe119309075b3cefa7010c4d5dc9bbea4761a6b"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_weoff_at_xposA6.gbc"
+target = "window/on_screen/wxA6_weoff_at_xposA6.gbc"
+sha256 = "ef8bc0c10ab76225c835558c87397b619956fb05b8e6ecd5806d92f54fb23b74"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_weoff_at_xposA6_cgb04c.png"
+target = "window/on_screen/wxA6_weoff_at_xposA6_cgb04c.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_weoff_at_xposA6_dmg08.png"
+target = "window/on_screen/wxA6_weoff_at_xposA6_dmg08.png"
+sha256 = "8cb02a622342101de261e74bdd2c19e499f6ae85de786a1692edbc546c460d8a"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy00.gbc"
+target = "window/on_screen/wxA6_wy00.gbc"
+sha256 = "d4cb79e0278a7eb7d3e7488ef09796c4299e678a6bf33c83997b88b5599e5615"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy00_cgb04c.png"
+target = "window/on_screen/wxA6_wy00_cgb04c.png"
+sha256 = "ef15f92fe0e9ead8ce52843f5aa66d38f41121a428b570fad555535519726ebc"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy00_dmg08.png"
+target = "window/on_screen/wxA6_wy00_dmg08.png"
+sha256 = "9926ae7d44575ffeae8127095fd220f894b63c8033cb146ec626d539d1f6b472"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01.gbc"
+target = "window/on_screen/wxA6_wy01.gbc"
+sha256 = "5a0be442e8add6eab4c40b98260588273f03c1ebef65ef9ac949cb95428d871c"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_cgb04c.png"
+target = "window/on_screen/wxA6_wy01_cgb04c.png"
+sha256 = "77a12e30035c7a805fe17890d7943e88426fc8e7d3e5696672cf9a50dc179d16"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_dmg08.png"
+target = "window/on_screen/wxA6_wy01_dmg08.png"
+sha256 = "92368ba6b7a5abf5a18128b445b34fe67cfaa63ab25393f85f7e77940e88f91d"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_weoff_ly02.gbc"
+target = "window/on_screen/wxA6_wy01_weoff_ly02.gbc"
+sha256 = "e725d0f3cf49a8f6e7f39e9dd597d8bfd1a07e764af599bff08c73605eeee6ae"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_weoff_ly02_cgb04c.png"
+target = "window/on_screen/wxA6_wy01_weoff_ly02_cgb04c.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_weoff_ly02_dmg08.png"
+target = "window/on_screen/wxA6_wy01_weoff_ly02_dmg08.png"
+sha256 = "2346c18c4370f9ee3f0fcc106e7fe2d0cc8e5ea3e0bcbc1482c4a73e85c8fa73"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60.gbc"
+target = "window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60.gbc"
+sha256 = "63abb23a956638fac5c910cbc3d6a706759400d0f8cd9dd178be3f8ddac8ea4f"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60_cgb04c.png"
+target = "window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60_cgb04c.png"
+sha256 = "3dad9a088a22d4305bb89edbd8fb49e29246d2df1f0a916df4824fbc1f9c1099"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60_dmg08.png"
+target = "window/on_screen/wxA6_wy01_weoff_ly02_weon_ly60_dmg08.png"
+sha256 = "50f97c51597550863e5db002e56e1d5de290447a3214a22061a192ccc79cb6c6"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_wxA5_ly02.gbc"
+target = "window/on_screen/wxA6_wy01_wxA5_ly02.gbc"
+sha256 = "1e7cb333728dd8aebd4a1de511616c5b6f96435d5a87b4bfe0d94bd16e7debac"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_wxA5_ly02_cgb04c.png"
+target = "window/on_screen/wxA6_wy01_wxA5_ly02_cgb04c.png"
+sha256 = "4c0b5b53646004d537e3b08c9ddb7ff55439337887b99e236ba76abe031e8eca"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_wxA5_ly02_dmg08.png"
+target = "window/on_screen/wxA6_wy01_wxA5_ly02_dmg08.png"
+sha256 = "339fb8df0a749d5da688c7022cb4bf428ac781cabde8fa3b0777ce75e1b9fe85"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_wxA7_ly02.gbc"
+target = "window/on_screen/wxA6_wy01_wxA7_ly02.gbc"
+sha256 = "372b82c9d939e4fd060583551b7114dc08d0c96c6b3a0facf6517039aafcc933"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_wxA7_ly02_cgb04c.png"
+target = "window/on_screen/wxA6_wy01_wxA7_ly02_cgb04c.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy01_wxA7_ly02_dmg08.png"
+target = "window/on_screen/wxA6_wy01_wxA7_ly02_dmg08.png"
+sha256 = "6a47330054c948e3e23afa0b12c35744d15ab9907fe3cb2597bea4e2d06f797d"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy8F.gbc"
+target = "window/on_screen/wxA6_wy8F.gbc"
+sha256 = "3c17a70269b0607f84b6d7ebb04dcba963ea528675128a87404b8fcbb58ade05"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy8F_cgb04c.png"
+target = "window/on_screen/wxA6_wy8F_cgb04c.png"
+sha256 = "ee0868d4bd6a7cdead89a4e0323a016f098742a203644c48765926a3c7c3b3cb"
+
+[[source.family.file]]
+path = "gambatte/window/on_screen/wxA6_wy8F_dmg08.png"
+target = "window/on_screen/wxA6_wy8F_dmg08.png"
+sha256 = "2346c18c4370f9ee3f0fcc106e7fe2d0cc8e5ea3e0bcbc1482c4a73e85c8fa73"

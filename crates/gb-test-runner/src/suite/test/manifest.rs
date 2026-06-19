@@ -1883,6 +1883,19 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
             "mbc3-tester",
             &[("mbc3-tester", 2, "mbc3-tester", "mbc3-tester")][..],
         ),
+        (
+            "gambatte",
+            &[
+                ("gambatte-bgen", 2, "gambatte", "gambatte"),
+                ("gambatte-bgtiledata", 34, "gambatte", "gambatte"),
+                ("gambatte-bgtilemap", 40, "gambatte", "gambatte"),
+                ("gambatte-dmgpalette-during-m3", 30, "gambatte", "gambatte"),
+                ("gambatte-halt", 8, "gambatte", "gambatte"),
+                ("gambatte-scx-during-m3", 172, "gambatte", "gambatte"),
+                ("gambatte-scy", 67, "gambatte", "gambatte"),
+                ("gambatte-window", 38, "gambatte", "gambatte"),
+            ][..],
+        ),
     ];
 
     for (report_id, suites) in report_specs {
@@ -2124,6 +2137,50 @@ fn real_standalone_extra_report_manifests_load_new_runner_oracles() {
                 .expect("CGB mbc3-tester row should exist");
             assert_eq!(cgb.hardware_revision, gb_core::HardwareRevision::CpuCgbD);
             assert_eq!(cgb.report_rom(), "mbc3-tester.gb (GBC)");
+        }
+        if report_id == "gambatte" {
+            let total_disabled = suites
+                .iter()
+                .map(|(suite_name, _, _, _)| {
+                    disabled_case_count(&read_report_suite_manifest(report_id, suite_name))
+                })
+                .sum::<usize>();
+            assert_eq!(total_disabled, 8);
+            let loaded_suites = load_selected_suites(&workspace, report, None, None)
+                .expect("gambatte report should load all suites");
+            assert_eq!(
+                loaded_suites
+                    .iter()
+                    .map(|suite| suite.cases.len())
+                    .sum::<usize>(),
+                391
+            );
+            assert!(
+                loaded_suites
+                    .iter()
+                    .all(
+                        |suite| suite.cases.iter().all(|case| case.timeout_frames == 15
+                            && case.report_model_suffix
+                            && matches!(&case.oracle, Oracle::Framebuffer(_)))
+                    )
+            );
+            let gambatte_cases = loaded_suites
+                .iter()
+                .flat_map(|suite| &suite.cases)
+                .collect::<Vec<_>>();
+            assert!(
+                gambatte_cases
+                    .iter()
+                    .any(|case| { case.hardware_revision == gb_core::HardwareRevision::CpuCgbC })
+            );
+            assert!(gambatte_cases.iter().all(|case| {
+                if case.console_model == gb_core::ConsoleModel::GameBoyColor {
+                    case.hardware_revision == gb_core::HardwareRevision::CpuCgbC
+                        && case.report_revision_suffix == case.id.contains("cgb04c")
+                } else {
+                    !case.report_revision_suffix
+                }
+            }));
         }
 
         fs::remove_dir_all(workspace).expect("workspace should be removable");

@@ -40,6 +40,7 @@ fn built_in_reports_manifest_loads_all_reports() {
             "wilbertpol",
             "rtc3test",
             "mbc3-tester",
+            "gambatte",
             "linked"
         ]
     );
