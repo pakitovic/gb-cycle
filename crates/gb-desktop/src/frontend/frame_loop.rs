@@ -71,9 +71,9 @@ fn process_events(
                     }
                     continue;
                 }
-                Event::ControllerButtonDown { which, button, .. }
+                Event::GamepadButtonDown { which, button, .. }
                     if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-                        manager.is_active_gamepad(gamepad_event_joystick_id(*which))
+                        manager.is_active_gamepad(*which)
                     }) =>
                 {
                     if (runtime
@@ -104,10 +104,10 @@ fn process_events(
                     }
                     continue;
                 }
-                Event::ControllerAxisMotion {
+                Event::GamepadAxisMotion {
                     which, axis, value, ..
                 } if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-                    manager.is_active_gamepad(gamepad_event_joystick_id(*which))
+                    manager.is_active_gamepad(*which)
                 }) =>
                 {
                     if (runtime
@@ -156,10 +156,10 @@ fn process_events(
                 toggle_menu(event_pump, canvas.window(), session, machine, runtime)?;
                 continue;
             }
-            Event::ControllerButtonDown { which, button, .. }
+            Event::GamepadButtonDown { which, button, .. }
                 if *button == Button::Guide
                     && runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-                        manager.is_active_gamepad(gamepad_event_joystick_id(*which))
+                        manager.is_active_gamepad(*which)
                     }) =>
             {
                 if runtime.menu_state.is_open() {
@@ -198,9 +198,9 @@ fn process_events(
                     ..
                 } => menu_input_for_key_event(runtime.keyboard_bindings.menu, *keycode, *scancode)
                     .and_then(|input| runtime.menu_state.handle_input(input, presentation)),
-                Event::ControllerButtonDown { which, button, .. }
+                Event::GamepadButtonDown { which, button, .. }
                     if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-                        manager.is_active_gamepad(gamepad_event_joystick_id(*which))
+                        manager.is_active_gamepad(*which)
                     }) =>
                 {
                     runtime
@@ -211,10 +211,10 @@ fn process_events(
                         })
                         .and_then(|input| runtime.menu_state.handle_input(input, presentation))
                 }
-                Event::ControllerAxisMotion {
+                Event::GamepadAxisMotion {
                     which, axis, value, ..
                 } if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-                    manager.is_active_gamepad(gamepad_event_joystick_id(*which))
+                    manager.is_active_gamepad(*which)
                 }) =>
                 {
                     if let Some((binding, true)) = gamepad_trigger_event_binding(
@@ -366,9 +366,9 @@ fn process_events(
                 }
                 apply_keyboard_event_to_player_slots(runtime, machine, keycode, scancode, false);
             }
-            Event::ControllerButtonDown { which, button, .. }
+            Event::GamepadButtonDown { which, button, .. }
                 if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-                    manager.is_active_gamepad(gamepad_event_joystick_id(which))
+                    manager.is_active_gamepad(which)
                 }) =>
             {
                 let action = runtime
@@ -412,9 +412,9 @@ fn process_events(
                     | HotkeyAction::TogglePerformanceHud => {}
                 }
             }
-            Event::ControllerButtonUp { which, button, .. }
+            Event::GamepadButtonUp { which, button, .. }
                 if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-                    manager.is_active_gamepad(gamepad_event_joystick_id(which))
+                    manager.is_active_gamepad(which)
                 }) =>
             {
                 let action = runtime
@@ -430,10 +430,10 @@ fn process_events(
                     runtime.fast_forward_gamepad_active = false;
                 }
             }
-            Event::ControllerAxisMotion {
+            Event::GamepadAxisMotion {
                 which, axis, value, ..
             } if runtime.gamepad_manager.as_ref().is_some_and(|manager| {
-                manager.is_active_gamepad(gamepad_event_joystick_id(which))
+                manager.is_active_gamepad(which)
             }) =>
             {
                 if let Some((binding, pressed)) =
@@ -501,8 +501,8 @@ fn process_gamepad_manager_event(
             clear_gamepad_hold_latches_after_event = true;
         }
         let should_activate_from_input = match event {
-            Event::ControllerButtonDown { .. } => true,
-            Event::ControllerAxisMotion { axis, value, .. } => {
+            Event::GamepadButtonDown { .. } => true,
+            Event::GamepadAxisMotion { axis, value, .. } => {
                 gamepad_button_binding_from_sdl_axis(*axis).is_some()
                     && gamepad_trigger_axis_is_pressed(*value)
             }
@@ -510,9 +510,9 @@ fn process_gamepad_manager_event(
         };
         if should_activate_from_input {
             let input_joystick_id = match event {
-                Event::ControllerButtonDown { which, .. }
-                | Event::ControllerAxisMotion { which, .. } => {
-                    Some(gamepad_event_joystick_id(*which))
+                Event::GamepadButtonDown { which, .. }
+                | Event::GamepadAxisMotion { which, .. } => {
+                    Some(*which)
                 }
                 _ => None,
             };

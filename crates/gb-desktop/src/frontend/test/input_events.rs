@@ -56,9 +56,9 @@ fn frontend_harness_covers_gamepad_event_paths() {
         .menu_state
         .begin_gamepad_binding_capture_for_tests(GamepadBindingTarget::A);
     events
-        .push_event(Event::ControllerButtonDown {
+        .push_event(Event::GamepadButtonDown {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             button: Button::North,
         })
         .expect("gamepad binding event should be pushable");
@@ -81,9 +81,9 @@ fn frontend_harness_covers_gamepad_event_paths() {
         .menu_state
         .begin_gamepad_action_binding_capture_for_tests(GamepadActionBindingTarget::Rewind);
     events
-        .push_event(Event::ControllerAxisMotion {
+        .push_event(Event::GamepadAxisMotion {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             axis: Axis::TriggerLeft,
             value: i16::MAX,
         })
@@ -103,9 +103,9 @@ fn frontend_harness_covers_gamepad_event_paths() {
     );
 
     events
-        .push_event(Event::ControllerButtonDown {
+        .push_event(Event::GamepadButtonDown {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             button: Button::Guide,
         })
         .expect("guide event should be pushable");
@@ -115,9 +115,9 @@ fn frontend_harness_covers_gamepad_event_paths() {
     assert!(!harness.runtime.menu_state.is_open());
 
     events
-        .push_event(Event::ControllerButtonDown {
+        .push_event(Event::GamepadButtonDown {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             button: Button::Guide,
         })
         .expect("second guide event should be pushable");
@@ -136,9 +136,9 @@ fn frontend_harness_covers_gamepad_event_paths() {
             &harness.session,
         ));
     events
-        .push_event(Event::ControllerButtonDown {
+        .push_event(Event::GamepadButtonDown {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             button: Button::Guide,
         })
         .expect("menu close event should be pushable");
@@ -150,9 +150,9 @@ fn frontend_harness_covers_gamepad_event_paths() {
     harness.runtime.rewind_gamepad_active = true;
     harness.runtime.fast_forward_gamepad_active = true;
     events
-        .push_event(Event::ControllerDeviceRemoved {
+        .push_event(Event::GamepadRemoved {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
         })
         .expect("gamepad removal event should be pushable");
     harness
@@ -208,9 +208,9 @@ fn frontend_harness_routes_gamepad_trigger_axis_actions() {
         .event()
         .expect("event subsystem should initialize for controller events");
     events
-        .push_event(Event::ControllerAxisMotion {
+        .push_event(Event::GamepadAxisMotion {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             axis: Axis::TriggerLeft,
             value: i16::MAX,
         })
@@ -222,9 +222,9 @@ fn frontend_harness_routes_gamepad_trigger_axis_actions() {
     assert!(!harness.runtime.fast_forward_gamepad_active);
 
     events
-        .push_event(Event::ControllerAxisMotion {
+        .push_event(Event::GamepadAxisMotion {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             axis: Axis::TriggerRight,
             value: i16::MAX,
         })
@@ -236,9 +236,9 @@ fn frontend_harness_routes_gamepad_trigger_axis_actions() {
     assert!(harness.runtime.fast_forward_gamepad_active);
 
     events
-        .push_event(Event::ControllerAxisMotion {
+        .push_event(Event::GamepadAxisMotion {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             axis: Axis::TriggerLeft,
             value: 0,
         })
@@ -250,9 +250,9 @@ fn frontend_harness_routes_gamepad_trigger_axis_actions() {
     assert!(harness.runtime.fast_forward_gamepad_active);
 
     events
-        .push_event(Event::ControllerAxisMotion {
+        .push_event(Event::GamepadAxisMotion {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             axis: Axis::TriggerRight,
             value: 0,
         })
@@ -310,9 +310,9 @@ fn guide_button_keeps_the_launcher_open_without_a_loaded_rom() {
     assert!(harness.runtime.menu_state.is_open());
 
     events
-        .push_event(Event::ControllerButtonDown {
+        .push_event(Event::GamepadButtonDown {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             button: Button::Guide,
         })
         .expect("guide event should be pushable");
@@ -374,9 +374,9 @@ fn guide_button_matches_keyboard_cancel_behavior_inside_submenus() {
         Button::South,
     ] {
         events
-            .push_event(Event::ControllerButtonDown {
+            .push_event(Event::GamepadButtonDown {
                 timestamp: 0,
-                which: virtual_gamepad.joystick_id.0,
+                which: virtual_gamepad.joystick_id,
                 button,
             })
             .expect("menu navigation event should be pushable");
@@ -387,9 +387,9 @@ fn guide_button_matches_keyboard_cancel_behavior_inside_submenus() {
     assert!(harness.runtime.menu_state.is_open());
 
     events
-        .push_event(Event::ControllerButtonDown {
+        .push_event(Event::GamepadButtonDown {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             button: Button::Guide,
         })
         .expect("guide event should be pushable");
@@ -399,9 +399,9 @@ fn guide_button_matches_keyboard_cancel_behavior_inside_submenus() {
     assert!(harness.runtime.menu_state.is_open());
 
     events
-        .push_event(Event::ControllerButtonDown {
+        .push_event(Event::GamepadButtonDown {
             timestamp: 0,
-            which: virtual_gamepad.joystick_id.0,
+            which: virtual_gamepad.joystick_id,
             button: Button::East,
         })
         .expect("cancel event should be pushable");

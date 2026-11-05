@@ -171,7 +171,7 @@ impl VirtualGamepad {
         assert!(!raw.is_null(), "failed to open the virtual SDL gamepad");
 
         Self {
-            joystick_id,
+            joystick_id: JoystickId::new(joystick_id.0),
             raw,
             _name: name,
             _sensors: sensors,
@@ -209,7 +209,7 @@ impl Drop for VirtualGamepad {
         unsafe {
             sdl3::sys::joystick::SDL_CloseJoystick(self.raw);
             assert!(sdl3::sys::joystick::SDL_DetachVirtualJoystick(
-                self.joystick_id
+                sdl3::sys::joystick::SDL_JoystickID(self.joystick_id.raw())
             ));
         }
     }

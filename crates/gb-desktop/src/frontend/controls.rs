@@ -3382,10 +3382,6 @@ fn desktop_key_scancode(binding: DesktopKey) -> Scancode {
     }
 }
 
-fn gamepad_event_joystick_id(which: u32) -> sdl3::joystick::JoystickId {
-    sdl3::sys::joystick::SDL_JoystickID(which)
-}
-
 #[cfg(test)]
 fn menu_input_for_key(bindings: MenuKeyboardBindings, keycode: Keycode) -> Option<MenuInput> {
     menu_input_for_key_event(bindings, Some(keycode), None)

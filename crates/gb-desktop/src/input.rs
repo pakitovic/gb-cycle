@@ -365,18 +365,16 @@ impl GamepadManager {
         machine: &mut Machine<TraceSummaryBuffer>,
     ) -> Result<(), String> {
         match *event {
-            Event::ControllerDeviceAdded { which, .. } => {
-                let became_active = self.open_gamepad(joystick_id_from_event(which))?;
+            Event::GamepadAdded { which, .. } => {
+                let became_active = self.open_gamepad(which)?;
                 if became_active {
                     self.sync_active_gamepad_state(input_state, machine);
                 }
             }
-            Event::ControllerDeviceRemoved { which, .. } => {
-                self.remove_gamepad(joystick_id_from_event(which), input_state, machine)?;
+            Event::GamepadRemoved { which, .. } => {
+                self.remove_gamepad(which, input_state, machine)?;
             }
-            Event::ControllerDeviceRemapped { which, .. }
-                if self.active == Some(joystick_id_from_event(which)) =>
-            {
+            Event::GamepadRemapped { which, .. } if self.active == Some(which) => {
                 eprintln!("info: active SDL gamepad remapped");
                 self.gyro.baseline = None;
                 self.sync_accelerometer_sensor_enabled()?;
@@ -1158,8 +1156,9 @@ fn sanitize_direction_pair(
     }
 }
 
+#[cfg(test)]
 fn joystick_id_from_event(which: u32) -> JoystickId {
-    sdl3::sys::joystick::SDL_JoystickID(which)
+    JoystickId::new(which)
 }
 
 fn update_left_stick_button(
@@ -1191,7 +1190,7 @@ fn joypad_button_index(button: JoypadButton) -> usize {
 }
 
 fn default_gamepad_name(joystick_id: JoystickId) -> String {
-    format!("SDL gamepad {}", joystick_id.0)
+    format!("SDL gamepad {}", joystick_id.raw())
 }
 
 fn format_gamepad_enumeration_error(error: sdl3::Error) -> String {
@@ -1199,7 +1198,7 @@ fn format_gamepad_enumeration_error(error: sdl3::Error) -> String {
 }
 
 fn format_open_gamepad_error(joystick_id: JoystickId, error: sdl3::Error) -> String {
-    format!("failed to open SDL3 gamepad {}: {error}", joystick_id.0)
+    format!("failed to open SDL3 gamepad {}: {error}", joystick_id.raw())
 }
 
 #[cfg(test)]
