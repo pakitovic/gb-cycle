@@ -1,6 +1,6 @@
 [[source]]
 id = "gbdev-bootroms"
-file_base_url = "https://gbdev.gg8.se/files/roms/bootroms/"
+file_base_url = "https://web.archive.org/web/2024id_/https://gbdev.gg8.se/files/roms/bootroms/"
 
 [[source.family]]
 id = "boot-roms"
