@@ -78,7 +78,7 @@ fn built_in_boot_rom_source_manifest_matches_supported_assets() {
         .expect("boot ROM manifest should define a source");
     assert_eq!(
         source.file_base_url.as_deref(),
-        Some("https://gbdev.gg8.se/files/roms/bootroms/")
+        Some("https://web.archive.org/web/2024id_/https://gbdev.gg8.se/files/roms/bootroms/")
     );
     let expected = supported_boot_rom_asset_filenames_for_test();
     let actual = source
