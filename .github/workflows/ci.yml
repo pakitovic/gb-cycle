@@ -64,26 +64,26 @@ jobs:
 
       - name: Setup Rust
         if: matrix.components != ''
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: ${{ matrix.components }}
 
       - name: Setup Rust
         if: matrix.components == ''
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-deny
         if: matrix.name == 'Deny'
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.85.5
         with:
           tool: cargo-deny
 
       - name: Install typos-cli
         if: matrix.name == 'Typos'
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.85.5
         with:
           tool: typos-cli
 
@@ -135,7 +135,7 @@ jobs:
           sudo apt-get install -y "${sdl3_build_dependencies[@]}"
 
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: llvm-tools
 
@@ -143,7 +143,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.85.5
         with:
           tool: cargo-llvm-cov
 
