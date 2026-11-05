@@ -23,7 +23,4 @@ pub use self::requests::*;
 pub use self::transfer::*;
 
 #[allow(unused_imports)]
-pub(in crate::sgb) use self::{
-    attribute::*, boot_palette::*, border_data::*, color::*, constants::*, obj::*, packet::*,
-    palette::*, requests::*, transfer::*,
-};
+pub(in crate::sgb) use self::boot_palette::*;

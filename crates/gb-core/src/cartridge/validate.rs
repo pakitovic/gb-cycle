@@ -599,8 +599,7 @@ pub(in crate::cartridge) fn validate_mbc5(
         _ => unreachable!("non-MBC5 type entered MBC5 validation"),
     };
 
-    let ram_len;
-    if variant.has_ram() {
+    let ram_len = if variant.has_ram() {
         let allowed_ram_codes = if variant.has_rumble() {
             [0x02, 0x03, 0x05].as_slice()
         } else {
@@ -619,17 +618,17 @@ pub(in crate::cartridge) fn validate_mbc5(
                 }
             )));
         }
-        ram_len = header.ram_size.decoded_bytes.unwrap_or(0);
+        header.ram_size.decoded_bytes.unwrap_or(0)
     } else if header.ram_size.raw_code != 0x00 {
         ctx.check_degradable(format!(
             "{} does not provide external RAM, but the header declared RAM size code {:#04X}",
             ctx.name(),
             header.ram_size.raw_code
         ))?;
-        ram_len = 0;
+        0
     } else {
-        ram_len = 0;
-    }
+        0
+    };
 
     Ok(Mbc5ValidationLayout {
         variant,
