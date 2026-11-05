@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
@@ -70,6 +70,14 @@ jobs:
           name: rom-report-runners
           path: .bin
 
+      - name: Cache ${{ matrix.report.name }} boot ROMs
+        if: ${{ matrix.report.boot_roms == true }}
+        id: boot-rom-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/boot-rom
+          key: boot-rom-${{ hashFiles('crates/gb-test-runner/data/sources.boot-rom.toml') }}
+
       - name: Generate ${{ matrix.report.name }} HTML report
         run: |
           set -euo pipefail
@@ -83,14 +91,16 @@ jobs:
           report_args=("${{ matrix.report.name }}" "--html")
 
           if [[ "${{ matrix.report.boot_roms == true }}" == "true" ]]; then
-            fetch_runner="$(find .bin -type f -name fetch -print -quit)"
-            if [[ -z "${fetch_runner}" ]]; then
-              echo "missing downloaded ROM fetch runner" >&2
-              exit 1
-            fi
-            chmod +x "${fetch_runner}"
             BOOT_ROM_DIR="${RUNNER_TEMP}/boot-rom"
-            "${fetch_runner}" --boot-rom "${BOOT_ROM_DIR}"
+            if [[ "${{ steps.boot-rom-cache.outputs.cache-hit }}" != "true" ]]; then
+              fetch_runner="$(find .bin -type f -name fetch -print -quit)"
+              if [[ -z "${fetch_runner}" ]]; then
+                echo "missing downloaded ROM fetch runner" >&2
+                exit 1
+              fi
+              chmod +x "${fetch_runner}"
+              "${fetch_runner}" --boot-rom "${BOOT_ROM_DIR}"
+            fi
             report_args+=("--boot-rom-dir" "${BOOT_ROM_DIR}")
           fi
 
@@ -132,7 +142,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
