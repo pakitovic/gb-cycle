@@ -628,13 +628,13 @@ fn load_selected_camera_image(
 
     let grayscale_pixels = match info.color_type {
         ColorType::Grayscale => frame_bytes.to_vec(),
-        ColorType::GrayscaleAlpha => frame_bytes.chunks_exact(2).map(|chunk| chunk[0]).collect(),
+        ColorType::GrayscaleAlpha => frame_bytes.as_chunks::<2>().0.iter().map(|chunk| chunk[0]).collect(),
         ColorType::Rgb => frame_bytes
-            .chunks_exact(3)
+            .as_chunks::<3>().0.iter()
             .map(|chunk| grayscale_from_rgb(chunk[0], chunk[1], chunk[2]))
             .collect(),
         ColorType::Rgba => frame_bytes
-            .chunks_exact(4)
+            .as_chunks::<4>().0.iter()
             .map(|chunk| grayscale_from_rgb(chunk[0], chunk[1], chunk[2]))
             .collect(),
         ColorType::Indexed => {

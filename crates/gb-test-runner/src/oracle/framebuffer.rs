@@ -716,7 +716,9 @@ fn decode_png_palette_fixture(path: &Path, bytes: &[u8]) -> Result<PaletteRankFr
             decoded.height,
             &decoded
                 .bytes
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|chunk| [chunk[0], chunk[1], chunk[2]])
                 .collect::<Vec<_>>(),
         )),
@@ -725,7 +727,9 @@ fn decode_png_palette_fixture(path: &Path, bytes: &[u8]) -> Result<PaletteRankFr
             decoded.height,
             &decoded
                 .bytes
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|chunk| [chunk[0], chunk[1], chunk[2]])
                 .collect::<Vec<_>>(),
         )),
@@ -734,7 +738,9 @@ fn decode_png_palette_fixture(path: &Path, bytes: &[u8]) -> Result<PaletteRankFr
             decoded.height,
             &decoded
                 .bytes
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|chunk| chunk[0])
                 .collect::<Vec<_>>(),
         )),
@@ -751,17 +757,23 @@ fn decode_png_grayscale_fixture(path: &Path, bytes: &[u8]) -> Result<GrayscaleFr
         png::ColorType::Grayscale => decoded.bytes,
         png::ColorType::Rgb => decoded
             .bytes
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|chunk| grayscale_luma([chunk[0], chunk[1], chunk[2]]))
             .collect(),
         png::ColorType::Rgba => decoded
             .bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|chunk| grayscale_luma([chunk[0], chunk[1], chunk[2]]))
             .collect(),
         png::ColorType::GrayscaleAlpha => decoded
             .bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| chunk[0])
             .collect(),
         png::ColorType::Indexed => {
@@ -784,17 +796,23 @@ fn decode_png_rgb_fixture(path: &Path, bytes: &[u8]) -> Result<RgbFramebuffer, S
         png::ColorType::Grayscale => decoded.bytes.into_iter().map(|pixel| [pixel; 3]).collect(),
         png::ColorType::Rgb => decoded
             .bytes
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|chunk| [chunk[0], chunk[1], chunk[2]])
             .collect(),
         png::ColorType::Rgba => decoded
             .bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|chunk| [chunk[0], chunk[1], chunk[2]])
             .collect(),
         png::ColorType::GrayscaleAlpha => decoded
             .bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| [chunk[0]; 3])
             .collect(),
         png::ColorType::Indexed => {

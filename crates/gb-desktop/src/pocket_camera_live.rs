@@ -408,7 +408,7 @@ fn rgb24_pixels_to_grayscale(
     for y in 0..height {
         let row_start = y * pitch;
         let row = &pixels[row_start..row_start + row_bytes];
-        for rgb in row.chunks_exact(3) {
+        for rgb in row.as_chunks::<3>().0 {
             grayscale_pixels.push(grayscale_from_rgb(rgb[0], rgb[1], rgb[2]));
         }
     }
