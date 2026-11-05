@@ -469,13 +469,14 @@ impl VirtualGamepad {
             | (1 << Button::North as u32);
         descriptor.name = name.as_ptr();
 
-        let joystick_id = unsafe { sdl3::sys::joystick::SDL_AttachVirtualJoystick(&descriptor) };
-        assert_ne!(joystick_id.0, 0, "failed to attach a virtual SDL gamepad");
-        let raw = unsafe { sdl3::sys::joystick::SDL_OpenJoystick(joystick_id) };
+        let raw_joystick_id =
+            unsafe { sdl3::sys::joystick::SDL_AttachVirtualJoystick(&descriptor) };
+        assert_ne!(raw_joystick_id, 0, "failed to attach a virtual SDL gamepad");
+        let raw = unsafe { sdl3::sys::joystick::SDL_OpenJoystick(raw_joystick_id) };
         assert!(!raw.is_null(), "failed to open the virtual SDL gamepad");
 
         Self {
-            joystick_id,
+            joystick_id: JoystickId::new(raw_joystick_id.0),
             raw,
             _name: name,
         }
@@ -494,7 +495,9 @@ impl Drop for VirtualGamepad {
     fn drop(&mut self) {
         unsafe {
             sdl3::sys::joystick::SDL_CloseJoystick(self.raw);
-            let _ = sdl3::sys::joystick::SDL_DetachVirtualJoystick(self.joystick_id);
+            let _ = sdl3::sys::joystick::SDL_DetachVirtualJoystick(
+                sdl3::sys::joystick::SDL_JoystickID(self.joystick_id.raw()),
+            );
         }
     }
 }

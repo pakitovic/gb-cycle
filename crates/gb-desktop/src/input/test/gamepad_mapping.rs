@@ -37,7 +37,7 @@ fn gamepad_manager_rumble_helpers_cover_state_transitions() {
     let desired = manager
         .desired_rumble_effect()
         .expect("active rumble effect should be derived");
-    assert_eq!(desired.joystick_id.0, virtual_gamepad.joystick_id.0);
+    assert_eq!(desired.joystick_id.raw(), virtual_gamepad.joystick_id.raw());
     assert_eq!(
         (desired.low_frequency, desired.high_frequency),
         (WEAK_GAMEPAD_RUMBLE_INTENSITY, WEAK_GAMEPAD_RUMBLE_INTENSITY)
@@ -54,7 +54,7 @@ fn gamepad_manager_rumble_helpers_cover_state_transitions() {
         .rumble
         .applied
         .expect("rumble state should remain applied");
-    assert_eq!(applied.joystick_id.0, desired.joystick_id.0);
+    assert_eq!(applied.joystick_id.raw(), desired.joystick_id.raw());
     assert_eq!(applied.low_frequency, desired.low_frequency);
     assert_eq!(applied.high_frequency, desired.high_frequency);
     assert_eq!(manager.rumble.next_refresh_at, Some(future_refresh));

@@ -64,9 +64,9 @@ fn gamepad_manager_respects_preferred_devices_and_handle_event_transitions() {
 
     manager
         .handle_event(
-            &Event::ControllerDeviceRemapped {
+            &Event::GamepadRemapped {
                 timestamp: 0,
-                which: activated_joystick.0,
+                which: activated_joystick,
             },
             &mut input_state,
             &mut machine,
@@ -75,9 +75,9 @@ fn gamepad_manager_respects_preferred_devices_and_handle_event_transitions() {
 
     manager
         .handle_event(
-            &Event::ControllerDeviceRemoved {
+            &Event::GamepadRemoved {
                 timestamp: 0,
-                which: activated_joystick.0,
+                which: activated_joystick,
             },
             &mut input_state,
             &mut machine,
@@ -109,9 +109,9 @@ fn gamepad_manager_can_open_new_virtual_devices_from_added_events() {
     subsystem.update();
     manager
         .handle_event(
-            &Event::ControllerDeviceAdded {
+            &Event::GamepadAdded {
                 timestamp: 0,
-                which: added.joystick_id.0,
+                which: added.joystick_id,
             },
             &mut input_state,
             &mut machine,
@@ -146,9 +146,9 @@ fn gamepad_manager_added_event_can_keep_the_existing_active_device() {
     subsystem.update();
     manager
         .handle_event(
-            &Event::ControllerDeviceAdded {
+            &Event::GamepadAdded {
                 timestamp: 0,
-                which: second.joystick_id.0,
+                which: second.joystick_id,
             },
             &mut input_state,
             &mut machine,
@@ -188,9 +188,9 @@ fn gamepad_manager_remove_unknown_device_keeps_the_active_gamepad() {
 
     manager
         .handle_event(
-            &Event::ControllerDeviceRemoved {
+            &Event::GamepadRemoved {
                 timestamp: 0,
-                which: unknown_joystick_id.0,
+                which: unknown_joystick_id,
             },
             &mut input_state,
             &mut machine,
