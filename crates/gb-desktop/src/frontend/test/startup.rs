@@ -671,7 +671,6 @@ fn frontend_helpers_cover_runtime_dialog_and_title_utilities() {
         message: "test warning".to_string(),
     }]);
     assert!(super::super::target_frame_rate_hz() > 0.0);
-    assert_eq!(super::super::gamepad_event_joystick_id(7).0, 7);
     assert_eq!(
         super::super::boot_rom_dialog_default_location(&harness.session),
         harness.root

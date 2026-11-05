@@ -173,7 +173,7 @@ fn gamepad_button_helpers_round_trip_supported_buttons() {
         gamepad_button_binding_from_sdl_button(Button::Touchpad),
         None
     );
-    assert_eq!(joystick_id_from_event(77).0, 77);
+    assert_eq!(joystick_id_from_event(77).raw(), 77);
     assert_eq!(rumble_intensity(GamepadRumbleMode::Off), None);
     assert_eq!(
         rumble_intensity(GamepadRumbleMode::Strong),
