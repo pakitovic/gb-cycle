@@ -183,7 +183,7 @@ impl Joypad {
 
     pub fn scheduler_trace_message(&self, context: &CycleContext) -> String {
         format!(
-            "t_cycle={} phase={} console_model={:?} status={:?} p1={:#04X} selection_bits={:#04X} pressed_mask={:#04X} visible_low_nibble={:#03X} interrupt_request_pending={} stop_wake_pending={}",
+            "t_cycle={} phase={} console_model={:?} status={:?} p1={:#04X} selection_bits={:#04X} pressed_mask={:#04X} visible_low_nibble={:#X} interrupt_request_pending={} stop_wake_pending={}",
             context.t_cycle().get(),
             context.phase(),
             self.console_model,

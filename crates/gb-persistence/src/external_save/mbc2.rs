@@ -17,7 +17,7 @@ pub(super) fn encode_external_mbc2_ram(
     match format {
         ExternalSaveExportFormat::Mgba => {
             let mut bytes = Vec::with_capacity(MBC2_MGBA_PACKED_BYTE_COUNT);
-            for pair in ram_nibbles.chunks_exact(2) {
+            for pair in ram_nibbles.as_chunks::<2>().0 {
                 bytes.push((pair[0] & 0x0F) | ((pair[1] & 0x0F) << 4));
             }
             Ok(bytes)

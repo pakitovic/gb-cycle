@@ -50,7 +50,7 @@ impl Huc3Cartridge {
 
     pub(in crate::cartridge) fn trace_summary(&self) -> String {
         format!(
-            " select_mode={:?} rom_bank_raw={:#04X} effective_rom_bank={:#04X} ram_bank_raw={:#04X} effective_ram_bank={} access_address={:#04X} mailbox_command={:#03X} mailbox_argument={:#03X} last_response={:#03X} semaphore_ready={} ir_emitter_on={} ir_light_detected={} tone_enabled={} tone_selection={:#03X} last_control_write={:?} last_unsupported={:?}",
+            " select_mode={:?} rom_bank_raw={:#04X} effective_rom_bank={:#04X} ram_bank_raw={:#04X} effective_ram_bank={} access_address={:#04X} mailbox_command={:#X} mailbox_argument={:#X} last_response={:#X} semaphore_ready={} ir_emitter_on={} ir_light_detected={} tone_enabled={} tone_selection={:#X} last_control_write={:?} last_unsupported={:?}",
             self.select_mode,
             self.rom_bank,
             self.effective_rom_bank(self.header.rom_size.bank_count.unwrap_or(0)),

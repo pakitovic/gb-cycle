@@ -358,7 +358,9 @@ fn pocket_camera_uniform_capture_writes_exact_tile_planes_and_invert_flips_them(
         ..POCKET_CAMERA_CAPTURE_TILE_BASE_OFFSET + POCKET_CAMERA_CAPTURE_TILE_BYTES];
     assert!(
         normal_tiles
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .all(|pair| pair[0] == 0x00 && pair[1] == 0xFF)
     );
 
@@ -382,7 +384,9 @@ fn pocket_camera_uniform_capture_writes_exact_tile_planes_and_invert_flips_them(
         ..POCKET_CAMERA_CAPTURE_TILE_BASE_OFFSET + POCKET_CAMERA_CAPTURE_TILE_BYTES];
     assert!(
         inverted_tiles
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .all(|pair| pair[0] == 0xFF && pair[1] == 0x00)
     );
 }
