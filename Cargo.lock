@@ -742,71 +742,95 @@ dependencies = [
 
 [[package]]
 name = "sdl3"
-version = "0.18.4"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25bd22eb1bbc9137e914022b4994ed35591eea0884e9e3e98e6d9895cad6e1d2"
+checksum = "3572dbec21c786677f13d758350b6d236c994e7bf102674440f3d42fd06084d4"
 dependencies = [
  "bitflags",
  "libc",
  "sdl3-image-sys",
  "sdl3-mixer-sys",
+ "sdl3-net-sys",
  "sdl3-sys",
  "sdl3-ttf-sys",
 ]
 
 [[package]]
 name = "sdl3-image-src"
-version = "3.4.4"
+version = "3.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe273101c7dab94551183212eee9adef1a7bf274d407f0b7bfe72482960ab25c"
+checksum = "f77980b408defef1b774b067b8f19d8dd0f2e19f39e0859b13a16211b38f046a"
 
 [[package]]
 name = "sdl3-image-sys"
-version = "0.6.3+SDL-image-3.4.4"
+version = "0.7.1+SDL-image-3.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf532fab7cf015de8c55eec6c82db65a964c8874a22c88cead952813db410f90"
+checksum = "0eeed3ac9786736021364dae342070ac3e9e0074b420b130d70a37ed4b879cdd"
 dependencies = [
  "cmake",
+ "pkg-config",
  "rpkg-config",
  "sdl3-image-src",
  "sdl3-sys",
+ "vcpkg",
 ]
 
 [[package]]
 name = "sdl3-mixer-src"
-version = "3.2.2"
+version = "3.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb423c23776ce54e200db66dd53be2e51fd474d865ba9b6a52e79986454f06e6"
+checksum = "9cd815ae87084588c7dbd027c1667b0a5e21a6b5ae7b22ecb230bc21c7063eca"
 
 [[package]]
 name = "sdl3-mixer-sys"
-version = "0.6.2+SDL-mixer-3.2.2"
+version = "0.7.0+SDL-mixer-3.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "578c9064735e92bb75e7e33211ea4148962b986a6948b0fc9047a1c9b831dad8"
+checksum = "6150136321198ec95cccfb6168d838f114273a7615d21b513e5277c86f7d3aa1"
+dependencies = [
+ "cmake",
+ "pkg-config",
+ "rpkg-config",
+ "sdl3-mixer-src",
+ "sdl3-sys",
+ "vcpkg",
+]
+
+[[package]]
+name = "sdl3-net-src"
+version = "3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0461903a7545a85fc0ae64bdd642ca86fc58c7e0a9422aa7ab108aba25dc1b9"
+
+[[package]]
+name = "sdl3-net-sys"
+version = "0.7.0+SDL-net-3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2db35fcc4c810d47fbac59147c1157618d84d7b52aa8644c997e995eef43c5c3"
 dependencies = [
  "cmake",
  "rpkg-config",
- "sdl3-mixer-src",
+ "sdl3-net-src",
  "sdl3-sys",
 ]
 
 [[package]]
 name = "sdl3-src"
-version = "3.4.8"
+version = "3.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "997bff4c8d3d9d1e846d7ad8caa33e6fe18a07ec9dc474e1efbbb20923d87bd9"
+checksum = "dc5181b85760f18170dbc15b27b00d5aaaa003058bb14333ec7dd280665ef3a4"
 
 [[package]]
 name = "sdl3-sys"
-version = "0.6.5+SDL-3.4.8"
+version = "0.7.3+SDL-3.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51ca7a36c908d1d2b6c259d426a5000fbb70e764dcc430f6a373cc151f614f68"
+checksum = "0e68da4d2bcf29a81a1ea71ec27b93bb27151d649c2b186eb5988ad4dcb17d11"
 dependencies = [
  "cc",
  "cmake",
  "pkg-config",
  "rpkg-config",
  "sdl3-src",
+ "vcpkg",
 ]
 
 [[package]]
@@ -817,14 +841,16 @@ checksum = "f28923d2ce72ff317d8eb7cec97ddfb8f351c330d7bcbf8c76e91332122c93b3"
 
 [[package]]
 name = "sdl3-ttf-sys"
-version = "0.6.0+SDL-ttf-3.2.2"
+version = "0.7.1+SDL-ttf-3.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c30da3dcd7e062f19350b47a532f7629c42801b801687535fd31e8ba2adfd71d"
+checksum = "d254e537d2d96b3e2d6e8a3dd4850a1361b8689c3d95c6c1dfdc02b091307eef"
 dependencies = [
  "cmake",
+ "pkg-config",
  "rpkg-config",
  "sdl3-sys",
  "sdl3-ttf-src",
+ "vcpkg",
 ]
 
 [[package]]
@@ -1005,6 +1031,12 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "walkdir"
